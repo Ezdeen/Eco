@@ -10,6 +10,7 @@ async function main() {
   const esgPassword = await bcrypt.hash('ESG@123456', 12)
   const viewerPassword = await bcrypt.hash('Viewer@123456', 12)
   const operatorPassword = await bcrypt.hash('Operator@123456', 12)
+  const projectManagerPassword = await bcrypt.hash('Project@123456', 12)
 
   // ============== Organization ==============
   const org = await db.organization.create({
@@ -73,12 +74,25 @@ async function main() {
     },
   })
 
+  const projectManager = await db.user.create({
+    data: {
+      email: 'project@bfec.sa',
+      name: 'Abdullah Al-Harbi',
+      nameAr: 'عبدالله الحربي',
+      passwordHash: projectManagerPassword,
+      role: 'project_manager',
+      preferredLang: 'ar',
+      preferredTz: 'Asia/Riyadh',
+    },
+  })
+
   await db.userMembership.createMany({
     data: [
       { userId: admin.id, organizationId: org.id, role: 'org_admin', status: 'active' },
       { userId: esgManager.id, organizationId: org.id, role: 'esg_manager', status: 'active' },
       { userId: operator.id, organizationId: org.id, role: 'operator', status: 'active' },
       { userId: viewer.id, organizationId: org.id, role: 'viewer', status: 'active' },
+      { userId: projectManager.id, organizationId: org.id, role: 'project_manager', status: 'active' },
     ],
   })
 
@@ -446,15 +460,16 @@ async function main() {
 
   console.log('✅ Database seeded successfully!')
   console.log(`   Organization: ${org.nameAr}`)
-  console.log(`   Users: 4 (with hashed passwords)`)
+  console.log(`   Users: 5 (with hashed passwords)`)
   console.log(`   Projects: ${projectRecords.length}`)
   console.log(`   Impact Account Balance: 1,250,000 kgCO2e`)
   console.log('\n📋 Login Credentials:')
   console.log('   ────────────────────────────────────────')
-  console.log('   Admin:     admin@bfec.sa / Admin@123456')
-  console.log('   ESG:       esg@bfec.sa / ESG@123456')
-  console.log('   Operator:  operator@bfec.sa / Operator@123456')
-  console.log('   Viewer:    viewer@bfec.sa / Viewer@123456')
+  console.log('   Admin:           admin@bfec.sa / Admin@123456')
+  console.log('   ESG Manager:     esg@bfec.sa / ESG@123456')
+  console.log('   Project Manager: project@bfec.sa / Project@123456')
+  console.log('   Operator:        operator@bfec.sa / Operator@123456')
+  console.log('   Viewer:          viewer@bfec.sa / Viewer@123456')
 }
 
 main()

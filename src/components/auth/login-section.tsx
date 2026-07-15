@@ -17,6 +17,7 @@ interface LoginSectionProps {
 const DEMO_ACCOUNTS = [
   { email: 'admin@bfec.sa', password: 'Admin@123456', role: 'مدير المؤسسة', icon: '👨‍💼', color: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' },
   { email: 'esg@bfec.sa', password: 'ESG@123456', role: 'مدير ESG', icon: '🌿', color: 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-300' },
+  { email: 'project@bfec.sa', password: 'Project@123456', role: 'مدير المشروع', icon: '📋', color: 'bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300' },
   { email: 'operator@bfec.sa', password: 'Operator@123456', role: 'مشغّل', icon: '⚙️', color: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' },
   { email: 'viewer@bfec.sa', password: 'Viewer@123456', role: 'مشاهد', icon: '👁️', color: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' },
 ]
