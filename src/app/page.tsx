@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Sidebar, Section } from '@/components/platform/sidebar'
 import { Header } from '@/components/platform/header'
+import { LoginSection } from '@/components/auth/login-section'
 import { DashboardSection } from '@/components/sections/dashboard-section'
 import { ProjectsSection } from '@/components/sections/projects-section'
 import { AssetsSection } from '@/components/sections/assets-section'
@@ -17,6 +18,7 @@ import { CalculatorSection } from '@/components/sections/calculator-section'
 import { NotificationsSection } from '@/components/sections/notifications-section'
 import { AuditSection } from '@/components/sections/audit-section'
 import { SettingsSection } from '@/components/sections/settings-section'
+import { Loader2, Sun } from 'lucide-react'
 
 const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   dashboard: { title: 'مركز القيادة', subtitle: 'نظرة شاملة على أداء محفظة المشاريع الشمسية' },
@@ -40,10 +42,33 @@ export default function Home() {
   const [unread, setUnread] = useState(0)
   const [openCases, setOpenCases] = useState(0)
   const [lastUpdated, setLastUpdated] = useState<string>('')
+  const [user, setUser] = useState<any | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
 
+  // Check auth on mount
   useEffect(() => {
     let cancelled = false
-    // Fetch quick stats for sidebar
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        setUser(d.user || null)
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null)
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Fetch quick stats when user is logged in
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
     fetch('/api/notifications?unreadOnly=true')
       .then((r) => r.json())
       .then((d) => {
@@ -60,7 +85,6 @@ export default function Home() {
       })
       .catch(() => {})
 
-    // Set lastUpdated after mount to avoid hydration mismatch
     Promise.resolve().then(() => {
       if (!cancelled && typeof window !== 'undefined') {
         setLastUpdated(new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' }))
@@ -70,7 +94,38 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [section])
+  }, [section, user])
+
+  const handleLoginSuccess = (loggedInUser: any) => {
+    setUser(loggedInUser)
+    setSection('dashboard')
+  }
+
+  const handleLogout = () => {
+    setUser(null)
+    setUnread(0)
+    setOpenCases(0)
+  }
+
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
+          <Sun className="h-8 w-8" />
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>جاري التحقق من الجلسة...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Not authenticated → show login
+  if (!user) {
+    return <LoginSection onLoginSuccess={handleLoginSuccess} />
+  }
 
   const meta = SECTION_META[section]
 
@@ -81,6 +136,8 @@ export default function Home() {
         onNavigate={setSection}
         unreadNotifications={unread}
         openCases={openCases}
+        user={user}
+        onLogout={handleLogout}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -116,6 +173,8 @@ export default function Home() {
               <span>منصة ESG للطاقة الشمسية</span>
             </div>
             <div className="flex items-center gap-3">
+              <span>المستخدم: {user?.name || user?.email}</span>
+              <span>•</span>
               <span>v1.0 MVP</span>
               <span>•</span>
               <span>GHG Protocol Scope 2</span>

@@ -17,10 +17,12 @@ import {
   Sun,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 
 export type Section =
   | 'dashboard'
@@ -76,10 +78,26 @@ interface SidebarProps {
   onNavigate: (s: Section) => void
   unreadNotifications?: number
   openCases?: number
+  user?: { name?: string; email?: string; role?: string; nameAr?: string } | null
+  onLogout?: () => void
 }
 
-export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCases = 0 }: SidebarProps) {
+export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCases = 0, user, onLogout }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      toast.success('تم تسجيل الخروج بنجاح')
+      onLogout?.()
+    } catch {
+      toast.error('فشل تسجيل الخروج')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   const grouped = NAV_ITEMS.reduce(
     (acc, item) => {
@@ -179,13 +197,21 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
 
         <div className="p-4 border-t border-sidebar-border">
           <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
-              أ
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground font-semibold text-sm shrink-0">
+              {(user?.nameAr || user?.name || user?.email || '؟').charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">أحمد الراشد</p>
-              <p className="text-xs text-muted-foreground truncate">مدير المؤسسة</p>
+              <p className="text-sm font-medium truncate">{user?.nameAr || user?.name || 'مستخدم'}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
             </div>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title="تسجيل الخروج"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </aside>

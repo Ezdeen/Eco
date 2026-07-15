@@ -1,8 +1,15 @@
 // Seed script - populates the database with realistic solar energy ESG data
 import { db } from '../src/lib/db'
+import bcrypt from 'bcryptjs'
 
 async function main() {
   console.log('🌱 Seeding database...')
+
+  // Hash default passwords
+  const adminPassword = await bcrypt.hash('Admin@123456', 12)
+  const esgPassword = await bcrypt.hash('ESG@123456', 12)
+  const viewerPassword = await bcrypt.hash('Viewer@123456', 12)
+  const operatorPassword = await bcrypt.hash('Operator@123456', 12)
 
   // ============== Organization ==============
   const org = await db.organization.create({
@@ -23,6 +30,7 @@ async function main() {
       email: 'admin@bfec.sa',
       name: 'Ahmed Al-Rashid',
       nameAr: 'أحمد الراشد',
+      passwordHash: adminPassword,
       role: 'org_admin',
       preferredLang: 'ar',
       preferredTz: 'Asia/Riyadh',
@@ -34,8 +42,34 @@ async function main() {
       email: 'esg@bfec.sa',
       name: 'Fatima Al-Zahra',
       nameAr: 'فاطمة الزهراء',
+      passwordHash: esgPassword,
       role: 'esg_manager',
       preferredLang: 'ar',
+      preferredTz: 'Asia/Riyadh',
+    },
+  })
+
+  const operator = await db.user.create({
+    data: {
+      email: 'operator@bfec.sa',
+      name: 'Khalid Al-Otaibi',
+      nameAr: 'خالد العتيبي',
+      passwordHash: operatorPassword,
+      role: 'operator',
+      preferredLang: 'ar',
+      preferredTz: 'Asia/Riyadh',
+    },
+  })
+
+  const viewer = await db.user.create({
+    data: {
+      email: 'viewer@bfec.sa',
+      name: 'Sara Al-Qahtani',
+      nameAr: 'سارة القحطاني',
+      passwordHash: viewerPassword,
+      role: 'viewer',
+      preferredLang: 'ar',
+      preferredTz: 'Asia/Riyadh',
     },
   })
 
@@ -43,6 +77,8 @@ async function main() {
     data: [
       { userId: admin.id, organizationId: org.id, role: 'org_admin', status: 'active' },
       { userId: esgManager.id, organizationId: org.id, role: 'esg_manager', status: 'active' },
+      { userId: operator.id, organizationId: org.id, role: 'operator', status: 'active' },
+      { userId: viewer.id, organizationId: org.id, role: 'viewer', status: 'active' },
     ],
   })
 
@@ -410,9 +446,15 @@ async function main() {
 
   console.log('✅ Database seeded successfully!')
   console.log(`   Organization: ${org.nameAr}`)
-  console.log(`   Users: 2`)
+  console.log(`   Users: 4 (with hashed passwords)`)
   console.log(`   Projects: ${projectRecords.length}`)
   console.log(`   Impact Account Balance: 1,250,000 kgCO2e`)
+  console.log('\n📋 Login Credentials:')
+  console.log('   ────────────────────────────────────────')
+  console.log('   Admin:     admin@bfec.sa / Admin@123456')
+  console.log('   ESG:       esg@bfec.sa / ESG@123456')
+  console.log('   Operator:  operator@bfec.sa / Operator@123456')
+  console.log('   Viewer:    viewer@bfec.sa / Viewer@123456')
 }
 
 main()
