@@ -1,12 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StatusBadge } from '@/components/platform/status-badge'
-import { FolderKanban, MapPin, Calendar, Zap, DollarSign, Search, Plus, Filter } from 'lucide-react'
+import { ProjectFormModal } from '@/components/projects/project-form-modal'
+import { DeleteProjectDialog } from '@/components/projects/delete-project-dialog'
+import {
+  FolderKanban,
+  MapPin,
+  Calendar,
+  Zap,
+  DollarSign,
+  Search,
+  Plus,
+  Pencil,
+  Trash2,
+  Cpu,
+  User,
+  Phone,
+  MoreVertical,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface Project {
   id: string
@@ -25,6 +48,9 @@ interface Project {
   tariffRetail?: number
   tariffFeedIn?: number
   methodology: string
+  sponsorName?: string
+  sponsorPhone?: string
+  inverterSerial?: string
   sitesCount: number
   assetsCount: number
   devicesCount: number
@@ -39,12 +65,38 @@ export function ProjectsSection() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState<any | null>(null)
+  const [deletingProject, setDeletingProject] = useState<any | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
-  useEffect(() => {
+  const fetchProjects = useCallback(() => {
+    setLoading(true)
     fetch('/api/projects')
       .then((r) => r.json())
       .then((d) => setProjects(d.projects || []))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setLoading(true)
+        fetch('/api/projects')
+          .then((r) => r.json())
+          .then((d) => {
+            if (cancelled) return
+            setProjects(d.projects || [])
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false)
+          })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const filtered = projects.filter(
@@ -53,8 +105,25 @@ export function ProjectsSection() {
       (search === '' ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.code.toLowerCase().includes(search.toLowerCase()) ||
-        (p.nameAr || '').includes(search)),
+        (p.nameAr || '').includes(search) ||
+        (p.inverterSerial || '').toLowerCase().includes(search.toLowerCase()) ||
+        (p.sponsorName || '').toLowerCase().includes(search.toLowerCase())),
   )
+
+  const handleNew = () => {
+    setEditingProject(null)
+    setFormOpen(true)
+  }
+
+  const handleEdit = (project: Project) => {
+    setEditingProject(project)
+    setFormOpen(true)
+  }
+
+  const handleDeleteClick = (project: Project) => {
+    setDeletingProject(project)
+    setDeleteOpen(true)
+  }
 
   if (loading) {
     return (
@@ -73,26 +142,31 @@ export function ProjectsSection() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="بحث باسم أو رمز المشروع..."
+            placeholder="بحث بالاسم، الرمز، السيريال، أو الممول..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pr-9"
           />
         </div>
         <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg p-1">
-          {['all', 'active', 'under_review', 'draft'].map((s) => (
+          {[
+            { value: 'all', label: 'الكل' },
+            { value: 'active', label: 'نشط' },
+            { value: 'under_review', label: 'قيد المراجعة' },
+            { value: 'draft', label: 'مسودة' },
+          ].map((s) => (
             <Button
-              key={s}
+              key={s.value}
               size="sm"
-              variant={filterStatus === s ? 'default' : 'ghost'}
+              variant={filterStatus === s.value ? 'default' : 'ghost'}
               className="h-8"
-              onClick={() => setFilterStatus(s)}
+              onClick={() => setFilterStatus(s.value)}
             >
-              {s === 'all' ? 'الكل' : s === 'active' ? 'نشط' : s === 'under_review' ? 'قيد المراجعة' : 'مسودة'}
+              {s.label}
             </Button>
           ))}
         </div>
-        <Button className="bg-primary">
+        <Button className="bg-primary" onClick={handleNew}>
           <Plus className="h-4 w-4 ml-1" />
           مشروع جديد
         </Button>
@@ -117,6 +191,29 @@ export function ProjectsSection() {
                     <p className="text-xs text-muted-foreground mt-0.5">{p.code}</p>
                   </div>
                 </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleEdit(p)}>
+                      <Pencil className="h-3.5 w-3.5 ml-2" />
+                      تعديل
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => handleDeleteClick(p)}
+                      className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 ml-2" />
+                      حذف
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <div className="mt-2">
                 <StatusBadge status={p.status} />
               </div>
             </CardHeader>
@@ -126,6 +223,13 @@ export function ProjectsSection() {
                 <MapPin className="h-3.5 w-3.5" />
                 <span>{p.city || '—'}, {p.country || '—'}</span>
               </div>
+
+              {/* Coordinates */}
+              {p.latitude !== undefined && p.longitude !== undefined && (
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                  <span className="tabular-nums">{p.latitude.toFixed(4)}°, {p.longitude.toFixed(4)}°</span>
+                </div>
+              )}
 
               {/* Capacity + Tariff */}
               <div className="grid grid-cols-2 gap-2">
@@ -148,6 +252,34 @@ export function ProjectsSection() {
                   </p>
                 </div>
               </div>
+
+              {/* Inverter serial */}
+              {p.inverterSerial && (
+                <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
+                  <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">إنفرتر:</span>
+                  <code className="font-mono text-[11px] truncate">{p.inverterSerial}</code>
+                </div>
+              )}
+
+              {/* Sponsor */}
+              {(p.sponsorName || p.sponsorPhone) && (
+                <div className="p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
+                  <div className="flex items-center gap-1.5 text-[10px] text-violet-700 dark:text-violet-400 mb-1">
+                    <User className="h-3 w-3" />
+                    <span className="font-medium">المراقب / الممول</span>
+                  </div>
+                  {p.sponsorName && (
+                    <p className="text-xs font-medium truncate">{p.sponsorName}</p>
+                  )}
+                  {p.sponsorPhone && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                      <Phone className="h-2.5 w-2.5" />
+                      <span className="font-mono" dir="ltr">{p.sponsorPhone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t">
@@ -178,6 +310,11 @@ export function ProjectsSection() {
                     {p.casesCount} حالة
                   </Badge>
                 )}
+                {p.attestationsCount > 0 && (
+                  <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300">
+                    {p.attestationsCount} توثيق
+                  </Badge>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -188,10 +325,28 @@ export function ProjectsSection() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <FolderKanban className="h-12 w-12 text-muted-foreground/50 mb-3" />
-            <p className="text-muted-foreground">لا توجد مشاريع مطابقة</p>
+            <p className="text-muted-foreground mb-4">لا توجد مشاريع مطابقة</p>
+            <Button onClick={handleNew} className="bg-primary">
+              <Plus className="h-4 w-4 ml-1" />
+              إنشاء أول مشروع
+            </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* Modals */}
+      <ProjectFormModal
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        onSaved={fetchProjects}
+        initialData={editingProject}
+      />
+      <DeleteProjectDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        project={deletingProject}
+        onDeleted={fetchProjects}
+      />
     </div>
   )
 }

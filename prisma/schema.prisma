@@ -83,6 +83,11 @@ model Project {
   tariffRetail   Float?   // retail tariff per kWh
   tariffFeedIn   Float?   // feed-in tariff per kWh
   methodology    String   @default("ghg_protocol_scope2")
+  // Sponsor/Observer (funder) details - الممول/المراقب على المشروع
+  sponsorName    String?  // اسم المراقب/الممول (بنك أو جهة إقراض)
+  sponsorPhone   String?  // رقم المراقب/الممول
+  // Inverter serial number entered at project creation
+  inverterSerial String?  // سيريال نمبر الإنفرتر الرئيسي للمشروع
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

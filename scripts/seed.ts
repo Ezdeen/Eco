@@ -110,6 +110,9 @@ async function main() {
       capacityKwp: 5000,
       tariffRetail: 0.18,
       tariffFeedIn: 0.10,
+      sponsorName: 'البنك الأهلي السعودي',
+      sponsorPhone: '+966 11 555 1234',
+      inverterSerial: 'SN-RYD-P1-001',
     },
     {
       name: 'Jeddah Rooftop Initiative',
@@ -123,6 +126,9 @@ async function main() {
       capacityKwp: 1200,
       tariffRetail: 0.20,
       tariffFeedIn: 0.12,
+      sponsorName: 'بنك الرياض للاستثمار',
+      sponsorPhone: '+966 12 666 7890',
+      inverterSerial: 'SN-JED-RT-001',
     },
     {
       name: 'Dammam Industrial Solar',
@@ -136,6 +142,9 @@ async function main() {
       capacityKwp: 8500,
       tariffRetail: 0.15,
       tariffFeedIn: 0.08,
+      sponsorName: 'صندوق التنمية الصناعية السعودي',
+      sponsorPhone: '+966 13 777 4567',
+      inverterSerial: 'SN-DMM-IND-001',
     },
     {
       name: 'Mecca Solar Farm',
@@ -149,6 +158,9 @@ async function main() {
       capacityKwp: 3200,
       tariffRetail: 0.17,
       tariffFeedIn: 0.11,
+      sponsorName: 'بنك البلاد',
+      sponsorPhone: '+966 12 888 9999',
+      inverterSerial: 'SN-Makkah-SF-001',
     },
     {
       name: 'Medina Hospital Solar',
@@ -162,6 +174,9 @@ async function main() {
       capacityKwp: 800,
       tariffRetail: 0.22,
       tariffFeedIn: 0.13,
+      sponsorName: '',
+      sponsorPhone: '',
+      inverterSerial: 'SN-MED-HOS-001',
     },
   ]
 
