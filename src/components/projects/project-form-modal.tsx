@@ -23,8 +23,10 @@ interface ProjectFormData {
   nameAr: string
   code: string
   inverterSerial: string
+  inverterType: string
   country: string
   city: string
+  cityOther: string
   latitude: string
   longitude: string
   sponsorName: string
@@ -53,6 +55,15 @@ const COUNTRIES = [
   { code: 'OM', name: 'عُمان', cities: ['مسقط', 'صلالة', 'نزوى'] },
   { code: 'EG', name: 'مصر', cities: ['القاهرة', 'الإسكندرية', 'أسوان', 'الأقصر'] },
   { code: 'JO', name: 'الأردن', cities: ['عمّان', 'الزرقاء', 'العقبة'] },
+  { code: 'PS', name: 'فلسطين', cities: ['رام الله', 'غزة', 'الخليل', 'نابلس', 'بيت لحم', 'جنين', 'أريحا', 'طولكرم', 'قلقيلية'] },
+]
+
+const INVERTER_TYPES = [
+  { code: 'string', name: 'String Inverter - إنفرتر سلسلة', desc: 'مناسب للمشاريع الصغيرة والمتوسطة' },
+  { code: 'central', name: 'Central Inverter - إنفرتر مركزي', desc: 'مناسب لمحطات الطاقة الكبيرة' },
+  { code: 'micro', name: 'Microinverter - إنفرتر مصغّر', desc: 'إنفرتر لكل لوح، مناسب للأسطح' },
+  { code: 'hybrid', name: 'Hybrid Inverter - إنفرتر هجين', desc: 'يدعم تخزين البطاريات' },
+  { code: 'battery', name: 'Battery Inverter - إنفرتر بطاريات', desc: 'مخصص لأنظمة التخزين' },
 ]
 
 const CURRENCIES = [
@@ -64,6 +75,7 @@ const CURRENCIES = [
   { code: 'OMR', name: 'ريال عماني' },
   { code: 'EGP', name: 'جنيه مصري' },
   { code: 'JOD', name: 'دينار أردني' },
+  { code: 'ILS', name: 'شيكل إسرائيلي' },
   { code: 'USD', name: 'دولار أمريكي' },
 ]
 
@@ -72,8 +84,10 @@ const EMPTY_FORM: ProjectFormData = {
   nameAr: '',
   code: '',
   inverterSerial: '',
+  inverterType: 'string',
   country: 'SA',
   city: '',
+  cityOther: '',
   latitude: '',
   longitude: '',
   sponsorName: '',
@@ -94,13 +108,19 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
 
   useEffect(() => {
     if (initialData) {
+      // Check if city is in the country's predefined list; if not, mark as "other"
+      const countryCities = COUNTRIES.find((c) => c.code === initialData.country)?.cities || []
+      const isCustomCity = initialData.city && !countryCities.includes(initialData.city)
+
       setForm({
         name: initialData.name || '',
         nameAr: initialData.nameAr || '',
         code: initialData.code || '',
         inverterSerial: initialData.inverterSerial || '',
+        inverterType: initialData.inverterType || 'string',
         country: initialData.country || 'SA',
-        city: initialData.city || '',
+        city: isCustomCity ? '__other__' : initialData.city || '',
+        cityOther: isCustomCity ? initialData.city : '',
         latitude: initialData.latitude?.toString() || '',
         longitude: initialData.longitude?.toString() || '',
         sponsorName: initialData.sponsorName || '',
@@ -124,8 +144,15 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
     if (!form.name.trim()) newErrors.name = 'اسم المشروع مطلوب'
     if (!form.code.trim()) newErrors.code = 'رمز المشروع مطلوب'
     if (!form.inverterSerial.trim()) newErrors.inverterSerial = 'سيريال نمبر الإنفرتر مطلوب'
+    if (!form.inverterType) newErrors.inverterType = 'نوع الإنفرتر مطلوب'
     if (!form.country) newErrors.country = 'الدولة مطلوبة'
-    if (!form.city.trim()) newErrors.city = 'المدينة مطلوبة'
+
+    // City validation: if "other" selected, cityOther must be filled
+    if (!form.city) {
+      newErrors.city = 'المدينة مطلوبة'
+    } else if (form.city === '__other__' && !form.cityOther.trim()) {
+      newErrors.cityOther = 'يرجى إدخال اسم المدينة'
+    }
 
     if (!form.latitude.trim()) {
       newErrors.latitude = 'عرض الموقع مطلوب'
@@ -171,10 +198,19 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       const url = isEditMode ? `/api/projects/${initialData.id}` : '/api/projects'
       const method = isEditMode ? 'PATCH' : 'POST'
 
+      // Resolve final city value
+      const finalCity = form.city === '__other__' ? form.cityOther.trim() : form.city
+
+      const payload = {
+        ...form,
+        city: finalCity,
+        cityOther: undefined, // don't send helper field
+      }
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
@@ -218,9 +254,11 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       OM: 'Asia/Muscat',
       EG: 'Africa/Cairo',
       JO: 'Asia/Amman',
+      PS: 'Asia/Hebron',
     }
     if (tzMap[code]) updateField('timezone', tzMap[code])
     updateField('city', '')
+    updateField('cityOther', '')
   }
 
   return (
@@ -309,6 +347,27 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
+                <Label htmlFor="inverterType" className="text-xs">
+                  نوع الإنفرتر <span className="text-red-500">*</span>
+                </Label>
+                <Select value={form.inverterType} onValueChange={(v) => updateField('inverterType', v)}>
+                  <SelectTrigger id="inverterType" className={errors.inverterType ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="اختر نوع الإنفرتر" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INVERTER_TYPES.map((t) => (
+                      <SelectItem key={t.code} value={t.code}>
+                        <div className="flex flex-col">
+                          <span>{t.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{t.desc}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.inverterType && <p className="text-xs text-red-500">{errors.inverterType}</p>}
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="inverterSerial" className="text-xs">
                   سيريال نمبر الإنفرتر <span className="text-red-500">*</span>
                 </Label>
@@ -326,7 +385,7 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                   سيريال نمبر فريد لكل إنفرتر - يُستخدم لمنع التكرار
                 </p>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="capacityKwp" className="text-xs">القدرة المنصوبة (kWp)</Label>
                 <Input
                   id="capacityKwp"
@@ -382,9 +441,20 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                         {city}
                       </SelectItem>
                     ))}
+                    <SelectItem value="__other__">+ مدينة أخرى (إدخال يدوي)</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.city && <p className="text-xs text-red-500">{errors.city}</p>}
+                {form.city === '__other__' && (
+                  <Input
+                    type="text"
+                    value={form.cityOther}
+                    onChange={(e) => updateField('cityOther', e.target.value)}
+                    placeholder="أدخل اسم المدينة"
+                    className={`mt-2 ${errors.cityOther ? 'border-red-500' : ''}`}
+                  />
+                )}
+                {errors.cityOther && <p className="text-xs text-red-500">{errors.cityOther}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="latitude" className="text-xs">

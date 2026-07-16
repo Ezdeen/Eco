@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       include: {
         solarProfile: true,
         site: { select: { name: true, nameAr: true, city: true } },
-        project: { select: { name: true, nameAr: true, code: true } },
+        project: { select: { name: true, nameAr: true, code: true, inverterType: true } },
         devices: { select: { id: true, name: true, status: true, lastSeenAt: true, serialNumber: true } },
         _count: { select: { readings: true } },
       },

@@ -55,6 +55,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       sponsorName,
       sponsorPhone,
       inverterSerial,
+      inverterType,
       status,
       projectType,
       timezone,
@@ -110,6 +111,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (sponsorName !== undefined) updateData.sponsorName = sponsorName || null
     if (sponsorPhone !== undefined) updateData.sponsorPhone = sponsorPhone || null
     if (inverterSerial !== undefined) updateData.inverterSerial = inverterSerial
+    if (inverterType !== undefined) updateData.inverterType = inverterType
     if (status !== undefined) updateData.status = status
     if (projectType !== undefined) updateData.projectType = projectType
     if (timezone !== undefined) updateData.timezone = timezone

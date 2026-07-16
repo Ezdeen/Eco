@@ -6,8 +6,7 @@ import { Header } from '@/components/platform/header'
 import { LoginSection } from '@/components/auth/login-section'
 import { DashboardSection } from '@/components/sections/dashboard-section'
 import { ProjectsSection } from '@/components/sections/projects-section'
-import { AssetsSection } from '@/components/sections/assets-section'
-import { DevicesSection } from '@/components/sections/devices-section'
+import { AssetsDevicesSection } from '@/components/sections/assets-devices-section'
 import { DataCenterSection } from '@/components/sections/data-section'
 import { MonitoringSection } from '@/components/sections/monitoring-section'
 import { CalculationsSection } from '@/components/sections/calculations-section'
@@ -23,13 +22,12 @@ import { Loader2, Sun } from 'lucide-react'
 const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   dashboard: { title: 'مركز القيادة', subtitle: 'نظرة شاملة على أداء محفظة المشاريع الشمسية' },
   projects: { title: 'المشاريع والمواقع', subtitle: 'إدارة المشاريع الشمسية عبر دورة حياتها الكاملة' },
-  assets: { title: 'الأصول الشمسية', subtitle: 'مصفوفات الألواح والأنظمة الشمسية وخصائصها الفنية' },
-  devices: { title: 'إدارة الأجهزة', subtitle: 'الإنفرترات والعدادات وبوابات IoT وحالتها' },
+  'assets-devices': { title: 'الأصول والأجهزة', subtitle: 'المصفوفات الشمسية والإنفرترات والأجهزة في قسم موحد' },
   data: { title: 'مركز البيانات', subtitle: 'القراءات الخام والمطبّعة مع جودة وتدقيق' },
   monitoring: { title: 'مركز المراقبة', subtitle: 'الحوادث والتنبيهات وصحة النظام' },
   calculations: { title: 'الحسابات والمنهجيات', subtitle: 'حساب الكربون والأداء والوفر بإصدارات قابلة لإعادة الإنتاج' },
   attestations: { title: 'التوثيق والمطابقة', subtitle: 'توثيق حزم البيانات على شبكة Hedera' },
-  reports: { title: 'التقارير', subtitle: 'تقارير معتمدة قابلة لإعادة الإنتاج والتدقيق' },
+  reports: { title: 'التقارير', subtitle: 'تقارير معتمدة قابلة للتحميل بصيغ متعددة مع رسوم بيانية' },
   impact: { title: 'سجل وحدات الأثر', subtitle: 'حسابات وأرصدة وحركات غير قابلة للتعديل' },
   calculator: { title: 'الحاسبة الاستثمارية', subtitle: 'NPV, IRR, Payback, LCOE مع سيناريوهات وتحليل حساسية' },
   notifications: { title: 'الإشعارات', subtitle: 'مركز الإشعارات والأحداث المهمة' },
@@ -151,8 +149,7 @@ export default function Home() {
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
           {section === 'dashboard' && <DashboardSection />}
           {section === 'projects' && <ProjectsSection />}
-          {section === 'assets' && <AssetsSection />}
-          {section === 'devices' && <DevicesSection />}
+          {section === 'assets-devices' && <AssetsDevicesSection />}
           {section === 'data' && <DataCenterSection />}
           {section === 'monitoring' && <MonitoringSection />}
           {section === 'calculations' && <CalculationsSection />}

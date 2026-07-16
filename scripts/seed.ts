@@ -113,6 +113,7 @@ async function main() {
       sponsorName: 'البنك الأهلي السعودي',
       sponsorPhone: '+966 11 555 1234',
       inverterSerial: 'SN-RYD-P1-001',
+      inverterType: 'central',
     },
     {
       name: 'Jeddah Rooftop Initiative',
@@ -129,6 +130,7 @@ async function main() {
       sponsorName: 'بنك الرياض للاستثمار',
       sponsorPhone: '+966 12 666 7890',
       inverterSerial: 'SN-JED-RT-001',
+      inverterType: 'string',
     },
     {
       name: 'Dammam Industrial Solar',
@@ -145,6 +147,7 @@ async function main() {
       sponsorName: 'صندوق التنمية الصناعية السعودي',
       sponsorPhone: '+966 13 777 4567',
       inverterSerial: 'SN-DMM-IND-001',
+      inverterType: 'central',
     },
     {
       name: 'Mecca Solar Farm',
@@ -161,6 +164,7 @@ async function main() {
       sponsorName: 'بنك البلاد',
       sponsorPhone: '+966 12 888 9999',
       inverterSerial: 'SN-Makkah-SF-001',
+      inverterType: 'string',
     },
     {
       name: 'Medina Hospital Solar',
@@ -177,6 +181,7 @@ async function main() {
       sponsorName: '',
       sponsorPhone: '',
       inverterSerial: 'SN-MED-HOS-001',
+      inverterType: 'micro',
     },
   ]
 
@@ -268,6 +273,44 @@ async function main() {
 
           if (energyKwh > 0.1) {
             cumulativeEnergy += energyKwh
+            const isSuspect = Math.random() > 0.95
+            const isRejected = !isSuspect && Math.random() > 0.985
+            const qualityStatus = isRejected ? 'rejected' : isSuspect ? 'suspect' : 'validated'
+            const validationStatus = isRejected ? 'invalid' : isSuspect ? 'invalid' : 'valid'
+
+            // Generate suspect reason for non-validated readings
+            let suspectReason: string | null = null
+            let suspectRuleCode: string | null = null
+            let suspectSeverity: string | null = null
+            let suspectDetails: string | null = null
+
+            if (isSuspect) {
+              const reasons = [
+                { code: 'OUT_OF_RANGE', reason: 'القيمة تتجاوز النطاق المتوقع للقدرة المنصوبة', severity: 'high', detail: `القيمة ${Math.round(energyKwh * 100) / 100} kWh تتجاوز الحد الأقصى النظري ${Math.round(capacityKw * 1.1 * 100) / 100} kWh` },
+                { code: 'SPIKE_DETECTED', reason: 'قفزة مفاجئة في الإنتاج مقارنة بالفترة السابقة', severity: 'medium', detail: `زيادة بنسبة ${Math.floor(Math.random() * 50 + 30)}% عن المتوسط المتوقع` },
+                { code: 'NIGHTTIME_READING', reason: 'قراءة في ساعة غير نهارية (إشعاع شمسي صفر)', severity: 'critical', detail: `القراءة في الساعة ${hour}:00 خارج نطاق الإنتاج الشمسي` },
+                { code: 'CUMULATIVE_DROP', reason: 'انخفاض القيمة التراكمية عن القراءة السابقة', severity: 'high', detail: `احتمال إعادة ضبط العداد أو خطأ في القراءة` },
+              ]
+              const selected = reasons[Math.floor(Math.random() * reasons.length)]
+              suspectReason = selected.reason
+              suspectRuleCode = selected.code
+              suspectSeverity = selected.severity
+              suspectDetails = JSON.stringify({ expected: selected.detail, factor: weatherFactor })
+            }
+
+            if (isRejected) {
+              const reasons = [
+                { code: 'DUPLICATE_READING', reason: 'قراءة مكررة لنفس الفترة الزمنية', severity: 'high', detail: 'تطابق كامل في القيمة والطابع الزمني' },
+                { code: 'DEVICE_OFFLINE', reason: 'الجهاز غير متصل وقت القراءة', severity: 'critical', detail: 'آخر اتصال قبل القراءة بـ 6 ساعات' },
+                { code: 'NEGATIVE_VALUE', reason: 'قيمة سالبة غير منطقية للإنتاج', severity: 'critical', detail: `القيمة سالبة وهذا غير ممكن لمقياس energy_export_kwh` },
+              ]
+              const selected = reasons[Math.floor(Math.random() * reasons.length)]
+              suspectReason = selected.reason
+              suspectRuleCode = selected.code
+              suspectSeverity = selected.severity
+              suspectDetails = JSON.stringify({ expected: selected.detail })
+            }
+
             await db.energyReading.create({
               data: {
                 projectId: project.id,
@@ -281,9 +324,13 @@ async function main() {
                 value: Math.round(energyKwh * 100) / 100,
                 unit: 'kWh',
                 cumulativeValue: Math.round(cumulativeEnergy * 100) / 100,
-                qualityStatus: Math.random() > 0.95 ? 'suspect' : 'validated',
-                validationStatus: Math.random() > 0.95 ? 'invalid' : 'valid',
+                qualityStatus,
+                validationStatus,
                 canonicalPayloadHash: `0x${Math.random().toString(16).slice(2, 18).padEnd(16, '0')}`,
+                suspectReason,
+                suspectRuleCode,
+                suspectSeverity,
+                suspectDetails,
               },
             })
           }

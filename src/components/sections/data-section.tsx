@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Database, Search, Download, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Filter } from 'lucide-react'
+import { Database, Search, Download, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Filter, FileSearch } from 'lucide-react'
+import { ReadingAuditDialog } from '@/components/readings/reading-audit-dialog'
 
 interface Reading {
   id: string
@@ -23,6 +24,13 @@ interface Reading {
   qualityStatus: string
   validationStatus: string
   canonicalPayloadHash?: string
+  suspectReason?: string | null
+  suspectRuleCode?: string | null
+  suspectSeverity?: string | null
+  auditedAt?: string | null
+  auditedBy?: string | null
+  auditAction?: string | null
+  auditNote?: string | null
   project: { name: string; nameAr?: string; code: string }
   device?: { name: string; serialNumber: string }
   asset?: { name: string }
@@ -44,6 +52,8 @@ export function DataCenterSection() {
   const [qualityFilter, setQualityFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [projects, setProjects] = useState<{ id: string; name: string; nameAr?: string; code: string }[]>([])
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [auditReadingId, setAuditReadingId] = useState<string | null>(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -106,8 +116,18 @@ export function DataCenterSection() {
       search === '' ||
       r.project.code.toLowerCase().includes(search.toLowerCase()) ||
       (r.device?.serialNumber || '').toLowerCase().includes(search.toLowerCase()) ||
-      (r.canonicalPayloadHash || '').toLowerCase().includes(search.toLowerCase()),
+      (r.canonicalPayloadHash || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.suspectReason || '').toLowerCase().includes(search.toLowerCase()),
   )
+
+  const openAudit = (readingId: string) => {
+    setAuditReadingId(readingId)
+    setAuditOpen(true)
+  }
+
+  const handleAudited = () => {
+    fetchData()
+  }
 
   if (loading) {
     return (
@@ -224,56 +244,93 @@ export function DataCenterSection() {
                   <TableHead>Hash</TableHead>
                   <TableHead>الجودة</TableHead>
                   <TableHead>التحقق</TableHead>
+                  <TableHead>إجراء</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((r) => (
-                  <TableRow key={r.id} className="hover:bg-muted/40">
-                    <TableCell>
-                      <p className="text-xs font-medium">{r.project.code}</p>
-                      <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">{r.project.nameAr}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs font-mono">{r.device?.serialNumber || '—'}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px]">
-                        {METRIC_LABELS[r.metricType] || r.metricType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs tabular-nums">
-                        {new Date(r.measuredAt).toLocaleString('ar-SA', {
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-semibold tabular-nums">{r.value.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">{r.unit}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs tabular-nums text-muted-foreground">
-                        {r.cumulativeValue?.toLocaleString() || '—'}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-[10px] font-mono text-muted-foreground truncate max-w-[80px]">
-                        {r.canonicalPayloadHash?.slice(0, 12) || '—'}...
-                      </p>
-                    </TableCell>
-                    <TableCell><StatusBadge status={r.qualityStatus} /></TableCell>
-                    <TableCell><StatusBadge status={r.validationStatus} /></TableCell>
-                  </TableRow>
-                ))}
+                {filtered.map((r) => {
+                  const isSuspectOrRejected = r.qualityStatus === 'suspect' || r.qualityStatus === 'rejected'
+                  return (
+                    <TableRow key={r.id} className={isSuspectOrRejected ? 'bg-amber-50/30 dark:bg-amber-950/10' : 'hover:bg-muted/40'}>
+                      <TableCell>
+                        <p className="text-xs font-medium">{r.project.code}</p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">{r.project.nameAr}</p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs font-mono">{r.device?.serialNumber || '—'}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {METRIC_LABELS[r.metricType] || r.metricType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs tabular-nums">
+                          {new Date(r.measuredAt).toLocaleString('ar-SA', {
+                            month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                          })}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className={`text-sm font-semibold tabular-nums ${isSuspectOrRejected ? 'text-amber-700 dark:text-amber-400' : ''}`}>
+                          {r.value.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{r.unit}</p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs tabular-nums text-muted-foreground">
+                          {r.cumulativeValue?.toLocaleString() || '—'}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-[10px] font-mono text-muted-foreground truncate max-w-[80px]">
+                          {r.canonicalPayloadHash?.slice(0, 12) || '—'}...
+                        </p>
+                      </TableCell>
+                      <TableCell><StatusBadge status={r.qualityStatus} /></TableCell>
+                      <TableCell><StatusBadge status={r.validationStatus} /></TableCell>
+                      <TableCell>
+                        {isSuspectOrRejected ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1 border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                            onClick={() => openAudit(r.id)}
+                          >
+                            <FileSearch className="h-3 w-3" />
+                            {r.auditedAt ? 'عرض' : 'تدقيق'}
+                          </Button>
+                        ) : r.auditedAt ? (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-950/30">
+                            مدقّق
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => openAudit(r.id)}
+                          >
+                            <FileSearch className="h-3 w-3" />
+                            عرض
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      <ReadingAuditDialog
+        open={auditOpen}
+        onOpenChange={setAuditOpen}
+        readingId={auditReadingId}
+        onAudited={handleAudited}
+      />
     </div>
   )
 }

@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
       sponsorName: p.sponsorName,
       sponsorPhone: p.sponsorPhone,
       inverterSerial: p.inverterSerial,
+      inverterType: p.inverterType,
       sitesCount: p.sites.length,
       assetsCount: p.assets.length,
       devicesCount: p.devices.length,
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       sponsorName,
       sponsorPhone,
       inverterSerial,
+      inverterType,
       projectType,
       timezone,
       tariffRetail,
@@ -160,6 +162,7 @@ export async function POST(request: NextRequest) {
         sponsorName: sponsorName || null,
         sponsorPhone: sponsorPhone || null,
         inverterSerial,
+        inverterType: inverterType || 'string',
       },
     })
 

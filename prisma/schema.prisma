@@ -86,8 +86,9 @@ model Project {
   // Sponsor/Observer (funder) details - الممول/المراقب على المشروع
   sponsorName    String?  // اسم المراقب/الممول (بنك أو جهة إقراض)
   sponsorPhone   String?  // رقم المراقب/الممول
-  // Inverter serial number entered at project creation
+  // Inverter details entered at project creation
   inverterSerial String?  // سيريال نمبر الإنفرتر الرئيسي للمشروع
+  inverterType   String?  // نوع الإنفرتر: string, central, micro, hybrid, battery
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -201,6 +202,15 @@ model EnergyReading {
   qualityStatus       String   @default("received") // received, validated, suspect, rejected, corrected, approved
   validationStatus    String   @default("pending")  // pending, valid, invalid, reviewed
   canonicalPayloadHash String?
+  // Audit fields for suspect/rejected readings
+  suspectReason       String?  // سبب الاشتباه أو الرفض
+  suspectRuleCode     String?  // رمز القاعدة التي أطلقت التنبيه
+  suspectSeverity     String?  // low, medium, high, critical
+  suspectDetails      String?  // JSON تفاصيل إضافية
+  auditedAt           DateTime? // وقت التدقيق
+  auditedBy           String?  // من قام بالتدقيق
+  auditAction         String?  // approved, corrected, rejected, escalated
+  auditNote           String?  // ملاحظات المراجع
   createdAt           DateTime @default(now())
 
   project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
