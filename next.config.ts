@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  serverExternalPackages: ["bcryptjs", "jose", "@prisma/client"],
+  serverExternalPackages: ["bcryptjs", "jose", "@prisma/client", "@hashgraph/sdk"],
 };
 
 export default nextConfig;

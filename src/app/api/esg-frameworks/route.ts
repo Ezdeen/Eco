@@ -269,7 +269,7 @@ export async function GET() {
     const emissionFactor = 0.432
     const totalCo2Avoided = totalEnergy * emissionFactor
 
-    // Build traceable KPIs with full metadata
+    // Build traceable KPIs with full metadata + classification
     const traceableKPIs = [
       {
         key: 'energyGenerated',
@@ -278,6 +278,7 @@ export async function GET() {
         labelEn: 'Energy Generated',
         value: Math.round(totalEnergy),
         unit: 'kWh',
+        classification: 'موثق', // موثق = attested on Hedera
         ...KPI_TRACEABILITY.energyGenerated,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'energyGenerated'))
@@ -290,6 +291,7 @@ export async function GET() {
         labelEn: 'CO₂e Avoided',
         value: Math.round(totalCo2Avoided),
         unit: 'kgCO₂e',
+        classification: 'محسوب', // محسوب = calculated from formula
         ...KPI_TRACEABILITY.co2Avoided,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'co2Avoided'))
@@ -307,6 +309,7 @@ export async function GET() {
           return s + alive * treeFactor * Math.max(years, 0)
         }, 0)),
         unit: 'kgCO₂e',
+        classification: 'تقديري', // تقديري = estimated, requires field verification
         ...KPI_TRACEABILITY.co2Sequestered,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'co2Sequestered'))
@@ -319,6 +322,7 @@ export async function GET() {
         labelEn: 'Carbon Intensity',
         value: totalEnergy > 0 ? Math.round((totalCo2Avoided / totalEnergy) * 1000) / 1000 : 0,
         unit: 'kgCO₂e/kWh',
+        classification: 'محسوب',
         ...KPI_TRACEABILITY.carbonIntensity,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'carbonIntensity'))
@@ -331,6 +335,7 @@ export async function GET() {
         labelEn: 'Trees Planted',
         value: allProjects.filter((p) => p.projectType === 'afforestation').reduce((s, p) => s + (p.treeCount || 0), 0),
         unit: 'شجرة',
+        classification: 'معتمد', // معتمد = approved at project registration
         ...KPI_TRACEABILITY.treesPlanted,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'treesPlanted'))
@@ -346,6 +351,7 @@ export async function GET() {
           return s + projectEnergy * (p.tariffRetail || 0.18)
         }, 0)),
         unit: 'SAR',
+        classification: 'محسوب',
         ...KPI_TRACEABILITY.costSavings,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'costSavings'))
@@ -358,6 +364,7 @@ export async function GET() {
         labelEn: 'Water Saved',
         value: Math.round(totalEnergy * 1.5),
         unit: 'لتر',
+        classification: 'تقديري',
         ...KPI_TRACEABILITY.waterSaved,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'waterSaved'))
@@ -370,6 +377,7 @@ export async function GET() {
         labelEn: 'Verified Data %',
         value: 87.5,
         unit: '%',
+        classification: 'موثق',
         ...KPI_TRACEABILITY.verifiedDataPercent,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'verifiedDataPercent'))

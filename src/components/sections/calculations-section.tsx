@@ -462,13 +462,23 @@ export function CalculationsSection() {
                   <Card key={kpi.key} className="overflow-hidden">
                     <CardHeader className="pb-2 bg-muted/30">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-sm">{kpi.labelAr}</CardTitle>
                           <p className="text-[10px] text-muted-foreground">{kpi.labelEn}</p>
                         </div>
-                        <div className="text-left shrink-0">
+                        <div className="flex flex-col items-end gap-1 shrink-0">
                           <p className="text-lg font-bold tabular-nums text-primary">{fmtCompact(kpi.value)}</p>
                           <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
+                          {kpi.classification && (
+                            <Badge variant="outline" className={`text-[9px] ${
+                              kpi.classification === 'موثق' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200' :
+                              kpi.classification === 'محسوب' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200' :
+                              kpi.classification === 'تقديري' ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200' :
+                              'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border-violet-200'
+                            }`}>
+                              {kpi.classification}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </CardHeader>

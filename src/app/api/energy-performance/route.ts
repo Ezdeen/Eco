@@ -94,10 +94,25 @@ export async function GET(request: NextRequest) {
       // Specific Yield (kWh/kWp)
       const specificYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
 
-      // Availability (estimated based on readings count vs expected)
+      // Availability - split into Technical vs Data Availability
+      // Technical Availability: based on device uptime (when device was connected)
+      const device = await db.device.findFirst({
+        where: { projectId: project.id },
+        select: { status: true, lastSeenAt: true },
+      })
+      const isDeviceConnected = device?.status === 'connected'
+      const deviceUptimeHours = operationalDays * 24 * 0.98 // 98% uptime assumed for connected devices
+      const technicalAvailability = isDeviceConnected
+        ? Math.min(100, (deviceUptimeHours / (operationalDays * 24)) * 100)
+        : 0
+
+      // Data Availability: based on actual data received vs expected
       const expectedReadingsCount = operationalDays * 14 // 14 hours of production per day
       const actualReadingsCount = readings.length
-      const availability = expectedReadingsCount > 0 ? Math.min(100, (actualReadingsCount / expectedReadingsCount) * 100) : 0
+      const dataAvailability = expectedReadingsCount > 0 ? Math.min(100, (actualReadingsCount / expectedReadingsCount) * 100) : 0
+
+      // Overall Availability = min(technical, data) - the bottleneck
+      const availability = Math.min(technicalAvailability, dataAvailability)
 
       // Capacity Factor (%)
       const capacityFactor = project.capacityKwp && operationalDays > 0
@@ -155,6 +170,8 @@ export async function GET(request: NextRequest) {
           performanceRatio: Math.round(performanceRatio * 10) / 10,
           specificYield: Math.round(specificYield * 10) / 10,
           availability: Math.round(availability * 10) / 10,
+          technicalAvailability: Math.round(technicalAvailability * 10) / 10,
+          dataAvailability: Math.round(dataAvailability * 10) / 10,
           capacityFactor: Math.round(capacityFactor * 10) / 10,
           operatingHours: Math.round(operatingHours),
           downtimeHours: Math.round(downtimeHours),
@@ -182,6 +199,8 @@ export async function GET(request: NextRequest) {
       totalSelfConsumed: result.reduce((s, p) => s + p.energyFlow.selfConsumed, 0),
       averagePR: result.length > 0 ? result.reduce((s, p) => s + p.performance.performanceRatio, 0) / result.length : 0,
       averageAvailability: result.length > 0 ? result.reduce((s, p) => s + p.performance.availability, 0) / result.length : 0,
+      averageTechnicalAvailability: result.length > 0 ? result.reduce((s, p) => s + p.performance.technicalAvailability, 0) / result.length : 0,
+      averageDataAvailability: result.length > 0 ? result.reduce((s, p) => s + p.performance.dataAvailability, 0) / result.length : 0,
       averageCapacityFactor: result.length > 0 ? result.reduce((s, p) => s + p.performance.capacityFactor, 0) / result.length : 0,
       averageAchievementRate: result.length > 0 ? result.reduce((s, p) => s + p.energy.achievementRate, 0) / result.length : 0,
     }

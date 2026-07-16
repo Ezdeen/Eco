@@ -117,6 +117,10 @@ model Project {
   cases          Case[]
   notifications  Notification[]
   auditEvents    AuditEvent[]
+  ingestionBatches IngestionBatch[]
+  weatherObservations WeatherObservation[]
+  expectedYieldModels ExpectedYieldModel[]
+  reconciliationRuns  ReconciliationRun[]
 
   @@unique([organizationId, code])
 }
@@ -382,4 +386,237 @@ model AuditEvent {
   organization    Organization? @relation(fields: [organizationId], references: [id])
   project         Project?       @relation(fields: [projectId], references: [id])
   user            User?          @relation(fields: [userId], references: [id])
+}
+
+// ============== الجداول المرجعية بإصدار ومصدر وتاريخ سريان ==============
+
+model GridEmissionFactor {
+  id              String   @id @default(cuid())
+  countryCode     String   // SA, AE, QA, etc.
+  countryName     String
+  factor          Float    // kgCO2e per kWh
+  source          String   // Saudi Electricity Company, IEA, etc.
+  version         String   // v1.2-2024
+  type            String   @default("location-based") // location-based, market-based
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved") // draft, reviewed, approved
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryCode, validFrom])
+}
+
+model Tariff {
+  id              String   @id @default(cuid())
+  countryCode     String
+  tariffType      String   // retail, feed_in
+  rate            Float    // currency per kWh
+  currency        String   // SAR, AED, etc.
+  source          String   // Electricity Regulatory Authority
+  version         String   // v2024-1
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+
+  @@index([countryCode, tariffType, validFrom])
+}
+
+model ConversionFactor {
+  id              String   @id @default(cuid())
+  factorType      String   // diesel_per_kwh, gas_per_kwh, tree_co2, car_co2_per_km
+  value           Float
+  unit            String   // L/kWh, m3/kWh, kgCO2/tree/year
+  source          String   // EPA, IEA, IPCC
+  version         String
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+
+  @@index([factorType, validFrom])
+}
+
+model Methodology {
+  id              String   @id @default(cuid())
+  code            String   @unique // ghg_protocol_scope2, iso_14064_2
+  name            String
+  nameAr          String?
+  description     String?
+  version         String
+  frameworkRef    String?  // GHG Protocol, ISO, etc.
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+}
+
+// ============== Ingestion Pipeline ==============
+
+model IngestionBatch {
+  id              String   @id @default(cuid())
+  projectId       String
+  deviceId        String?
+  source          String   // http_api, mqtt, csv, manual
+  sourceEventId   String?  // unique event ID for idempotency
+  status          String   @default("received") // received, processing, completed, failed, partial
+  rawPayloadCount Int      @default(0)
+  processedCount  Int      @default(0)
+  failedCount     Int      @default(0)
+  duplicateCount  Int      @default(0)  // deduplication counter
+  idempotencyKey  String?  @unique // prevents reprocessing same batch
+  errorMessage    String?
+  metadata        String?  // JSON
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rawPayloads     RawPayload[]
+}
+
+model RawPayload {
+  id              String   @id @default(cuid())
+  ingestionBatchId String
+  deviceId        String?
+  payloadHash     String   @unique // SHA-256 of raw payload for deduplication
+  rawData         String   // JSON string of original payload
+  payloadSize     Int
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  status          String   @default("received") // received, processed, failed, duplicate
+  errorMessage    String?
+  readingId       String?  // link to created EnergyReading if processed
+
+  ingestionBatch  IngestionBatch @relation(fields: [ingestionBatchId], references: [id], onDelete: Cascade)
+}
+
+model ReadingAdjustment {
+  id              String   @id @default(cuid())
+  readingId       String
+  originalValue   Float
+  adjustedValue   Float
+  reason          String   // meter_reset, rollover, correction, recalibration
+  reasonCode      String   // METER_RESET, ROLLOVER, MANUAL_CORRECTION
+  adjustedBy      String   // user email
+  adjustedAt      DateTime @default(now())
+  approvedBy      String?
+  approvedAt      DateTime?
+  status          String   @default("pending") // pending, approved, rejected
+  note            String?
+
+  @@index([readingId])
+}
+
+model ValidationRule {
+  id              String   @id @default(cuid())
+  ruleCode        String   @unique // OUT_OF_RANGE, SPIKE_DETECTED, etc.
+  name            String
+  nameAr          String?
+  description     String
+  category        String   // deterministic, statistical, ml
+  severity        String   @default("medium") // low, medium, high, critical
+  isActive        Boolean  @default(true)
+  parameters      String?  // JSON of rule-specific params
+  createdAt       DateTime @default(now())
+}
+
+model ValidationResult {
+  id              String   @id @default(cuid())
+  readingId       String
+  ruleId          String?
+  ruleCode        String
+  status          String   // passed, failed, warning
+  severity        String   // low, medium, high, critical
+  details         String?  // JSON
+  validatedAt     DateTime @default(now())
+
+  @@index([readingId])
+  @@index([ruleCode])
+}
+
+// ============== Weather Integration ==============
+
+model WeatherSource {
+  id              String   @id @default(cuid())
+  name            String   // Open-Meteo, NASA POWER
+  apiUrl          String
+  apiKey          String?
+  isActive        Boolean  @default(true)
+  rateLimitPerDay Int?
+  lastSyncAt      DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model WeatherObservation {
+  id              String   @id @default(cuid())
+  projectId       String
+  sourceId        String
+  observedAt      DateTime
+  temperatureC    Float?
+  humidityPct     Float?
+  irradianceWm2   Float?
+  windSpeedMs     Float?
+  cloudCoverPct   Float?
+  precipitationMm Float?
+  dataSource      String   // Open-Meteo, NASA POWER
+  createdAt       DateTime @default(now())
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, observedAt])
+  @@unique([projectId, observedAt, sourceId])
+}
+
+model ExpectedYieldModel {
+  id              String   @id @default(cuid())
+  projectId       String
+  modelType       String   // p50, p90, deterministic
+  periodStart     DateTime
+  periodEnd       DateTime
+  expectedEnergyKwh Float
+  referenceYield  Float?
+  performanceRatio Float?
+  weatherSource   String?
+  calculationMethod String?
+  parameters      String?  // JSON
+  createdAt       DateTime @default(now())
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, periodStart])
+}
+
+// ============== Hedera Outbox & Reconciliation ==============
+
+model OutboxEvent {
+  id              String   @id @default(cuid())
+  eventType       String   // attestation_submit, attestation_retry
+  payload         String   // JSON of event data
+  status          String   @default("pending") // pending, processing, sent, confirmed, failed
+  retryCount      Int      @default(0)
+  maxRetries      Int      @default(5)
+  nextRetryAt     DateTime?
+  lastError       String?
+  hederaTransactionId String?
+  consensusTimestamp  String?
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+
+  @@index([status, nextRetryAt])
+}
+
+model ReconciliationRun {
+  id              String   @id @default(cuid())
+  projectId       String?
+  batchId         String?
+  status          String   @default("pending") // pending, running, completed, mismatch, failed
+  expectedCount   Int      @default(0)
+  actualCount     Int      @default(0)
+  mismatchCount   Int      @default(0)
+  details         String?  // JSON
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  project         Project? @relation(fields: [projectId], references: [id])
 }
