@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requirePermission } from '@/lib/authorization'
 
 export async function GET() {
   try {
+    const auth = await requirePermission('audit:read')
+    if (!auth.authorized) return auth.response
+
     const events = await db.auditEvent.findMany({
       take: 100,
       orderBy: { createdAt: 'desc' },

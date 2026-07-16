@@ -4,8 +4,19 @@ import bcrypt from 'bcryptjs'
 import { db } from './db'
 import { cookies } from 'next/headers'
 
+// === PRIORITY 2: No default JWT secret — fail if missing ===
+const JWT_SECRET = process.env.JWT_SECRET
+
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: JWT_SECRET environment variable is required and must be at least 32 characters long.')
+  }
+  // Development only: warn but allow
+  console.warn('WARNING: JWT_SECRET is missing or too short. This is insecure for production.')
+}
+
 const SECRET_KEY = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'esg-solar-platform-secret-key-2026-change-in-production',
+  JWT_SECRET || 'dev-only-insecure-do-not-use-in-production-xxxxxxxxxxxxxxxx',
 )
 
 const COOKIE_NAME = 'esg_session'
@@ -58,10 +69,11 @@ export async function verifyToken(token: string): Promise<SessionPayload | null>
 // Set session cookie (for use in API routes)
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies()
+  const isProduction = process.env.NODE_ENV === 'production'
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction, // HTTPS only in production
+    sameSite: isProduction ? 'strict' : 'lax', // stricter in production
     maxAge: SESSION_DURATION,
     path: '/',
   })

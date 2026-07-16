@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/authorization'
 
 // ESG Frameworks with mapping to KPIs
 const ESG_FRAMEWORKS = [
@@ -251,6 +252,9 @@ const KPI_TRACEABILITY: Record<string, {
 
 export async function GET() {
   try {
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+
     // Fetch KPI data from calculations API
     const allProjects = await db.project.findMany({
       select: {

@@ -391,7 +391,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     await unlink(htmlPath).catch(() => {})
     await unlink(pdfPath).catch(() => {})
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${reportName}.pdf"`,

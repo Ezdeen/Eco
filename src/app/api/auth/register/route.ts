@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     // Try to attach to the default organization if it exists
     const defaultOrg = await db.organization.findFirst()
-    let membership = null
+    let membership: { id: string; userId: string; organizationId: string; role: string; status: string } | null = null
     if (defaultOrg) {
       membership = await db.userMembership.create({
         data: {

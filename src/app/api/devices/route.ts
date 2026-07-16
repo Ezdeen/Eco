@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requirePermission } from '@/lib/authorization'
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requirePermission('project:read')
+    if (!auth.authorized) return auth.response
+
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')

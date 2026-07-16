@@ -215,7 +215,7 @@ async function main() {
     },
   ]
 
-  const projectRecords = []
+  const projectRecords: any[] = []
   for (const p of projects) {
     const project = await db.project.create({
       data: {

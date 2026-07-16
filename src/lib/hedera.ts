@@ -5,10 +5,35 @@ import crypto from 'crypto'
 
 // Hedera client configuration
 // In production, use environment variables for operator credentials
-const HEDERA_NETWORK = process.env.HEDERA_NETWORK || 'testnet'
+const HEDERA_NETWORK = process.env.HEDERA_NETWORK || 'simulation'
 const HEDERA_OPERATOR_ID = process.env.HEDERA_OPERATOR_ID || ''
 const HEDERA_OPERATOR_KEY = process.env.HEDERA_OPERATOR_KEY || ''
 const HEDERA_TOPIC_ID = process.env.HEDERA_TOPIC_ID || '' // Required for attestation topic
+
+// === PRIORITY 6: Block simulation in production ===
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+
+if (IS_PRODUCTION && HEDERA_NETWORK === 'simulation') {
+  throw new Error(
+    'FATAL: HEDERA_NETWORK=simulation is NOT allowed in production. ' +
+    'Set HEDERA_NETWORK to testnet or mainnet, and configure HEDERA_OPERATOR_ID, ' +
+    'HEDERA_OPERATOR_KEY, and HEDERA_TOPIC_ID.'
+  )
+}
+
+if (IS_PRODUCTION && (HEDERA_NETWORK === 'testnet' || HEDERA_NETWORK === 'mainnet')) {
+  if (!HEDERA_OPERATOR_ID || !HEDERA_OPERATOR_KEY || !HEDERA_TOPIC_ID) {
+    throw new Error(
+      'FATAL: HEDERA_OPERATOR_ID, HEDERA_OPERATOR_KEY, and HEDERA_TOPIC_ID are required ' +
+      `when HEDERA_NETWORK=${HEDERA_NETWORK} in production.`
+    )
+  }
+}
+
+// Log Hedera configuration status at startup
+console.log(`[Hedera] Network: ${HEDERA_NETWORK}, Mode: ${IS_PRODUCTION ? 'production' : 'development'}, ` +
+  `Operator: ${HEDERA_OPERATOR_ID ? 'configured' : 'NOT configured'}, ` +
+  `Topic: ${HEDERA_TOPIC_ID ? 'configured' : 'NOT configured'}`)
 
 // Check if Hedera SDK is available (real vs mock)
 let hederaClient: any = null
@@ -112,8 +137,8 @@ export async function submitAttestation(
       return {
         success: true,
         transactionId: transaction.transactionId?.toString() || 'unknown',
-        consensusTimestamp: receipt.consensusTimestamp
-          ? `${receipt.consensusTimestamp.seconds}.${receipt.consensusTimestamp.nanos}`
+        consensusTimestamp: (receipt as any).consensusTimestamp
+          ? `${(receipt as any).consensusTimestamp.seconds}.${(receipt as any).consensusTimestamp.nanos}`
           : new Date().toISOString(),
         mode: 'live',
         topicId: HEDERA_TOPIC_ID,

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/authorization'
 
 // Investment calculator - runs entirely server-side, no external dependencies
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+
     const body = await request.json()
     const {
       capacityKwp,

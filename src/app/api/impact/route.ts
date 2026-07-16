@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/authorization'
 
 // Grid emission factors by country (kg CO2e per kWh) - location-based
 const GRID_EMISSION_FACTORS: Record<string, { factor: number; source: string; version: string; type: string }> = {
@@ -34,6 +35,9 @@ const TREE_ABSORPTION_FACTORS: Record<string, number> = {
 
 export async function GET() {
   try {
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+
     const accounts = await db.impactAccount.findMany({
       include: {
         organization: { select: { name: true, nameAr: true, code: true } },
