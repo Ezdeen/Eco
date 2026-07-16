@@ -20,6 +20,7 @@ import {
   LogOut,
   Server,
   Zap,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ export type Section =
   | 'calculator'
   | 'notifications'
   | 'audit'
+  | 'users'
   | 'settings'
 
 interface NavItem {
@@ -64,6 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'calculator', label: 'الحاسبة الاستثمارية', labelEn: 'Calculator', icon: Calculator, group: 'output' },
   { id: 'notifications', label: 'الإشعارات', labelEn: 'Notifications', icon: Bell, group: 'system' },
   { id: 'audit', label: 'سجل التدقيق', labelEn: 'Audit Log', icon: ScrollText, group: 'system' },
+  { id: 'users', label: 'إدارة المستخدمين', labelEn: 'User Management', icon: Users, group: 'system' },
   { id: 'settings', label: 'الإعدادات', labelEn: 'Settings', icon: Settings, group: 'system' },
 ]
 

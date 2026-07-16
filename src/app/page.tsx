@@ -17,8 +17,10 @@ import { ImpactSection } from '@/components/sections/impact-section'
 import { CalculatorSection } from '@/components/sections/calculator-section'
 import { NotificationsSection } from '@/components/sections/notifications-section'
 import { AuditSection } from '@/components/sections/audit-section'
+import { UserManagementSection } from '@/components/sections/user-management-section'
 import { SettingsSection } from '@/components/sections/settings-section'
-import { Loader2, Sun } from 'lucide-react'
+import { Loader2, Sun, Shield } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 
 const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   dashboard: { title: 'مركز القيادة', subtitle: 'نظرة شاملة على أداء محفظة المشاريع الشمسية' },
@@ -34,6 +36,7 @@ const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   calculator: { title: 'الحاسبة الاستثمارية', subtitle: 'NPV, IRR, Payback, LCOE مع سيناريوهات وتحليل حساسية' },
   notifications: { title: 'الإشعارات', subtitle: 'مركز الإشعارات والأحداث المهمة' },
   audit: { title: 'سجل التدقيق', subtitle: 'سجل append-only لكل الإجراءات الحساسة' },
+  users: { title: 'إدارة المستخدمين', subtitle: 'إضافة وإزالة الأعضاء وتغيير الأدوار' },
   settings: { title: 'الإدارة والإعدادات', subtitle: 'المؤسسة والأعضاء والأدوار والأمن والتكاملات' },
 }
 
@@ -160,6 +163,15 @@ export default function Home() {
           {section === 'calculator' && <CalculatorSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'audit' && <AuditSection />}
+          {section === 'users' && user?.role === 'org_admin' && <UserManagementSection />}
+          {section === 'users' && user?.role !== 'org_admin' && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Shield className="h-12 w-12 text-muted-foreground/50 mb-3" />
+                <p className="text-muted-foreground">هذا القسم متاح فقط لمدير المؤسسة</p>
+              </CardContent>
+            </Card>
+          )}
           {section === 'settings' && <SettingsSection />}
         </main>
 
