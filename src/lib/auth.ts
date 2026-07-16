@@ -5,14 +5,17 @@ import { db } from './db'
 import { cookies } from 'next/headers'
 
 // === PRIORITY 2: No default JWT secret — fail if missing ===
+// But only at runtime, NOT during build (Next.js collects page data in production mode)
 const JWT_SECRET = process.env.JWT_SECRET
+const IS_BUILD_TIME = typeof window !== 'undefined' || !!process.env.NEXT_PRIVATE_BUILD_ID || process.env.NEXT_PHASE === 'phase-production-build'
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && !IS_BUILD_TIME) {
     throw new Error('FATAL: JWT_SECRET environment variable is required and must be at least 32 characters long.')
   }
-  // Development only: warn but allow
-  console.warn('WARNING: JWT_SECRET is missing or too short. This is insecure for production.')
+  if (!JWT_SECRET) {
+    console.warn('WARNING: JWT_SECRET is missing. This is insecure for production.')
+  }
 }
 
 const SECRET_KEY = new TextEncoder().encode(

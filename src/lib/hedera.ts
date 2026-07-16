@@ -12,8 +12,10 @@ const HEDERA_TOPIC_ID = process.env.HEDERA_TOPIC_ID || '' // Required for attest
 
 // === PRIORITY 6: Block simulation in production ===
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+// During build, Next.js runs in production mode but we shouldn't throw
+const IS_BUILD_TIME = !!process.env.NEXT_PRIVATE_BUILD_ID || process.env.NEXT_PHASE === 'phase-production-build'
 
-if (IS_PRODUCTION && HEDERA_NETWORK === 'simulation') {
+if (IS_PRODUCTION && !IS_BUILD_TIME && HEDERA_NETWORK === 'simulation') {
   throw new Error(
     'FATAL: HEDERA_NETWORK=simulation is NOT allowed in production. ' +
     'Set HEDERA_NETWORK to testnet or mainnet, and configure HEDERA_OPERATOR_ID, ' +
@@ -21,7 +23,7 @@ if (IS_PRODUCTION && HEDERA_NETWORK === 'simulation') {
   )
 }
 
-if (IS_PRODUCTION && (HEDERA_NETWORK === 'testnet' || HEDERA_NETWORK === 'mainnet')) {
+if (IS_PRODUCTION && !IS_BUILD_TIME && (HEDERA_NETWORK === 'testnet' || HEDERA_NETWORK === 'mainnet')) {
   if (!HEDERA_OPERATOR_ID || !HEDERA_OPERATOR_KEY || !HEDERA_TOPIC_ID) {
     throw new Error(
       'FATAL: HEDERA_OPERATOR_ID, HEDERA_OPERATOR_KEY, and HEDERA_TOPIC_ID are required ' +
