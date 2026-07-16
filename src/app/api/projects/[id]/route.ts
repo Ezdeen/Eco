@@ -61,6 +61,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       timezone,
       tariffRetail,
       tariffFeedIn,
+      // Afforestation
+      treeSpecies,
+      treeCount,
+      plantedAreaM2,
+      plantingDate,
+      survivalRateTarget,
+      // IoT
+      iotSensorType,
+      iotSensorModel,
+      iotSensorSerial,
+      iotGatewayId,
+      iotProtocol,
+      iotDataFrequency,
     } = body
 
     const existing = await db.project.findUnique({ where: { id } })
@@ -110,13 +123,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (currency !== undefined) updateData.currency = currency
     if (sponsorName !== undefined) updateData.sponsorName = sponsorName || null
     if (sponsorPhone !== undefined) updateData.sponsorPhone = sponsorPhone || null
-    if (inverterSerial !== undefined) updateData.inverterSerial = inverterSerial
-    if (inverterType !== undefined) updateData.inverterType = inverterType
+    if (inverterSerial !== undefined) updateData.inverterSerial = inverterSerial || null
+    if (inverterType !== undefined) updateData.inverterType = inverterType || null
     if (status !== undefined) updateData.status = status
     if (projectType !== undefined) updateData.projectType = projectType
     if (timezone !== undefined) updateData.timezone = timezone
     if (tariffRetail !== undefined) updateData.tariffRetail = tariffRetail ? parseFloat(tariffRetail) : null
     if (tariffFeedIn !== undefined) updateData.tariffFeedIn = tariffFeedIn ? parseFloat(tariffFeedIn) : null
+    // Afforestation fields
+    if (treeSpecies !== undefined) updateData.treeSpecies = treeSpecies || null
+    if (treeCount !== undefined) updateData.treeCount = treeCount ? parseInt(treeCount) : null
+    if (plantedAreaM2 !== undefined) updateData.plantedAreaM2 = plantedAreaM2 ? parseFloat(plantedAreaM2) : null
+    if (plantingDate !== undefined) updateData.plantingDate = plantingDate ? new Date(plantingDate) : null
+    if (survivalRateTarget !== undefined) updateData.survivalRateTarget = survivalRateTarget !== null ? parseFloat(survivalRateTarget) : null
+    // IoT fields
+    if (iotSensorType !== undefined) updateData.iotSensorType = iotSensorType || null
+    if (iotSensorModel !== undefined) updateData.iotSensorModel = iotSensorModel || null
+    if (iotSensorSerial !== undefined) updateData.iotSensorSerial = iotSensorSerial || null
+    if (iotGatewayId !== undefined) updateData.iotGatewayId = iotGatewayId || null
+    if (iotProtocol !== undefined) updateData.iotProtocol = iotProtocol || null
+    if (iotDataFrequency !== undefined) updateData.iotDataFrequency = iotDataFrequency || null
 
     const project = await db.project.update({
       where: { id },

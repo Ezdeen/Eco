@@ -300,6 +300,9 @@ function generateHTMLReport(data: any, reportName: string): string {
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
+  let htmlPath: string | null = null
+  let pdfPath: string | null = null
+
   try {
     const { id } = await params
     const user = await getCurrentUser()
@@ -320,14 +323,16 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (!existsSync(tmpDir)) {
       await mkdir(tmpDir, { recursive: true })
     }
-    const htmlPath = path.join(tmpDir, `${reportName}.html`)
-    const pdfPath = path.join(tmpDir, `${reportName}.pdf`)
+    htmlPath = path.join(tmpDir, `${reportName}-${Date.now()}.html`)
+    pdfPath = htmlPath.replace('.html', '.pdf')
     await writeFile(htmlPath, html, 'utf-8')
 
-    // Use Playwright via a Node script to convert HTML to PDF
-    const scriptPath = path.join(process.cwd(), 'scripts', 'html-to-pdf.js')
+    // Use absolute path to the script
+    const scriptPath = '/home/z/my-project/scripts/html-to-pdf.js'
+
     if (!existsSync(scriptPath)) {
-      // Fallback: return HTML if Playwright script doesn't exist
+      console.error('PDF script not found at:', scriptPath)
+      // Fallback: return HTML
       return new NextResponse(html, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
@@ -336,42 +341,76 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    // Run Playwright conversion
+    // Run Playwright conversion with timeout
     const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const proc = spawn('node', [scriptPath, htmlPath, pdfPath], {
+      const timeout = setTimeout(() => {
+        proc.kill('SIGKILL')
+        reject(new Error('PDF generation timeout after 30 seconds'))
+      }, 30000)
+
+      const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
         stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: '/home/z/my-project',
+        env: {
+          ...process.env,
+          HOME: '/home/z',
+        },
       })
+
+      let stdout = ''
       let stderr = ''
+      proc.stdout.on('data', (chunk) => {
+        stdout += chunk.toString()
+      })
       proc.stderr.on('data', (chunk) => {
         stderr += chunk.toString()
       })
       proc.on('close', async (code) => {
+        clearTimeout(timeout)
         if (code !== 0) {
-          reject(new Error(`Playwright failed: ${stderr}`))
+          console.error('Playwright exit code:', code, 'stderr:', stderr)
+          reject(new Error(`Playwright failed (exit ${code}): ${stderr || stdout}`))
           return
         }
         try {
-          const pdf = await readFile(pdfPath)
-          // Cleanup
-          await unlink(htmlPath).catch(() => {})
-          await unlink(pdfPath).catch(() => {})
+          const pdf = await readFile(pdfPath!)
           resolve(pdf)
-        } catch (e) {
-          reject(e)
+        } catch (e: any) {
+          console.error('Failed to read PDF file:', e.message)
+          reject(new Error(`Failed to read generated PDF: ${e.message}`))
         }
       })
-      proc.on('error', (err) => reject(err))
+      proc.on('error', (err) => {
+        clearTimeout(timeout)
+        console.error('Process spawn error:', err)
+        reject(err)
+      })
     })
+
+    // Cleanup temp files
+    await unlink(htmlPath).catch(() => {})
+    await unlink(pdfPath).catch(() => {})
 
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${reportName}.pdf"`,
         'Content-Length': pdfBuffer.length.toString(),
+        'Cache-Control': 'no-cache',
       },
     })
-  } catch (error) {
-    console.error('PDF generation error:', error)
-    return NextResponse.json({ error: 'فشل توليد ملف PDF' }, { status: 500 })
+  } catch (error: any) {
+    console.error('PDF generation error:', error.message || error)
+    // Cleanup on error
+    if (htmlPath) await unlink(htmlPath).catch(() => {})
+    if (pdfPath) await unlink(pdfPath).catch(() => {})
+
+    return NextResponse.json(
+      {
+        error: 'فشل توليد ملف PDF',
+        details: error.message || String(error),
+      },
+      { status: 500 },
+    )
   }
 }

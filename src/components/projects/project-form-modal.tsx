@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2 } from 'lucide-react'
+import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProjectFormData {
@@ -37,6 +37,19 @@ interface ProjectFormData {
   timezone: string
   tariffRetail: string
   tariffFeedIn: string
+  // Afforestation fields
+  treeSpecies: string
+  treeCount: string
+  plantedAreaM2: string
+  plantingDate: string
+  survivalRateTarget: string
+  // IoT fields
+  iotSensorType: string
+  iotSensorModel: string
+  iotSensorSerial: string
+  iotGatewayId: string
+  iotProtocol: string
+  iotDataFrequency: string
 }
 
 interface ProjectFormModalProps {
@@ -58,12 +71,57 @@ const COUNTRIES = [
   { code: 'PS', name: 'فلسطين', cities: ['رام الله', 'غزة', 'الخليل', 'نابلس', 'بيت لحم', 'جنين', 'أريحا', 'طولكرم', 'قلقيلية'] },
 ]
 
+const PROJECT_TYPES = [
+  { code: 'grid_tied', name: 'نظام طاقة شمسية مرتبط بالشبكة', desc: 'Grid-Tied - يصدّر الفائض للشبكة', icon: '🔌', needsInverter: true, needsBattery: false, isAfforestation: false },
+  { code: 'hybrid', name: 'نظام طاقة شمسية هجين', desc: 'Hybrid - مرتبط بالشبكة + بطاريات تخزين', icon: '⚡', needsInverter: true, needsBattery: true, isAfforestation: false },
+  { code: 'off_grid', name: 'نظام طاقة شمسية مستقل (بطاريات)', desc: 'Off-Grid - منفصل عن الشبكة، يعتمد على البطاريات', icon: '🔋', needsInverter: true, needsBattery: true, isAfforestation: false },
+  { code: 'afforestation', name: 'مشروع تشجير', desc: 'Afforestation - زراعة الأشجار مع مستشعرات IoT', icon: '🌳', needsInverter: false, needsBattery: false, isAfforestation: true },
+]
+
 const INVERTER_TYPES = [
   { code: 'string', name: 'String Inverter - إنفرتر سلسلة', desc: 'مناسب للمشاريع الصغيرة والمتوسطة' },
   { code: 'central', name: 'Central Inverter - إنفرتر مركزي', desc: 'مناسب لمحطات الطاقة الكبيرة' },
   { code: 'micro', name: 'Microinverter - إنفرتر مصغّر', desc: 'إنفرتر لكل لوح، مناسب للأسطح' },
   { code: 'hybrid', name: 'Hybrid Inverter - إنفرتر هجين', desc: 'يدعم تخزين البطاريات' },
   { code: 'battery', name: 'Battery Inverter - إنفرتر بطاريات', desc: 'مخصص لأنظمة التخزين' },
+]
+
+const IOT_SENSOR_TYPES = [
+  { code: 'soil_moisture', name: 'رطوبة التربة - Soil Moisture', desc: 'قياس نسبة الرطوبة في التربة' },
+  { code: 'temperature', name: 'درجة الحرارة - Temperature', desc: 'قياس حرارة التربة والهواء' },
+  { code: 'humidity', name: 'الرطوبة الجوية - Humidity', desc: 'قياس رطوبة الهواء المحيط' },
+  { code: 'co2', name: 'ثاني أكسيد الكربون - CO₂', desc: 'قياس امتصاص CO₂ من الأشجار' },
+  { code: 'growth', name: 'معدل النمو - Growth', desc: 'قياس نمو الأشجار والقطر' },
+  { code: 'leaf_wetness', name: 'رطوبة الأوراق - Leaf Wetness', desc: 'كشف الأمراض النباتية' },
+  { code: 'ph', name: 'حموضة التربة - pH', desc: 'قياس درجة حموضة التربة' },
+  { code: 'ec', name: 'التوصيل الكهربائي - EC', desc: 'قياس ملوحة التربة' },
+]
+
+const IOT_PROTOCOLS = [
+  { code: 'lora', name: 'LoRaWAN - مسافات طويلة، استهلاك منخفض' },
+  { code: 'wifi', name: 'WiFi - شبكة محلية' },
+  { code: 'gsm', name: 'GSM/4G - شبكة خلوية' },
+  { code: 'nb_iot', name: 'NB-IoT - إنترنت الأشياء بشبكة خلوية' },
+  { code: 'sigfox', name: 'Sigfox - شبكة LPWAN' },
+  { code: 'zigbee', name: 'Zigbee - شبكة شبكية قصيرة المدى' },
+]
+
+const IOT_DATA_FREQUENCIES = [
+  { code: 'realtime', name: 'كل 5 دقائق (وقت حقيقي)' },
+  { code: 'hourly', name: 'كل ساعة' },
+  { code: 'daily', name: 'يوميًا' },
+  { code: 'weekly', name: 'أسبوعيًا' },
+]
+
+const TREE_SPECIES_EXAMPLES = [
+  'السدر (Ziziphus spina-christi)',
+  'الغاف (Prosopis cineraria)',
+  'الأثل (Tamarix)',
+  'السمر (Acacia tortilis)',
+  'العرعر (Juniperus)',
+  'الزيتون (Olea europaea)',
+  'النخيل (Phoenix dactylifera)',
+  'اللوز (Prunus dulcis)',
 ]
 
 const CURRENCIES = [
@@ -94,10 +152,23 @@ const EMPTY_FORM: ProjectFormData = {
   sponsorPhone: '',
   currency: 'SAR',
   capacityKwp: '',
-  projectType: 'solar_pv',
+  projectType: 'grid_tied',
   timezone: 'Asia/Riyadh',
   tariffRetail: '',
   tariffFeedIn: '',
+  // Afforestation fields
+  treeSpecies: '',
+  treeCount: '',
+  plantedAreaM2: '',
+  plantingDate: '',
+  survivalRateTarget: '85',
+  // IoT fields
+  iotSensorType: 'soil_moisture',
+  iotSensorModel: '',
+  iotSensorSerial: '',
+  iotGatewayId: '',
+  iotProtocol: 'lora',
+  iotDataFrequency: 'daily',
 }
 
 export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: ProjectFormModalProps) {
@@ -127,10 +198,23 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         sponsorPhone: initialData.sponsorPhone || '',
         currency: initialData.currency || 'SAR',
         capacityKwp: initialData.capacityKwp?.toString() || '',
-        projectType: initialData.projectType || 'solar_pv',
+        projectType: initialData.projectType || 'grid_tied',
         timezone: initialData.timezone || 'Asia/Riyadh',
         tariffRetail: initialData.tariffRetail?.toString() || '',
         tariffFeedIn: initialData.tariffFeedIn?.toString() || '',
+        // Afforestation
+        treeSpecies: initialData.treeSpecies || '',
+        treeCount: initialData.treeCount?.toString() || '',
+        plantedAreaM2: initialData.plantedAreaM2?.toString() || '',
+        plantingDate: initialData.plantingDate ? initialData.plantingDate.slice(0, 10) : '',
+        survivalRateTarget: initialData.survivalRateTarget ? (initialData.survivalRateTarget * 100).toString() : '85',
+        // IoT
+        iotSensorType: initialData.iotSensorType || 'soil_moisture',
+        iotSensorModel: initialData.iotSensorModel || '',
+        iotSensorSerial: initialData.iotSensorSerial || '',
+        iotGatewayId: initialData.iotGatewayId || '',
+        iotProtocol: initialData.iotProtocol || 'lora',
+        iotDataFrequency: initialData.iotDataFrequency || 'daily',
       })
     } else {
       setForm(EMPTY_FORM)
@@ -143,11 +227,9 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
 
     if (!form.name.trim()) newErrors.name = 'اسم المشروع مطلوب'
     if (!form.code.trim()) newErrors.code = 'رمز المشروع مطلوب'
-    if (!form.inverterSerial.trim()) newErrors.inverterSerial = 'سيريال نمبر الإنفرتر مطلوب'
-    if (!form.inverterType) newErrors.inverterType = 'نوع الإنفرتر مطلوب'
     if (!form.country) newErrors.country = 'الدولة مطلوبة'
 
-    // City validation: if "other" selected, cityOther must be filled
+    // City validation
     if (!form.city) {
       newErrors.city = 'المدينة مطلوبة'
     } else if (form.city === '__other__' && !form.cityOther.trim()) {
@@ -172,8 +254,29 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       }
     }
 
-    if (form.capacityKwp && (isNaN(parseFloat(form.capacityKwp)) || parseFloat(form.capacityKwp) <= 0)) {
-      newErrors.capacityKwp = 'القدرة يجب أن تكون رقمًا موجبًا'
+    // Type-specific validation
+    const projectType = PROJECT_TYPES.find((t) => t.code === form.projectType)
+    if (projectType?.needsInverter) {
+      if (!form.inverterSerial.trim()) newErrors.inverterSerial = 'سيريال نمبر الإنفرتر مطلوب لمشاريع الطاقة الشمسية'
+      if (!form.inverterType) newErrors.inverterType = 'نوع الإنفرتر مطلوب'
+      if (form.capacityKwp && (isNaN(parseFloat(form.capacityKwp)) || parseFloat(form.capacityKwp) <= 0)) {
+        newErrors.capacityKwp = 'القدرة يجب أن تكون رقمًا موجبًا'
+      }
+    }
+
+    if (projectType?.isAfforestation) {
+      if (!form.treeSpecies.trim()) newErrors.treeSpecies = 'نوع الأشجار مطلوب لمشاريع التشجير'
+      if (!form.treeCount || parseInt(form.treeCount) <= 0) {
+        newErrors.treeCount = 'عدد الأشجار يجب أن يكون رقمًا موجبًا'
+      }
+      if (!form.plantedAreaM2 || parseFloat(form.plantedAreaM2) <= 0) {
+        newErrors.plantedAreaM2 = 'المساحة المزروعة يجب أن تكون رقمًا موجبًا'
+      }
+      if (!form.plantingDate) newErrors.plantingDate = 'تاريخ الزراعة مطلوب'
+      // IoT sensor is optional but if serial provided, type is required
+      if (form.iotSensorSerial && !form.iotSensorType) {
+        newErrors.iotSensorType = 'نوع المستشعر مطلوب عند إدخال سيريال'
+      }
     }
 
     if (form.sponsorPhone && form.sponsorPhone.length < 6) {
@@ -201,10 +304,16 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       // Resolve final city value
       const finalCity = form.city === '__other__' ? form.cityOther.trim() : form.city
 
-      const payload = {
+      const payload: any = {
         ...form,
         city: finalCity,
-        cityOther: undefined, // don't send helper field
+        cityOther: undefined,
+        // Convert survivalRateTarget from percentage to decimal
+        survivalRateTarget: form.survivalRateTarget ? parseFloat(form.survivalRateTarget) / 100 : null,
+        // Convert numbers
+        treeCount: form.treeCount ? parseInt(form.treeCount) : null,
+        plantedAreaM2: form.plantedAreaM2 ? parseFloat(form.plantedAreaM2) : null,
+        plantingDate: form.plantingDate || null,
       }
 
       const res = await fetch(url, {
@@ -321,30 +430,43 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                 />
                 {errors.code && <p className="text-xs text-red-500">{errors.code}</p>}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="projectType" className="text-xs">نوع المشروع</Label>
-                <Select value={form.projectType} onValueChange={(v) => updateField('projectType', v)}>
-                  <SelectTrigger id="projectType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="solar_pv">طاقة شمسية كهروضوئية (PV)</SelectItem>
-                    <SelectItem value="solar_thermal">طاقة شمسية حرارية</SelectItem>
-                    <SelectItem value="bess">تخزين بالبطاريات (BESS)</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="projectType" className="text-xs">
+                  نوع المشروع <span className="text-red-500">*</span>
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {PROJECT_TYPES.map((t) => (
+                    <button
+                      key={t.code}
+                      type="button"
+                      onClick={() => updateField('projectType', t.code)}
+                      className={`p-3 rounded-lg border-2 text-right transition-all ${
+                        form.projectType === t.code
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-2xl">{t.icon}</span>
+                        <span className="text-sm font-semibold">{t.name}</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{t.desc}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
-          <Separator />
-
-          {/* Inverter */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">جهاز الإنفرتر</h3>
-            </div>
+          {/* Inverter section - only for solar projects */}
+          {PROJECT_TYPES.find((t) => t.code === form.projectType)?.needsInverter && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">جهاز الإنفرتر</h3>
+                </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="inverterType" className="text-xs">
@@ -400,6 +522,208 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
               </div>
             </div>
           </div>
+            </>
+          )}
+
+          {/* Afforestation section - only for afforestation projects */}
+          {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isAfforestation && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <TreePine className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">معلومات التشجير</h3>
+                  <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
+                    مشروع تشجير
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="treeSpecies" className="text-xs">
+                      نوع الأشجار <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="treeSpecies"
+                      value={form.treeSpecies}
+                      onChange={(e) => updateField('treeSpecies', e.target.value)}
+                      placeholder="مثال: السدر (Ziziphus spina-christi)"
+                      list="treeSpeciesList"
+                      className={errors.treeSpecies ? 'border-red-500' : ''}
+                      required
+                    />
+                    <datalist id="treeSpeciesList">
+                      {TREE_SPECIES_EXAMPLES.map((s) => (
+                        <option key={s} value={s} />
+                      ))}
+                    </datalist>
+                    {errors.treeSpecies && <p className="text-xs text-red-500">{errors.treeSpecies}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="treeCount" className="text-xs">
+                      عدد الأشجار <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="treeCount"
+                      type="number"
+                      min="1"
+                      value={form.treeCount}
+                      onChange={(e) => updateField('treeCount', e.target.value)}
+                      placeholder="1000"
+                      className={errors.treeCount ? 'border-red-500' : ''}
+                      required
+                    />
+                    {errors.treeCount && <p className="text-xs text-red-500">{errors.treeCount}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="plantedAreaM2" className="text-xs">
+                      المساحة المزروعة (م²) <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="plantedAreaM2"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={form.plantedAreaM2}
+                      onChange={(e) => updateField('plantedAreaM2', e.target.value)}
+                      placeholder="5000"
+                      className={errors.plantedAreaM2 ? 'border-red-500' : ''}
+                      required
+                    />
+                    {errors.plantedAreaM2 && <p className="text-xs text-red-500">{errors.plantedAreaM2}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="plantingDate" className="text-xs">
+                      تاريخ الزراعة <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="plantingDate"
+                      type="date"
+                      value={form.plantingDate}
+                      onChange={(e) => updateField('plantingDate', e.target.value)}
+                      className={errors.plantingDate ? 'border-red-500' : ''}
+                      required
+                    />
+                    {errors.plantingDate && <p className="text-xs text-red-500">{errors.plantingDate}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="survivalRateTarget" className="text-xs">
+                      النسبة المستهدفة لمعدل البقاء (%)
+                    </Label>
+                    <Input
+                      id="survivalRateTarget"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={form.survivalRateTarget}
+                      onChange={(e) => updateField('survivalRateTarget', e.target.value)}
+                      placeholder="85"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      النسبة المئوية المتوقعة لبقاء الأشجار حية بعد السنة الأولى
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* IoT Sensors section - for afforestation */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Radio className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">مستشعرات إنترنت الأشياء (IoT)</h3>
+                  <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300">
+                    اختياري - لمراقبة الأشجار
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  مستشعرات IoT ترسل بيانات دورية (رطوبة التربة، درجة الحرارة، نمو الأشجار، امتصاص CO₂) لمراقبة صحة الأشجار ومعدل بقائها
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotSensorType" className="text-xs">نوع المستشعر</Label>
+                    <Select value={form.iotSensorType} onValueChange={(v) => updateField('iotSensorType', v)}>
+                      <SelectTrigger id="iotSensorType" className={errors.iotSensorType ? 'border-red-500' : ''}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IOT_SENSOR_TYPES.map((s) => (
+                          <SelectItem key={s.code} value={s.code}>
+                            <div className="flex flex-col">
+                              <span>{s.name}</span>
+                              <span className="text-[10px] text-muted-foreground">{s.desc}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.iotSensorType && <p className="text-xs text-red-500">{errors.iotSensorType}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotSensorModel" className="text-xs">موديل المستشعر</Label>
+                    <Input
+                      id="iotSensorModel"
+                      value={form.iotSensorModel}
+                      onChange={(e) => updateField('iotSensorModel', e.target.value)}
+                      placeholder="مثال: Decagon EC-5, Davis 6440"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotSensorSerial" className="text-xs">سيريال نمبر المستشعر</Label>
+                    <Input
+                      id="iotSensorSerial"
+                      value={form.iotSensorSerial}
+                      onChange={(e) => updateField('iotSensorSerial', e.target.value)}
+                      placeholder="SN-SENSOR-XXXXX"
+                      className="font-mono"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotGatewayId" className="text-xs">معرّف بوابة IoT</Label>
+                    <Input
+                      id="iotGatewayId"
+                      value={form.iotGatewayId}
+                      onChange={(e) => updateField('iotGatewayId', e.target.value)}
+                      placeholder="GW-001 أو MAC address"
+                      className="font-mono"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotProtocol" className="text-xs">بروتوكول الاتصال</Label>
+                    <Select value={form.iotProtocol} onValueChange={(v) => updateField('iotProtocol', v)}>
+                      <SelectTrigger id="iotProtocol">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IOT_PROTOCOLS.map((p) => (
+                          <SelectItem key={p.code} value={p.code}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iotDataFrequency" className="text-xs">تردد إرسال البيانات</Label>
+                    <Select value={form.iotDataFrequency} onValueChange={(v) => updateField('iotDataFrequency', v)}>
+                      <SelectTrigger id="iotDataFrequency">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IOT_DATA_FREQUENCIES.map((f) => (
+                          <SelectItem key={f.code} value={f.code}>{f.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 text-xs text-blue-800 dark:text-blue-300">
+                  <Wifi className="h-3 w-3 inline ml-1" />
+                  <strong>ملاحظة:</strong> سيتم إنشاء جهاز IoT تلقائيًا عند حفظ المشروع إذا أدخلت سيريال نمبر المستشعر.
+                  البيانات المستلمة من المستشعر تُخزَّن كقراءات في النظام وتُعرض في مركز البيانات.
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 

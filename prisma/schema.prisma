@@ -89,6 +89,19 @@ model Project {
   // Inverter details entered at project creation
   inverterSerial String?  // سيريال نمبر الإنفرتر الرئيسي للمشروع
   inverterType   String?  // نوع الإنفرتر: string, central, micro, hybrid, battery
+  // Afforestation project fields (مشروع تشجير) - used when projectType = 'afforestation'
+  treeSpecies       String?  // نوع الأشجار المزروعة
+  treeCount         Int?     // عدد الأشجار
+  plantedAreaM2     Float?   // المساحة المزروعة بالمتر المربع
+  plantingDate      DateTime? // تاريخ الزراعة
+  survivalRateTarget Float?  // النسبة المستهدفة لمعدل البقاء (0-1)
+  // IoT sensors for afforestation projects
+  iotSensorType     String?  // نوع مستشعر IoT (soil_moisture, temperature, humidity, co2, growth)
+  iotSensorModel    String?  // موديل المستشعر
+  iotSensorSerial   String?  // سيريال نمبر المستشعر
+  iotGatewayId      String?  // معرّف بوابة IoT
+  iotProtocol       String?  // بروتوكول الاتصال (lora, wifi, gsm, nb-iot)
+  iotDataFrequency  String?  // تردد إرسال البيانات (hourly, daily, weekly)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

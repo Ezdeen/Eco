@@ -40,6 +40,19 @@ export async function GET(request: NextRequest) {
       sponsorPhone: p.sponsorPhone,
       inverterSerial: p.inverterSerial,
       inverterType: p.inverterType,
+      // Afforestation
+      treeSpecies: p.treeSpecies,
+      treeCount: p.treeCount,
+      plantedAreaM2: p.plantedAreaM2,
+      plantingDate: p.plantingDate,
+      survivalRateTarget: p.survivalRateTarget,
+      // IoT
+      iotSensorType: p.iotSensorType,
+      iotSensorModel: p.iotSensorModel,
+      iotSensorSerial: p.iotSensorSerial,
+      iotGatewayId: p.iotGatewayId,
+      iotProtocol: p.iotProtocol,
+      iotDataFrequency: p.iotDataFrequency,
       sitesCount: p.sites.length,
       assetsCount: p.assets.length,
       devicesCount: p.devices.length,
@@ -82,19 +95,25 @@ export async function POST(request: NextRequest) {
       timezone,
       tariffRetail,
       tariffFeedIn,
+      // Afforestation fields
+      treeSpecies,
+      treeCount,
+      plantedAreaM2,
+      plantingDate,
+      survivalRateTarget,
+      // IoT fields
+      iotSensorType,
+      iotSensorModel,
+      iotSensorSerial,
+      iotGatewayId,
+      iotProtocol,
+      iotDataFrequency,
     } = body
 
     // Validate required fields
     if (!name || !code) {
       return NextResponse.json(
         { error: 'اسم المشروع والرمز مطلوبان' },
-        { status: 400 },
-      )
-    }
-
-    if (!inverterSerial) {
-      return NextResponse.json(
-        { error: 'سيريال نمبر الإنفرتر مطلوب' },
         { status: 400 },
       )
     }
@@ -113,6 +132,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Type-specific validation
+    const SOLAR_TYPES = ['grid_tied', 'hybrid', 'off_grid']
+    const isSolar = SOLAR_TYPES.includes(projectType)
+    const isAfforestation = projectType === 'afforestation'
+
+    if (isSolar && !inverterSerial) {
+      return NextResponse.json(
+        { error: 'سيريال نمبر الإنفرتر مطلوب لمشاريع الطاقة الشمسية' },
+        { status: 400 },
+      )
+    }
+
+    if (isAfforestation) {
+      if (!treeSpecies) {
+        return NextResponse.json(
+          { error: 'نوع الأشجار مطلوب لمشاريع التشجير' },
+          { status: 400 },
+        )
+      }
+      if (!treeCount || parseInt(treeCount) <= 0) {
+        return NextResponse.json(
+          { error: 'عدد الأشجار يجب أن يكون رقمًا موجبًا' },
+          { status: 400 },
+        )
+      }
+      if (!plantedAreaM2 || parseFloat(plantedAreaM2) <= 0) {
+        return NextResponse.json(
+          { error: 'المساحة المزروعة يجب أن تكون رقمًا موجبًا' },
+          { status: 400 },
+        )
+      }
+    }
+
     const org = await db.organization.findFirst({
       where: { id: user.organizationId },
     })
@@ -129,15 +181,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check inverter serial uniqueness
-    const existingInverter = await db.project.findFirst({
-      where: { inverterSerial },
-    })
-    if (existingInverter) {
-      return NextResponse.json(
-        { error: 'سيريال نمبر الإنفرتر مستخدم في مشروع آخر' },
-        { status: 409 },
-      )
+    // Check inverter serial uniqueness (only for solar projects)
+    if (isSolar && inverterSerial) {
+      const existingInverter = await db.project.findFirst({
+        where: { inverterSerial },
+      })
+      if (existingInverter) {
+        return NextResponse.json(
+          { error: 'سيريال نمبر الإنفرتر مستخدم في مشروع آخر' },
+          { status: 409 },
+        )
+      }
+    }
+
+    // Check IoT sensor serial uniqueness (for afforestation)
+    if (isAfforestation && iotSensorSerial) {
+      const existingSensor = await db.device.findFirst({
+        where: { serialNumber: iotSensorSerial },
+      })
+      if (existingSensor) {
+        return NextResponse.json(
+          { error: 'سيريال نمبر المستشعر مستخدم في جهاز آخر' },
+          { status: 409 },
+        )
+      }
     }
 
     // Create project
@@ -148,7 +215,7 @@ export async function POST(request: NextRequest) {
         nameAr: nameAr || name,
         code,
         status: 'draft',
-        projectType: projectType || 'solar_pv',
+        projectType: projectType || 'grid_tied',
         country,
         city,
         latitude: parseFloat(latitude),
@@ -161,8 +228,21 @@ export async function POST(request: NextRequest) {
         methodology: 'ghg_protocol_scope2',
         sponsorName: sponsorName || null,
         sponsorPhone: sponsorPhone || null,
-        inverterSerial,
-        inverterType: inverterType || 'string',
+        inverterSerial: isSolar ? inverterSerial : null,
+        inverterType: isSolar ? (inverterType || 'string') : null,
+        // Afforestation fields
+        treeSpecies: isAfforestation ? treeSpecies : null,
+        treeCount: isAfforestation && treeCount ? parseInt(treeCount) : null,
+        plantedAreaM2: isAfforestation && plantedAreaM2 ? parseFloat(plantedAreaM2) : null,
+        plantingDate: isAfforestation && plantingDate ? new Date(plantingDate) : null,
+        survivalRateTarget: isAfforestation && survivalRateTarget ? parseFloat(survivalRateTarget) : null,
+        // IoT fields
+        iotSensorType: isAfforestation ? (iotSensorType || null) : null,
+        iotSensorModel: isAfforestation ? (iotSensorModel || null) : null,
+        iotSensorSerial: isAfforestation ? (iotSensorSerial || null) : null,
+        iotGatewayId: isAfforestation ? (iotGatewayId || null) : null,
+        iotProtocol: isAfforestation ? (iotProtocol || null) : null,
+        iotDataFrequency: isAfforestation ? (iotDataFrequency || null) : null,
       },
     })
 
@@ -180,47 +260,79 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Create default asset (solar array)
-    const asset = await db.asset.create({
-      data: {
-        projectId: project.id,
-        siteId: site.id,
-        name: `${code} Array A`,
-        assetType: 'solar_array',
-        status: 'active',
-      },
-    })
-
-    if (capacityKwp) {
-      await db.solarAssetProfile.create({
+    if (isSolar) {
+      // Create default asset (solar array)
+      const asset = await db.asset.create({
         data: {
+          projectId: project.id,
+          siteId: site.id,
+          name: `${code} Array A`,
+          assetType: 'solar_array',
+          status: 'active',
+        },
+      })
+
+      if (capacityKwp) {
+        await db.solarAssetProfile.create({
+          data: {
+            assetId: asset.id,
+            capacityKwp: parseFloat(capacityKwp),
+            panelAreaM2: parseFloat(capacityKwp) * 5,
+            tiltDegrees: 25,
+            azimuthDegrees: 180,
+            technology: 'mono_si',
+            moduleEfficiency: 0.21,
+            systemLosses: 0.14,
+            inverterEfficiency: 0.97,
+          },
+        })
+      }
+
+      // Register the inverter device
+      await db.device.create({
+        data: {
+          projectId: project.id,
+          siteId: site.id,
           assetId: asset.id,
-          capacityKwp: parseFloat(capacityKwp),
-          panelAreaM2: parseFloat(capacityKwp) * 5,
-          tiltDegrees: 25,
-          azimuthDegrees: 180,
-          technology: 'mono_si',
-          moduleEfficiency: 0.21,
-          systemLosses: 0.14,
-          inverterEfficiency: 0.97,
+          name: `${code}-INV-001`,
+          manufacturer: 'Generic',
+          model: 'Inverter',
+          serialNumber: inverterSerial,
+          protocol: 'http_api',
+          status: 'registered',
         },
       })
     }
 
-    // Register the device (inverter)
-    await db.device.create({
-      data: {
-        projectId: project.id,
-        siteId: site.id,
-        assetId: asset.id,
-        name: `${code}-INV-001`,
-        manufacturer: 'Generic',
-        model: 'Inverter',
-        serialNumber: inverterSerial,
-        protocol: 'http_api',
-        status: 'registered',
-      },
-    })
+    if (isAfforestation) {
+      // Create an afforestation asset
+      const asset = await db.asset.create({
+        data: {
+          projectId: project.id,
+          siteId: site.id,
+          name: `${code} Trees Area`,
+          assetType: 'afforestation', // new asset type
+          status: 'active',
+        },
+      })
+
+      // Register the IoT sensor device if serial provided
+      if (iotSensorSerial) {
+        await db.device.create({
+          data: {
+            projectId: project.id,
+            siteId: site.id,
+            assetId: asset.id,
+            name: `${code}-IOT-${iotSensorType || '001'}`,
+            manufacturer: iotSensorModel ? iotSensorModel.split(' ')[0] : 'Generic',
+            model: iotSensorModel || 'IoT Sensor',
+            serialNumber: iotSensorSerial,
+            protocol: iotProtocol || 'lora',
+            status: 'registered',
+          },
+        })
+      }
+    }
 
     // Log audit event
     try {
