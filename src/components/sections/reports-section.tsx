@@ -52,7 +52,7 @@ export function ReportsSection() {
   const handleDownload = async (report: any, format: 'pdf' | 'csv' | 'html') => {
     setDownloadingId(report.id)
     try {
-      const reportName = `${report.project?.code || 'report'}-${report.periodStart?.slice(0, 10)}`
+      const reportName = `${report.project?.code || 'report'}-${(report.periodStart || '').slice(0, 10)}`
 
       if (format === 'pdf') {
         // Use the dedicated PDF API that uses Playwright to generate a real PDF
@@ -62,43 +62,59 @@ export function ReportsSection() {
           throw new Error(err.error || 'فشل توليد PDF')
         }
         const pdfBlob = await res.blob()
+
+        // Trigger download
         const url = URL.createObjectURL(pdfBlob)
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.pdf`
+        a.style.display = 'none'
         document.body.appendChild(a)
         a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-        toast.success('تم تحميل التقرير بصيغة PDF')
+        // Cleanup after a delay to ensure download starts
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 1000)
+
+        toast.success(`تم تحميل التقرير بصيغة PDF (${(pdfBlob.size / 1024).toFixed(0)} KB)`)
       } else if (format === 'csv') {
         const res = await fetch(`/api/reports/${report.id}/download?format=csv`)
+        if (!res.ok) throw new Error('فشل تحميل CSV')
         const csv = await res.text()
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.csv`
+        a.style.display = 'none'
         document.body.appendChild(a)
         a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 1000)
         toast.success('تم تحميل التقرير بصيغة CSV')
       } else if (format === 'html') {
         const res = await fetch(`/api/reports/${report.id}/download?format=html`)
+        if (!res.ok) throw new Error('فشل تحميل HTML')
         const html = await res.text()
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.html`
+        a.style.display = 'none'
         document.body.appendChild(a)
         a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 1000)
         toast.success('تم تحميل التقرير بصيغة HTML')
       }
     } catch (e: any) {
+      console.error('Download error:', e)
       toast.error(e.message || 'فشل تحميل التقرير')
     } finally {
       setDownloadingId(null)
