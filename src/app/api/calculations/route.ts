@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } from '@/lib/reference-data'
+import { requireProjectAccess } from '@/lib/authorization'
 
-// Grid emission factors (kg CO2e per kWh) - Saudi Arabia, location-based
-const GRID_EMISSION_FACTORS: Record<string, { factor: number; source: string; validFrom: string }> = {
-  SA: { factor: 0.432, source: 'Saudi Electricity Company - 2024', validFrom: '2024-01-01' },
-  AE: { factor: 0.401, source: 'UAE Ministry of Energy - 2024', validFrom: '2024-01-01' },
-  default: { factor: 0.432, source: 'Default Saudi Grid - 2024', validFrom: '2024-01-01' },
-}
-
-const TREE_FACTOR = 21 // kg CO2 per tree per year (EPA)
-const CAR_FACTOR = 0.12 // kg CO2 per km (average passenger car)
+// Legacy constants removed - now using reference-data.ts library
 
 export async function GET(request: NextRequest) {
   try {
@@ -217,6 +211,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'projectId, periodStart, periodEnd required' }, { status: 400 })
     }
 
+    // Authorization: require project access
+    const auth = await requireProjectAccess(projectId, 'calculation:run')
+    if (!auth.authorized) return auth.response
+
     const project = await db.project.findUnique({
       where: { id: projectId },
       include: { assets: { include: { solarProfile: true } } },
@@ -236,34 +234,59 @@ export async function POST(request: NextRequest) {
 
     const totalEnergyKwh = readings.reduce((s, r) => s + r.value, 0)
 
-    // Carbon avoided (location-based)
-    const country = project.country || 'SA'
-    const emissionFactor = GRID_EMISSION_FACTORS[country] || GRID_EMISSION_FACTORS.default
+    // === PRIORITY 1: Use reference tables for emission factor ===
+    const countryCode = (project.country || 'SA').substring(0, 2).toUpperCase()
+    const periodDate = new Date(periodStart)
+    const emissionFactor = await getEmissionFactor(countryCode, periodDate)
     const totalCo2AvoidedKg = totalEnergyKwh * emissionFactor.factor
 
+    // === PRIORITY 1: Use reference tables for tariffs ===
+    const retailTariff = await getTariff(countryCode, 'retail', periodDate)
+    const feedInTariff = await getTariff(countryCode, 'feed_in', periodDate)
+    const tariffRetail = retailTariff?.rate ?? project.tariffRetail ?? 0.18
+    const tariffFeedIn = feedInTariff?.rate ?? project.tariffFeedIn ?? 0.10
+    const tariffSource = retailTariff?.fromDb ? retailTariff.source : 'project fallback'
+
     // Financial savings
-    const selfConsumptionRate = 0.7 // 70% self-consumed, 30% exported
+    const selfConsumptionRate = 0.7
     const selfConsumedKwh = totalEnergyKwh * selfConsumptionRate
     const exportedKwh = totalEnergyKwh * (1 - selfConsumptionRate)
-    const totalSavings = selfConsumedKwh * (project.tariffRetail || 0.18) + exportedKwh * (project.tariffFeedIn || 0.10)
+    const totalSavings = selfConsumedKwh * tariffRetail + exportedKwh * tariffFeedIn
 
     // Performance metrics
     const capacityKwp = project.capacityKwp || 0
     const specificYield = capacityKwp > 0 ? totalEnergyKwh / capacityKwp : 0
     const days = (new Date(periodEnd).getTime() - new Date(periodStart).getTime()) / (1000 * 60 * 60 * 24)
-    const referenceYield = days * 5.5 // peak sun hours average
+    const referenceYield = days * 5.5
     const performanceRatio = referenceYield > 0 && capacityKwp > 0 ? (totalEnergyKwh / capacityKwp) / referenceYield : 0
-    const availability = 0.985 // placeholder
+    const availability = 0.985
 
-    // Equivalences
-    const treeEquivalent = totalCo2AvoidedKg / TREE_FACTOR
-    const carKmAvoided = totalCo2AvoidedKg / CAR_FACTOR
+    // === PRIORITY 1: Use reference tables for conversion factors ===
+    const treeFactorData = await getConversionFactor('tree_co2', periodDate)
+    const carFactorData = await getConversionFactor('car_co2_per_km', periodDate)
+    const treeEquivalent = totalCo2AvoidedKg / treeFactorData.value
+    const carKmAvoided = totalCo2AvoidedKg / carFactorData.value
 
-    // Hash of inputs
+    // === PRIORITY 1: Use reference tables for methodology ===
+    const methodCode = methodologyVersion?.startsWith('ghg_protocol') ? 'ghg_protocol_scope2' : 'iso_14064_2'
+    const methodology = await getMethodology(methodCode)
+    const methodVersion = methodology?.version || methodologyVersion || 'ghg_protocol_scope2_v1.2'
+
+    // Hash of inputs (including reference data versions for reproducibility)
     const crypto = await import('crypto')
     const parametersHash = crypto
       .createHash('sha256')
-      .update(JSON.stringify({ projectId, periodStart, periodEnd, methodologyVersion, emissionFactor }))
+      .update(JSON.stringify({
+        projectId,
+        periodStart,
+        periodEnd,
+        methodologyVersion: methodVersion,
+        emissionFactor: { factor: emissionFactor.factor, source: emissionFactor.source, version: emissionFactor.version, fromDb: emissionFactor.fromDb },
+        tariffRetail: { rate: tariffRetail, source: tariffSource },
+        tariffFeedIn: { rate: tariffFeedIn },
+        treeFactor: { value: treeFactorData.value, version: treeFactorData.version },
+        carFactor: { value: carFactorData.value, version: carFactorData.version },
+      }))
       .digest('hex')
 
     const run = await db.calculationRun.create({
@@ -273,13 +296,15 @@ export async function POST(request: NextRequest) {
         status: 'completed',
         periodStart: new Date(periodStart),
         periodEnd: new Date(periodEnd),
-        methodologyVersion: methodologyVersion || 'ghg_protocol_scope2_v1.2',
+        methodologyVersion: methodVersion,
         parametersHash,
         result: JSON.stringify({
-          emissionFactor,
-          tariffRetail: project.tariffRetail,
-          tariffFeedIn: project.tariffFeedIn,
+          emissionFactor: { ...emissionFactor },
+          tariffRetail: { rate: tariffRetail, source: tariffSource, fromDb: retailTariff?.fromDb ?? false },
+          tariffFeedIn: { rate: tariffFeedIn, fromDb: feedInTariff?.fromDb ?? false },
           selfConsumptionRate,
+          treeFactor: { ...treeFactorData },
+          carFactor: { ...carFactorData },
           treeEquivalent: Math.round(treeEquivalent),
           carKmAvoided: Math.round(carKmAvoided),
         }),
@@ -305,9 +330,18 @@ export async function POST(request: NextRequest) {
         treeEquivalent: Math.round(treeEquivalent),
         carKmAvoided: Math.round(carKmAvoided),
         emissionFactor,
+        tariffRetail: { rate: tariffRetail, source: tariffSource },
+        tariffFeedIn: { rate: tariffFeedIn },
         selfConsumedKwh,
         exportedKwh,
         readingsCount: readings.length,
+        referenceDataProvenance: {
+          emissionFactorFromDb: emissionFactor.fromDb,
+          tariffFromDb: retailTariff?.fromDb ?? false,
+          treeFactorFromDb: treeFactorData.fromDb,
+          carFactorFromDb: carFactorData.fromDb,
+          methodologyFromDb: methodology?.fromDb ?? false,
+        },
       },
     })
   } catch (error) {

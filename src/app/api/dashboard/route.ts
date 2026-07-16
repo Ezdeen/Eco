@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/authorization'
+import { getEmissionFactor } from '@/lib/reference-data'
 
 export async function GET() {
   try {
-    const org = await db.organization.findFirst({
+    // === PRIORITY 3: Use user's organization, not findFirst() ===
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+
+    const { user } = auth
+
+    // Filter by user's organization
+    const org = await db.organization.findUnique({
+      where: { id: user.organizationId! },
       include: {
         projects: true,
         members: { include: { user: true } },
@@ -18,7 +28,7 @@ export async function GET() {
     const projects = org.projects
     const activeProjects = projects.filter((p) => p.status === 'active')
 
-    // Aggregate energy readings
+    // === PRIORITY 3: Filter readings by organization's projects only ===
     const readings = await db.energyReading.findMany({
       where: {
         projectId: { in: activeProjects.map((p) => p.id) },
@@ -28,7 +38,12 @@ export async function GET() {
     })
 
     const totalEnergyKwh = readings.reduce((sum, r) => sum + r.value, 0)
-    const totalCo2AvoidedKg = totalEnergyKwh * 0.432 // Saudi grid emission factor kgCO2e/kWh
+
+    // === PRIORITY 1: Use reference table for emission factor ===
+    const countryCode = (org.country || 'SA').substring(0, 2).toUpperCase()
+    const emissionFactorData = await getEmissionFactor(countryCode)
+    const totalCo2AvoidedKg = totalEnergyKwh * emissionFactorData.factor
+
     const totalSavingsSar =
       activeProjects.reduce((sum, p) => {
         const projectReadings = readings.filter((r) => r.projectId === p.id)

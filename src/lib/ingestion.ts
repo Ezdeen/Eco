@@ -28,9 +28,21 @@ export interface IngestResult {
   error?: string
 }
 
-// Compute SHA-256 hash of raw payload for deduplication
+// === PRIORITY 4: Canonical JSON with stable sorting ===
+// Ensures consistent hashing regardless of key insertion order
+function canonicalStringify(obj: any): string {
+  if (obj === null || obj === undefined) return 'null'
+  if (typeof obj !== 'object') return JSON.stringify(obj)
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(canonicalStringify).join(',') + ']'
+  }
+  const keys = Object.keys(obj).sort()
+  return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}'
+}
+
+// Compute SHA-256 hash of raw payload using canonical JSON
 function computePayloadHash(data: any): string {
-  const canonical = JSON.stringify(data, Object.keys(data).sort())
+  const canonical = canonicalStringify(data)
   return crypto.createHash('sha256').update(canonical).digest('hex')
 }
 
@@ -153,13 +165,17 @@ export async function ingestReadings(
         },
       })
 
-      // Handle meter reset / rollover
+      // === PRIORITY 4: Meter reset/rollover with documented logic and meter max ===
       let finalValue = input.value
       let finalCumulative = input.cumulativeValue
       let adjustmentApplied = false
+      let adjustmentReason = ''
+      let adjustmentReasonCode = ''
+
+      // Meter max value (configurable per device, default 999999 kWh)
+      const METER_MAX = 999999 // kWh - typical for industrial meters
 
       if (input.cumulativeValue !== undefined && input.cumulativeValue !== null) {
-        // Check for meter reset (cumulative dropped significantly)
         const lastReading = await db.energyReading.findFirst({
           where: {
             projectId: input.projectId,
@@ -171,31 +187,25 @@ export async function ingestReadings(
           select: { cumulativeValue: true, value: true },
         })
 
-        if (lastReading?.cumulativeValue && input.cumulativeValue < lastReading.cumulativeValue) {
-          // Meter reset detected - compute interval from new cumulative
-          finalValue = input.cumulativeValue // new reading after reset
-          adjustmentApplied = true
-
-          // Record adjustment
-          await db.readingAdjustment.create({
-            data: {
-              readingId: 'pending', // will be updated after reading creation
-              originalValue: input.value,
-              adjustedValue: finalValue,
-              reason: 'Meter reset detected - cumulative value dropped',
-              reasonCode: 'METER_RESET',
-              adjustedBy: 'system@ingestion',
-              status: 'approved', // auto-approved for system adjustments
-              note: `Previous cumulative: ${lastReading.cumulativeValue}, New: ${input.cumulativeValue}`,
-            },
-          }).catch(() => {}) // non-blocking
-        }
-
-        // Check for rollover (cumulative exceeded max and wrapped around)
-        if (lastReading?.cumulativeValue && input.cumulativeValue > lastReading.cumulativeValue * 2) {
-          // Possible rollover - flag for review
-          adjustmentApplied = true
-          finalValue = input.cumulativeValue - lastReading.cumulativeValue
+        if (lastReading?.cumulativeValue !== null && lastReading?.cumulativeValue !== undefined) {
+          // Case 1: Meter Reset - cumulative dropped to near zero
+          if (input.cumulativeValue < lastReading.cumulativeValue * 0.1) {
+            finalValue = input.cumulativeValue
+            adjustmentApplied = true
+            adjustmentReason = `Meter reset: cumulative dropped from ${lastReading.cumulativeValue} to ${input.cumulativeValue}`
+            adjustmentReasonCode = 'METER_RESET'
+          }
+          // Case 2: Rollover - cumulative wrapped around METER_MAX
+          else if (input.cumulativeValue < lastReading.cumulativeValue) {
+            finalValue = (METER_MAX - lastReading.cumulativeValue) + input.cumulativeValue
+            adjustmentApplied = true
+            adjustmentReason = `Meter rollover at max=${METER_MAX}: prev=${lastReading.cumulativeValue}, new=${input.cumulativeValue}, computed=${finalValue}`
+            adjustmentReasonCode = 'ROLLOVER'
+          }
+          // Case 3: Normal cumulative increase
+          else {
+            finalValue = input.cumulativeValue - lastReading.cumulativeValue
+          }
         }
       }
 
@@ -248,8 +258,24 @@ export async function ingestReadings(
         },
       })
 
-      // Run deterministic validation rules
-      await runValidationRules(reading.id, reading.value, reading.metricType, input.projectId)
+      // Run deterministic validation rules with measuredAt
+      await runValidationRules(reading.id, reading.value, reading.metricType, input.projectId, input.measuredAt)
+
+      // === PRIORITY 4: Link ReadingAdjustment to the real reading ===
+      if (adjustmentApplied && adjustmentReasonCode) {
+        await db.readingAdjustment.create({
+          data: {
+            readingId: reading.id, // NOW linked to real reading
+            originalValue: input.value,
+            adjustedValue: finalValue,
+            reason: adjustmentReason,
+            reasonCode: adjustmentReasonCode,
+            adjustedBy: 'system@ingestion',
+            status: 'approved', // auto-approved for system adjustments
+            note: `Auto-detected during ingestion. METER_MAX=${METER_MAX}`,
+          },
+        }).catch(() => {})
+      }
 
       // Update raw payload status
       await db.rawPayload.update({
@@ -295,11 +321,13 @@ export async function ingestReadings(
 }
 
 // Deterministic validation rules
+// === PRIORITY 4: Use measuredAt instead of new Date() for nighttime check ===
 async function runValidationRules(
   readingId: string,
   value: number,
   metricType: string,
   projectId: string,
+  measuredAt: Date, // PRIORITY 4: pass measuredAt for accurate validation
 ) {
   const rules = [
     {
@@ -317,11 +345,17 @@ async function runValidationRules(
     {
       ruleCode: 'NIGHTTIME_READING',
       check: () => {
-        const hour = new Date().getHours()
+        // === PRIORITY 4: Use measuredAt, not current time ===
+        const hour = measuredAt.getHours()
         return (hour < 5 || hour > 19) && value > 0.5 && metricType === 'energy_export_kwh'
       },
       severity: 'high',
-      details: { hour: new Date().getHours(), value, expected: '< 0.5 kWh at night' },
+      details: {
+        measuredAt: measuredAt.toISOString(),
+        hour: measuredAt.getHours(),
+        value,
+        expected: '< 0.5 kWh at night (hours 20-4)',
+      },
     },
   ]
 

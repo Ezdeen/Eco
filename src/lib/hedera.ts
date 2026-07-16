@@ -6,8 +6,9 @@ import crypto from 'crypto'
 // Hedera client configuration
 // In production, use environment variables for operator credentials
 const HEDERA_NETWORK = process.env.HEDERA_NETWORK || 'testnet'
-const HEDERA_OPERATOR_ID = process.env.HEDERA_OPERATOR_ID || '0.0.1' // placeholder
-const HEDERA_OPERATOR_KEY = process.env.HEDERA_OPERATOR_KEY || '' // placeholder
+const HEDERA_OPERATOR_ID = process.env.HEDERA_OPERATOR_ID || ''
+const HEDERA_OPERATOR_KEY = process.env.HEDERA_OPERATOR_KEY || ''
+const HEDERA_TOPIC_ID = process.env.HEDERA_TOPIC_ID || '' // Required for attestation topic
 
 // Check if Hedera SDK is available (real vs mock)
 let hederaClient: any = null
@@ -76,14 +77,24 @@ export async function submitAttestation(
   consensusTimestamp?: string
   error?: string
   mode: 'live' | 'simulation'
+  topicId?: string
+  isProductionEvidence: boolean
 }> {
   const { client, mode } = await getHederaClient()
 
   if (mode === 'live' && client) {
-    try {
-      const { TopicMessageSubmitTransaction } = await import('@hashgraph/sdk')
+    if (!HEDERA_TOPIC_ID) {
+      return {
+        success: false,
+        error: 'HEDERA_TOPIC_ID not configured. Cannot submit to topic.',
+        mode: 'live',
+        isProductionEvidence: false,
+      }
+    }
 
-      // Submit message to Hedera topic
+    try {
+      const { TopicMessageSubmitTransaction, TopicId } = await import('@hashgraph/sdk')
+
       const message = JSON.stringify({
         batchHash,
         merkleRoot,
@@ -92,6 +103,7 @@ export async function submitAttestation(
       })
 
       const transaction = await new TopicMessageSubmitTransaction()
+        .setTopicId(TopicId.fromString(HEDERA_TOPIC_ID))
         .setMessage(message)
         .execute(client)
 
@@ -104,18 +116,21 @@ export async function submitAttestation(
           ? `${receipt.consensusTimestamp.seconds}.${receipt.consensusTimestamp.nanos}`
           : new Date().toISOString(),
         mode: 'live',
+        topicId: HEDERA_TOPIC_ID,
+        isProductionEvidence: true,
       }
     } catch (error: any) {
       return {
         success: false,
         error: error.message,
         mode: 'live',
+        topicId: HEDERA_TOPIC_ID,
+        isProductionEvidence: false,
       }
     }
   }
 
   // Simulation mode (for development/testing)
-  // Generate realistic-looking transaction data
   const simulatedTxId = `0.0.${Math.floor(Math.random() * 1000000)}-${Math.floor(Date.now() / 1000)}-${Math.floor(Math.random() * 100000)}`
   const simulatedTimestamp = `${Math.floor(Date.now() / 1000)}.${String(Math.floor(Math.random() * 1000000000)).padStart(9, '0')}`
 
@@ -124,6 +139,8 @@ export async function submitAttestation(
     transactionId: simulatedTxId,
     consensusTimestamp: simulatedTimestamp,
     mode: 'simulation',
+    topicId: HEDERA_TOPIC_ID || 'not-configured',
+    isProductionEvidence: false, // CRITICAL: simulation is NOT production evidence
   }
 }
 

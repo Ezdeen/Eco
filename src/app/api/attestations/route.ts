@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requirePermission } from '@/lib/authorization'
+import { computeBatchHash, computeMerkleRoot, createOutboxEvent, submitAttestation } from '@/lib/hedera'
 
 export async function GET(request: NextRequest) {
   try {
@@ -118,6 +120,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Authorization
+    const auth = await requirePermission('attestation:submit')
+    if (!auth.authorized) return auth.response
+
     const body = await request.json()
     const { projectId, readings, methodologyVersion } = body
 
@@ -125,8 +131,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'projectId and readings[] are required' }, { status: 400 })
     }
 
-    // Build canonical payload
-    const canonicalPayload = JSON.stringify({
+    // Build canonical payload using sorted keys for consistency
+    const canonicalPayload = {
       projectId,
       methodologyVersion: methodologyVersion || 'ghg_protocol_scope2_v1.2',
       generatedAt: new Date().toISOString(),
@@ -138,61 +144,98 @@ export async function POST(request: NextRequest) {
         unit: r.unit,
         hash: r.canonicalPayloadHash,
       })),
-    })
-
-    // Compute SHA-256 (simplified - in production use Web Crypto API on server)
-    const crypto = await import('crypto')
-    const batchHash = crypto.createHash('sha256').update(canonicalPayload).digest('hex')
-
-    // Generate Merkle root (simplified - root of leaves)
-    const leaves = readings.map((r: any) => r.canonicalPayloadHash || r.id)
-    let level = leaves
-    while (level.length > 1) {
-      const next: string[] = []
-      for (let i = 0; i < level.length; i += 2) {
-        const left = level[i]
-        const right = level[i + 1] || left
-        next.push(crypto.createHash('sha256').update(left + right).digest('hex'))
-      }
-      level = next
     }
-    const merkleRoot = level[0] || batchHash
 
-    // Simulate Hedera transaction
-    const hederaTransactionId = `0.0.${Math.floor(Math.random() * 1000000)}-${Math.floor(Date.now() / 1000)}-${Math.floor(Math.random() * 100000)}`
-    const consensusTimestamp = `${Math.floor(Date.now() / 1000)}.000000000`
+    // === PRIORITY 2: Use computeBatchHash from hedera.ts ===
+    const batchHash = computeBatchHash(canonicalPayload)
 
+    // === PRIORITY 2: Use computeMerkleRoot from hedera.ts ===
+    const leaves = readings.map((r: any) => r.canonicalPayloadHash || r.id)
+    const merkleRoot = computeMerkleRoot(leaves)
+
+    const payloadSummary = {
+      readingsCount: readings.length,
+      period: {
+        start: readings[0]?.intervalStart,
+        end: readings[readings.length - 1]?.intervalStart,
+      },
+      methodologyVersion: methodologyVersion || 'ghg_protocol_scope2_v1.2',
+    }
+
+    // === PRIORITY 2: Create attestation as "pending" - NOT confirmed yet ===
     const attestation = await db.attestationBatch.create({
       data: {
         projectId,
-        batchHash: `0x${batchHash}`,
-        merkleRoot: `0x${merkleRoot}`,
-        status: 'confirmed',
-        hederaTransactionId,
-        consensusTimestamp,
-        payloadSummary: JSON.stringify({
-          readingsCount: readings.length,
-          period: {
-            start: readings[0]?.intervalStart,
-            end: readings[readings.length - 1]?.intervalStart,
-          },
-          methodologyVersion: methodologyVersion || 'ghg_protocol_scope2_v1.2',
-        }),
+        batchHash,
+        merkleRoot,
+        status: 'pending', // CRITICAL: start as pending, not confirmed
+        payloadSummary: JSON.stringify(payloadSummary),
         itemCount: readings.length,
         submittedAt: new Date(),
-        confirmedAt: new Date(),
       },
+      include: { project: { select: { name: true, nameAr: true, code: true } } },
+    })
+
+    // === PRIORITY 2: Create outbox event for async Hedera submission ===
+    const outboxEventId = await createOutboxEvent('attestation_submit', {
+      attestationBatchId: attestation.id,
+      batchHash,
+      merkleRoot,
+      payloadSummary,
+    })
+
+    // Try immediate submission
+    const result = await submitAttestation(batchHash, merkleRoot, payloadSummary)
+
+    if (result.success) {
+      // === PRIORITY 2: Only mark confirmed after actual outbox submission ===
+      await db.attestationBatch.update({
+        where: { id: attestation.id },
+        data: {
+          status: result.isProductionEvidence ? 'confirmed' : 'submitted', // simulation = submitted, not confirmed
+          hederaTransactionId: result.transactionId,
+          consensusTimestamp: result.consensusTimestamp,
+          confirmedAt: result.isProductionEvidence ? new Date() : null,
+        },
+      })
+
+      // Update outbox event
+      await db.outboxEvent.update({
+        where: { id: outboxEventId },
+        data: {
+          status: 'confirmed',
+          hederaTransactionId: result.transactionId,
+          consensusTimestamp: result.consensusTimestamp,
+          processedAt: new Date(),
+        },
+      })
+    } else {
+      // Submission failed - keep as pending, outbox will retry
+      await db.attestationBatch.update({
+        where: { id: attestation.id },
+        data: { status: 'pending' },
+      })
+    }
+
+    const updated = await db.attestationBatch.findUnique({
+      where: { id: attestation.id },
       include: { project: { select: { name: true, nameAr: true, code: true } } },
     })
 
     return NextResponse.json({
       success: true,
-      attestation,
-      canonicalPayloadHash: `0x${batchHash}`,
-      merkleRoot: `0x${merkleRoot}`,
-      hederaTransactionId,
-      consensusTimestamp,
-    })
+      attestation: updated,
+      batchHash,
+      merkleRoot,
+      hederaTransactionId: result.transactionId,
+      consensusTimestamp: result.consensusTimestamp,
+      mode: result.mode,
+      isProductionEvidence: result.isProductionEvidence,
+      topicId: result.topicId,
+      warning: result.isProductionEvidence
+        ? undefined
+        : '⚠️ هذه توثيق محاكاة (simulation) وليس دليلاً إنتاجيًا. للتوثيق الإنتاجي، اضبط HEDERA_OPERATOR_ID و HEDERA_OPERATOR_KEY و HEDERA_TOPIC_ID',
+    }, { status: 201 })
   } catch (error) {
     console.error('Create attestation error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
