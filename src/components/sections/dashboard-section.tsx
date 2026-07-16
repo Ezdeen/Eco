@@ -80,16 +80,23 @@ export function DashboardSection() {
     setLoading(true)
     try {
       const res = await fetch('/api/dashboard')
+      if (!res.ok) {
+        // API returned error (401, 500, etc.) - don't crash, just keep loading state
+        console.warn('Dashboard API returned status:', res.status)
+        setData(null)
+        setLoading(false)
+        return
+      }
       const json = await res.json()
-      // Validate response has expected structure (not an error object)
+      // Validate response has expected structure
       if (json && json.kpis) {
         setData(json)
       } else {
-        console.error('Dashboard API returned unexpected data:', json)
+        console.warn('Dashboard API returned unexpected data structure')
         setData(null)
       }
     } catch (e) {
-      console.error(e)
+      console.error('Dashboard fetch error:', e)
       setData(null)
     } finally {
       setLoading(false)
