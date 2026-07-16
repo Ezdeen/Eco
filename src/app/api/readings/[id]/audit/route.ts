@@ -107,7 +107,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-// PATCH - submit audit decision (approve, correct, reject, escalate)
+// PATCH - submit audit note (READ-ONLY: only adds reviewer note, does NOT change reading status)
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
@@ -117,11 +117,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
-    const { action, note, correctedValue } = body
+    const { note } = body
 
-    if (!['approve', 'correct', 'reject', 'escalate'].includes(action)) {
+    if (!note || typeof note !== 'string' || note.trim().length === 0) {
       return NextResponse.json(
-        { error: 'الإجراء غير صالح. يجب أن يكون: approve, correct, reject, escalate' },
+        { error: 'ملاحظة المدقق مطلوبة' },
+        { status: 400 },
+      )
+    }
+
+    if (note.length > 1000) {
+      return NextResponse.json(
+        { error: 'الملاحظة طويلة جدًا (الحد الأقصى 1000 حرف)' },
         { status: 400 },
       )
     }
@@ -131,43 +138,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'القراءة غير موجودة' }, { status: 404 })
     }
 
-    // Determine new status based on action
-    let newQualityStatus = existing.qualityStatus
-    let newValidationStatus = existing.validationStatus
-    let updateData: any = {
-      auditedAt: new Date(),
-      auditedBy: user.email,
-      auditAction: action,
-      auditNote: note || null,
-    }
-
-    if (action === 'approve') {
-      newQualityStatus = 'approved'
-      newValidationStatus = 'reviewed'
-    } else if (action === 'correct') {
-      newQualityStatus = 'corrected'
-      newValidationStatus = 'reviewed'
-      if (correctedValue !== undefined) {
-        updateData.value = parseFloat(correctedValue)
-      }
-    } else if (action === 'reject') {
-      newQualityStatus = 'rejected'
-      newValidationStatus = 'invalid'
-    } else if (action === 'escalate') {
-      newQualityStatus = 'suspect'
-      newValidationStatus = 'invalid'
-      updateData.suspectSeverity = 'critical'
-      if (!updateData.suspectReason) {
-        updateData.suspectReason = 'تمت إحالة القراءة للتدقيق اليدوي المتقدم'
-      }
-    }
-
-    updateData.qualityStatus = newQualityStatus
-    updateData.validationStatus = newValidationStatus
-
+    // READ-ONLY: only add audit note, do NOT change qualityStatus or validationStatus
+    // The reading's status remains exactly as it was (suspect/rejected/validated)
+    // The auditor can only add their observations
     const updated = await db.energyReading.update({
       where: { id },
-      data: updateData,
+      data: {
+        auditedAt: new Date(),
+        auditedBy: user.email,
+        auditAction: 'reviewed', // action is always "reviewed" - just an observation
+        auditNote: note.trim(),
+        // qualityStatus and validationStatus are NOT modified - read-only audit
+      },
     })
 
     // Log audit event
@@ -178,20 +160,24 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           projectId: existing.projectId,
           userId: user.userId,
           actor: user.email,
-          action: `reading.audit.${action}`,
+          action: 'reading.audit.note',
           resource: 'energy_reading',
           resourceId: id,
           result: 'success',
           metadata: JSON.stringify({
-            previousStatus: existing.qualityStatus,
-            newStatus: newQualityStatus,
-            note: note?.slice(0, 200),
+            statusUnchanged: true,
+            qualityStatus: existing.qualityStatus,
+            note: note.slice(0, 200),
           }),
         },
       })
     } catch {}
 
-    return NextResponse.json({ success: true, reading: updated })
+    return NextResponse.json({
+      success: true,
+      reading: updated,
+      message: 'تم حفظ ملاحظة المدقيق - لم يتم تغيير حالة القراءة (للقراءة فقط)',
+    })
   } catch (error) {
     console.error('Reading audit PATCH error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

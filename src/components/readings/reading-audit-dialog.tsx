@@ -10,13 +10,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { Loader2, AlertTriangle, AlertCircle, CheckCircle2, XCircle, TrendingUp, Activity, FileSearch, ArrowUpCircle, Edit3, ShieldAlert } from 'lucide-react'
+import { Loader2, AlertTriangle, AlertCircle, CheckCircle2, TrendingUp, Activity, FileSearch, Save, Copy, Check, Lock, Eye } from 'lucide-react'
 import { StatusBadge } from '@/components/platform/status-badge'
 import { toast } from 'sonner'
 import {
@@ -65,20 +64,64 @@ const SEVERITY_CONFIG = {
   low: { label: 'منخفض', color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800', icon: AlertCircle },
 }
 
+// Reusable Hash copy component
+function HashCell({ hash, label }: { hash: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(hash)
+      setCopied(true)
+      toast.success('تم نسخ الـ Hash')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback for browsers without clipboard API
+      const textarea = document.createElement('textarea')
+      textarea.value = hash
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        toast.success('تم نسخ الـ Hash')
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        toast.error('فشل نسخ الـ Hash')
+      }
+      document.body.removeChild(textarea)
+    }
+  }
+
+  if (!hash) return <span className="text-xs text-muted-foreground">—</span>
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      {label && <span className="text-xs text-muted-foreground shrink-0">{label}:</span>}
+      <code className="font-mono text-[10px] text-muted-foreground truncate max-w-[120px] block">{hash}</code>
+      <button
+        onClick={copyToClipboard}
+        title="نسخ الـ Hash"
+        className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors shrink-0"
+      >
+        {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </div>
+  )
+}
+
 export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }: ReadingAuditDialogProps) {
   const [data, setData] = useState<AuditData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [action, setAction] = useState<'approve' | 'correct' | 'reject' | 'escalate'>('approve')
   const [note, setNote] = useState('')
-  const [correctedValue, setCorrectedValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open || !readingId) {
       setData(null)
       setNote('')
-      setCorrectedValue('')
-      setAction('approve')
       return
     }
 
@@ -87,7 +130,7 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
       .then((r) => r.json())
       .then((d) => {
         setData(d)
-        setCorrectedValue(d.reading?.value?.toString() || '')
+        setNote(d.audit?.auditNote || '')
       })
       .catch((e) => {
         console.error(e)
@@ -98,33 +141,26 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
 
   const handleSubmit = async () => {
     if (!readingId) return
+    if (!note.trim()) {
+      toast.error('يرجى إدخال ملاحظة المدقق')
+      return
+    }
 
     setSubmitting(true)
     try {
-      const payload: any = { action, note }
-      if (action === 'correct' && correctedValue) {
-        payload.correctedValue = correctedValue
-      }
-
       const res = await fetch(`/api/readings/${readingId}/audit`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ note }),
       })
 
       const result = await res.json()
       if (!res.ok) {
-        toast.error(result.error || 'فشل إرسال قرار التدقيق')
+        toast.error(result.error || 'فشل حفظ الملاحظة')
         return
       }
 
-      const actionLabels = {
-        approve: 'اعتماد',
-        correct: 'تصحيح',
-        reject: 'رفض',
-        escalate: 'إحالة',
-      }
-      toast.success(`تم ${actionLabels[action]} القراءة بنجاح`)
+      toast.success('تم حفظ ملاحظة المدقق (القراءة للقراءة فقط - لم تتغير الحالة)')
       onOpenChange(false)
       onAudited?.()
     } catch (e) {
@@ -143,9 +179,13 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
           <DialogTitle className="flex items-center gap-2 text-xl">
             <FileSearch className="h-5 w-5 text-primary" />
             استعلام وتدقيق القراءة
+            <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 mr-2">
+              <Lock className="h-3 w-3 ml-1" />
+              للقراءة فقط
+            </Badge>
           </DialogTitle>
           <DialogDescription>
-            تفاصيل القراءة المشبوهة/المرفوضة مع السبب والإجراءات المتاحة
+            عرض تفاصيل القراءة - يمكن إضافة ملاحظة للمدقق دون تغيير حالة القراءة
           </DialogDescription>
         </DialogHeader>
 
@@ -158,6 +198,7 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
           <div className="text-center py-12 text-muted-foreground">لا توجد بيانات</div>
         ) : (
           <div className="space-y-5">
+            {/* Reading info */}
             <Card className="p-4 bg-muted/30">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
@@ -190,12 +231,13 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
                 <span className="text-xs text-muted-foreground">الحالة:</span>
                 <StatusBadge status={data.reading.qualityStatus} />
                 <StatusBadge status={data.reading.validationStatus} />
-                <span className="text-xs text-muted-foreground ml-auto">
-                  Hash: <code className="font-mono">{data.reading.canonicalPayloadHash?.slice(0, 16)}...</code>
-                </span>
+                <div className="mr-auto">
+                  <HashCell hash={data.reading.canonicalPayloadHash} label="Hash" />
+                </div>
               </div>
             </Card>
 
+            {/* Suspect reason */}
             {data.audit.suspectReason && (
               <div className={`p-4 rounded-xl border-2 ${
                 data.audit.suspectSeverity === 'critical'
@@ -252,15 +294,16 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
               </div>
             )}
 
+            {/* Previous audit note (if exists) */}
             {data.audit.auditedAt && (
               <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200">
                 <div className="flex items-center gap-2 mb-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <h4 className="font-semibold text-sm">تم التدقيق مسبقًا</h4>
+                  <h4 className="font-semibold text-sm">تمت المراجعة مسبقًا</h4>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <p className="text-muted-foreground">الإجراء المتّخذ</p>
+                    <p className="text-muted-foreground">الإجراء</p>
                     <Badge variant="outline" className="mt-1">{data.audit.auditAction}</Badge>
                   </div>
                   <div>
@@ -275,14 +318,15 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
                   </div>
                   {data.audit.auditNote && (
                     <div className="col-span-2">
-                      <p className="text-muted-foreground">ملاحظات</p>
-                      <p className="font-medium">{data.audit.auditNote}</p>
+                      <p className="text-muted-foreground">الملاحظة السابقة</p>
+                      <p className="font-medium p-2 rounded bg-muted/40 mt-1">{data.audit.auditNote}</p>
                     </div>
                   )}
                 </div>
               </Card>
             )}
 
+            {/* Statistics */}
             {data.statistics && (
               <Card className="p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -358,107 +402,58 @@ export function ReadingAuditDialog({ open, onOpenChange, readingId, onAudited }:
               </Card>
             )}
 
-            {!data.audit.auditedAt && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-primary" />
-                    <h4 className="font-semibold text-sm">إجراء التدقيق</h4>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <button
-                      onClick={() => setAction('approve')}
-                      className={`p-3 rounded-lg border-2 text-right transition-all ${
-                        action === 'approve' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' : 'border-border hover:border-emerald-300'
-                      }`}
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 mb-1" />
-                      <p className="text-xs font-semibold">اعتماد</p>
-                      <p className="text-[10px] text-muted-foreground">القراءة صحيحة</p>
-                    </button>
-                    <button
-                      onClick={() => setAction('correct')}
-                      className={`p-3 rounded-lg border-2 text-right transition-all ${
-                        action === 'correct' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-border hover:border-blue-300'
-                      }`}
-                    >
-                      <Edit3 className="h-4 w-4 text-blue-600 mb-1" />
-                      <p className="text-xs font-semibold">تصحيح</p>
-                      <p className="text-[10px] text-muted-foreground">تعديل القيمة</p>
-                    </button>
-                    <button
-                      onClick={() => setAction('reject')}
-                      className={`p-3 rounded-lg border-2 text-right transition-all ${
-                        action === 'reject' ? 'border-red-500 bg-red-50 dark:bg-red-950/30' : 'border-border hover:border-red-300'
-                      }`}
-                    >
-                      <XCircle className="h-4 w-4 text-red-600 mb-1" />
-                      <p className="text-xs font-semibold">رفض</p>
-                      <p className="text-[10px] text-muted-foreground">القراءة خاطئة</p>
-                    </button>
-                    <button
-                      onClick={() => setAction('escalate')}
-                      className={`p-3 rounded-lg border-2 text-right transition-all ${
-                        action === 'escalate' ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30' : 'border-border hover:border-amber-300'
-                      }`}
-                    >
-                      <ShieldAlert className="h-4 w-4 text-amber-600 mb-1" />
-                      <p className="text-xs font-semibold">إحالة</p>
-                      <p className="text-[10px] text-muted-foreground">للتدقيق المتقدم</p>
-                    </button>
-                  </div>
-
-                  {action === 'correct' && (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="correctedValue" className="text-xs">القيمة المصحّحة</Label>
-                      <Input
-                        id="correctedValue"
-                        type="number"
-                        step="any"
-                        value={correctedValue}
-                        onChange={(e) => setCorrectedValue(e.target.value)}
-                        dir="ltr"
-                        className="font-mono"
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="note" className="text-xs">ملاحظات المراجع</Label>
-                    <Textarea
-                      id="note"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="اشرح سبب القرار وأي تفاصيل ذات صلة..."
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+            {/* Audit note - READ ONLY: only a note, no status change */}
+            <Separator />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-primary" />
+                <h4 className="font-semibold text-sm">ملاحظة المدقق</h4>
+                <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300">
+                  <Lock className="h-3 w-3 ml-1" />
+                  لا تغيير للحالة
+                </Badge>
+              </div>
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 text-xs text-blue-800 dark:text-blue-300">
+                <strong>ملاحظة:</strong> التدقيق هنا للقراءة فقط. يمكنك إضافة ملاحظاتك دون تغيير حالة القراءة (مشبوه/مرفوض/صالح).
+                تظل القيمة الأصلية محفوظة ولا يتم تعديلها.
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="note" className="text-xs">
+                  ملاحظات المدقق <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="أضف ملاحظاتك حول القراءة - مثلاً: تم التحقق من القراءة ومطابقتها مع سجلات الإنفرتر، القيمة منطقية رغم الانحراف بسبب حالة الطقس..."
+                  rows={4}
+                  maxLength={1000}
+                />
+                <p className="text-[10px] text-muted-foreground text-left">
+                  {note.length} / 1000 حرف
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            إغلاق
+            إلغاء
           </Button>
-          {data && !data.audit.auditedAt && (
-            <Button onClick={handleSubmit} disabled={submitting} className="bg-primary">
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-                  جاري الإرسال...
-                </>
-              ) : (
-                <>
-                  <ArrowUpCircle className="h-4 w-4 ml-1" />
-                  تأكيد الإجراء
-                </>
-              )}
-            </Button>
-          )}
+          <Button onClick={handleSubmit} disabled={submitting || loading} className="bg-primary">
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                جاري الحفظ...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 ml-1" />
+                حفظ الملاحظة
+              </>
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

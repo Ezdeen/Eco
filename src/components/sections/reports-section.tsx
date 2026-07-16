@@ -52,21 +52,25 @@ export function ReportsSection() {
   const handleDownload = async (report: any, format: 'pdf' | 'csv' | 'html') => {
     setDownloadingId(report.id)
     try {
+      const reportName = `${report.project?.code || 'report'}-${report.periodStart?.slice(0, 10)}`
+
       if (format === 'pdf') {
-        // For PDF, we download as HTML which can be printed to PDF
-        // Or use the browser's print functionality
-        const res = await fetch(`/api/reports/${report.id}/download?format=html`)
-        const html = await res.text()
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
+        // Use the dedicated PDF API that uses Playwright to generate a real PDF
+        const res = await fetch(`/api/reports/${report.id}/pdf`)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error || 'فشل توليد PDF')
+        }
+        const pdfBlob = await res.blob()
+        const url = URL.createObjectURL(pdfBlob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${report.project?.code || 'report'}-${report.periodStart?.slice(0, 10)}.html`
+        a.download = `${reportName}.pdf`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
-        toast.success('تم تحميل التقرير (HTML - يمكن طباعته كـ PDF)')
+        toast.success('تم تحميل التقرير بصيغة PDF')
       } else if (format === 'csv') {
         const res = await fetch(`/api/reports/${report.id}/download?format=csv`)
         const csv = await res.text()
@@ -74,7 +78,7 @@ export function ReportsSection() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${report.project?.code || 'report'}-${report.periodStart?.slice(0, 10)}.csv`
+        a.download = `${reportName}.csv`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -87,15 +91,15 @@ export function ReportsSection() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${report.project?.code || 'report'}-${report.periodStart?.slice(0, 10)}.html`
+        a.download = `${reportName}.html`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
         toast.success('تم تحميل التقرير بصيغة HTML')
       }
-    } catch (e) {
-      toast.error('فشل تحميل التقرير')
+    } catch (e: any) {
+      toast.error(e.message || 'فشل تحميل التقرير')
     } finally {
       setDownloadingId(null)
     }

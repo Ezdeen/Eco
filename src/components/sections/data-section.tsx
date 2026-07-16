@@ -8,8 +8,56 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Database, Search, Download, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Filter, FileSearch } from 'lucide-react'
+import { Database, Search, Download, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Filter, FileSearch, Copy, Check } from 'lucide-react'
 import { ReadingAuditDialog } from '@/components/readings/reading-audit-dialog'
+import { toast } from 'sonner'
+
+// Reusable Hash copy button
+function HashCopyButton({ hash }: { hash: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(hash)
+      setCopied(true)
+      toast.success('تم نسخ الـ Hash')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback
+      const textarea = document.createElement('textarea')
+      textarea.value = hash
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        toast.success('تم نسخ الـ Hash')
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        toast.error('فشل نسخ الـ Hash')
+      }
+      document.body.removeChild(textarea)
+    }
+  }
+
+  if (!hash) return <span className="text-[10px] text-muted-foreground">—</span>
+
+  return (
+    <div className="flex items-center gap-1">
+      <code className="text-[10px] font-mono text-muted-foreground truncate max-w-[70px] block">{hash.slice(0, 12)}...</code>
+      <button
+        onClick={copyToClipboard}
+        title={`نسخ: ${hash}`}
+        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors shrink-0"
+      >
+        {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </div>
+  )
+}
 
 interface Reading {
   id: string
@@ -283,9 +331,7 @@ export function DataCenterSection() {
                         </p>
                       </TableCell>
                       <TableCell>
-                        <p className="text-[10px] font-mono text-muted-foreground truncate max-w-[80px]">
-                          {r.canonicalPayloadHash?.slice(0, 12) || '—'}...
-                        </p>
+                        <HashCopyButton hash={r.canonicalPayloadHash || ''} />
                       </TableCell>
                       <TableCell><StatusBadge status={r.qualityStatus} /></TableCell>
                       <TableCell><StatusBadge status={r.validationStatus} /></TableCell>
