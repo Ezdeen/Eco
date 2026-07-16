@@ -142,9 +142,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
         )}
       >
         <div className="flex items-center gap-3 p-5 border-b border-sidebar-border">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground shadow-lg">
-            <Sun className="h-6 w-6" />
-          </div>
+          <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
           <div className="flex-1 min-w-0">
             <h1 className="font-cairo text-base font-bold leading-tight truncate">منصة ESG الشمسية</h1>
             <p className="text-xs text-muted-foreground truncate">BrightFuture Energy</p>

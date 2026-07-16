@@ -111,9 +111,7 @@ export default function Home() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
-          <Sun className="h-8 w-8" />
-        </div>
+        <img src="/logo.svg" alt="شعار المنصة" className="h-16 w-16 rounded-2xl object-contain shadow-lg" />
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>جاري التحقق من الجلسة...</span>

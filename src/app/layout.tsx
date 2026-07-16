@@ -32,6 +32,7 @@ export const metadata: Metadata = {
   authors: [{ name: "BrightFuture Energy Co." }],
   icons: {
     icon: "/logo.svg",
+    apple: "/logo.svg",
   },
 };
 

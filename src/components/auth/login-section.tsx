@@ -109,9 +109,7 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
         {/* Left: Branding */}
         <div className="hidden lg:flex flex-col gap-6 p-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
-              <Sun className="h-7 w-7" />
-            </div>
+            <img src="/logo.svg" alt="شعار المنصة" className="h-14 w-14 rounded-2xl shrink-0 object-contain shadow-lg" />
             <div>
               <h1 className="font-cairo text-2xl font-bold">منصة ESG الشمسية</h1>
               <p className="text-sm text-muted-foreground">BrightFuture Energy Platform</p>
@@ -173,9 +171,7 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
         <Card className="w-full shadow-xl border-border/60 backdrop-blur">
           <CardHeader className="space-y-3 pb-4">
             <div className="flex items-center gap-3 lg:hidden">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg">
-                <Sun className="h-5 w-5" />
-              </div>
+              <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
               <div>
                 <CardTitle className="text-lg">منصة ESG الشمسية</CardTitle>
                 <CardDescription className="text-xs">BrightFuture Energy</CardDescription>
