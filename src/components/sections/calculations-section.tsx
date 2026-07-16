@@ -161,19 +161,32 @@ export function CalculationsSection() {
   const [traceDialog, setTraceDialog] = useState<any>(null)
 
   useEffect(() => {
-    fetch('/api/projects').then((r) => r.json()).then((d) => setProjects(d.projects || []))
+    fetch('/api/projects')
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { if (d && d.projects) setProjects(d.projects) })
+      .catch(() => {})
     fetchCalculations()
     fetch('/api/esg-frameworks')
-      .then((r) => r.json())
-      .then((d) => setEsgData(d))
+      .then((r) => {
+        if (!r.ok) throw new Error('ESG frameworks API failed')
+        return r.json()
+      })
+      .then((d) => {
+        if (d && d.frameworks) {
+          setEsgData(d)
+        }
+      })
       .catch(() => {})
   }, [])
 
   const fetchCalculations = async () => {
-    const res = await fetch('/api/calculations')
-    const data = await res.json()
-    setRecentRuns(data.calculationRuns || [])
-    setKpiCatalog(data.kpiCatalog || null)
+    try {
+      const res = await fetch('/api/calculations')
+      if (!res.ok) return
+      const data = await res.json()
+      setRecentRuns(data.calculationRuns || [])
+      setKpiCatalog(data.kpiCatalog || null)
+    } catch {}
   }
 
   const runCalculation = async () => {
