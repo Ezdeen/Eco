@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { FileBarChart, Download, FileText, CheckCircle2, Clock, FilePlus, FileSpreadsheet, FileCode, Eye, Loader2 } from 'lucide-react'
+import { FileBarChart, Download, FileText, CheckCircle2, Clock, FilePlus, FileSpreadsheet, FileCode, Eye, Loader2, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function ReportsSection() {
@@ -150,6 +150,38 @@ export function ReportsSection() {
     }
   }
 
+  // Print report - opens print dialog with formatted HTML
+  const handlePrint = async (report: any) => {
+    try {
+      toast.info('جاري تحضير التقرير للطباعة...')
+      const res = await fetch(`/api/reports/${report.id}/download?format=html`)
+      if (!res.ok) throw new Error('فشل تحميل التقرير')
+      const html = await res.text()
+
+      // Open print window
+      const printWindow = window.open('', '_blank', 'width=800,height=900')
+      if (!printWindow) {
+        toast.error('يرجى السماح بالنوافذ المنبثقة للطباعة')
+        return
+      }
+
+      printWindow.document.write(html)
+      printWindow.document.close()
+
+      // Wait for content to load then print
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.focus()
+          printWindow.print()
+        }, 500)
+      }
+
+      toast.success('تم فتح نافذة الطباعة')
+    } catch (e: any) {
+      toast.error(e.message || 'فشل تحضير الطباعة')
+    }
+  }
+
   if (loading) {
     return <Card className="h-96 animate-pulse bg-muted/40" />
   }
@@ -235,7 +267,7 @@ export function ReportsSection() {
               </div>
 
               {/* Download buttons */}
-              <div className="grid grid-cols-4 gap-2 pt-2 border-t">
+              <div className="grid grid-cols-5 gap-2 pt-2 border-t">
                 <Button
                   variant="outline"
                   size="sm"
@@ -252,7 +284,7 @@ export function ReportsSection() {
                   className="h-8 text-xs flex flex-col gap-0.5 border-red-200 text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                   onClick={() => handleDownload(r, 'pdf')}
                   disabled={downloadingId === r.id}
-                  title="تحميل PDF (HTML قابل للطباعة)"
+                  title="تحميل PDF"
                 >
                   {downloadingId === r.id ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -282,6 +314,16 @@ export function ReportsSection() {
                 >
                   <FileCode className="h-3 w-3" />
                   <span className="text-[10px]">HTML</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs flex flex-col gap-0.5 border-violet-200 text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-950/30"
+                  onClick={() => handlePrint(r)}
+                  title="طباعة التقرير"
+                >
+                  <Printer className="h-3 w-3" />
+                  <span className="text-[10px]">طباعة</span>
                 </Button>
               </div>
             </CardContent>
@@ -457,6 +499,10 @@ export function ReportsSection() {
                   تحميل HTML
                 </Button>
               </div>
+              <Button onClick={() => handlePrint(previewReport)} className="w-full bg-violet-600 hover:bg-violet-700">
+                <Printer className="h-4 w-4 ml-1" />
+                طباعة التقرير
+              </Button>
             </div>
           ) : null}
         </DialogContent>
