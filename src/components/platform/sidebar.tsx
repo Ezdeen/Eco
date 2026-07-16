@@ -19,6 +19,7 @@ import {
   X,
   LogOut,
   Server,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import { toast } from 'sonner'
 export type Section =
   | 'dashboard'
   | 'projects'
+  | 'energy-performance'
   | 'assets-devices'
   | 'data'
   | 'monitoring'
@@ -51,10 +53,11 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'مركز القيادة', labelEn: 'Command Center', icon: LayoutDashboard, group: 'main' },
   { id: 'projects', label: 'المشاريع والمواقع', labelEn: 'Projects & Sites', icon: FolderKanban, group: 'main' },
+  { id: 'energy-performance', label: 'الطاقة الكهربائية', labelEn: 'Energy Performance', icon: Zap, group: 'main' },
   { id: 'assets-devices', label: 'الأصول والأجهزة', labelEn: 'Assets & Devices', icon: Server, group: 'main' },
   { id: 'data', label: 'مركز البيانات', labelEn: 'Data Center', icon: Database, group: 'data' },
   { id: 'monitoring', label: 'مركز المراقبة', labelEn: 'Monitoring', icon: Activity, group: 'data' },
-  { id: 'calculations', label: 'الحسابات', labelEn: 'Calculations', icon: Calculator, group: 'data' },
+  { id: 'calculations', label: 'الحسابات (KPI Catalog)', labelEn: 'Calculations', icon: Calculator, group: 'data' },
   { id: 'attestations', label: 'التوثيق', labelEn: 'Attestation', icon: ShieldCheck, group: 'attestation' },
   { id: 'impact', label: 'وحدات الأثر', labelEn: 'Impact Ledger', icon: Coins, group: 'attestation' },
   { id: 'reports', label: 'التقارير', labelEn: 'Reports', icon: FileBarChart, group: 'output' },

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/platform/status-badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { ShieldCheck, Link2, FileCheck, Hash, Network, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
+import { ShieldCheck, Link2, FileCheck, Hash, Network, CheckCircle2, AlertTriangle, Loader2, Clock, RefreshCw, FileText, Database } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function AttestationsSection() {
@@ -81,27 +81,59 @@ export function AttestationsSection() {
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="p-3">
-          <p className="text-xs text-muted-foreground">إجمالي الدفعات</p>
-          <p className="text-xl font-bold tabular-nums">{stats?.total || 0}</p>
-        </Card>
+      {/* Stats - Comprehensive */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <Card className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
-          <div className="flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3 w-3" /> مؤكَّد</div>
-          <p className="text-xl font-bold tabular-nums text-emerald-600">{stats?.confirmed || 0}</p>
+          <div className="flex items-center gap-1 text-xs text-emerald-700 mb-0.5"><CheckCircle2 className="h-3 w-3" /> حزم موثقة</div>
+          <p className="text-xl font-bold tabular-nums text-emerald-600">{stats?.attestedBatches || 0}</p>
         </Card>
         <Card className="p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
-          <div className="flex items-center gap-1 text-xs text-amber-700"><Loader2 className="h-3 w-3" /> بالانتظار</div>
-          <p className="text-xl font-bold tabular-nums text-amber-600">{stats?.pending || 0}</p>
-        </Card>
-        <Card className="p-3 bg-red-50 dark:bg-red-950/30 border-red-200">
-          <div className="flex items-center gap-1 text-xs text-red-700"><AlertTriangle className="h-3 w-3" /> فشل</div>
-          <p className="text-xl font-bold tabular-nums text-red-600">{stats?.failed || 0}</p>
+          <div className="flex items-center gap-1 text-xs text-amber-700 mb-0.5"><AlertTriangle className="h-3 w-3" /> حزم غير موثقة</div>
+          <p className="text-xl font-bold tabular-nums text-amber-600">{stats?.unattestedBatches || 0}</p>
         </Card>
         <Card className="p-3">
-          <p className="text-xs text-muted-foreground">العناصر الموثقة</p>
-          <p className="text-xl font-bold tabular-nums">{stats?.totalItems?.toLocaleString() || 0}</p>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Network className="h-3 w-3" /> حالة Hedera</div>
+          <p className="text-sm font-bold text-emerald-600">{stats?.hederaStatus === 'connected' ? '🟢 متصل' : '🔴 غير متصل'}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Clock className="h-3 w-3" /> آخر توثيق</div>
+          <p className="text-xs font-medium">
+            {stats?.lastAttestation?.confirmedAt
+              ? new Date(stats.lastAttestation.confirmedAt).toLocaleString('ar-SA', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+              : '—'}
+          </p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Link2 className="h-3 w-3" /> آخر Consensus</div>
+          <p className="text-[10px] font-mono truncate">{stats?.lastConsensusTimestamp || '—'}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><RefreshCw className="h-3 w-3" /> إعادة المحاولة</div>
+          <p className="text-xl font-bold tabular-nums">{stats?.retryCount || 0}</p>
+        </Card>
+        <Card className="p-3 bg-red-50 dark:bg-red-950/30 border-red-200">
+          <div className="flex items-center gap-1 text-xs text-red-700 mb-0.5"><AlertTriangle className="h-3 w-3" /> عدم تطابق</div>
+          <p className="text-xl font-bold tabular-nums text-red-600">{stats?.mismatchCount || 0}</p>
+        </Card>
+        <Card className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
+          <div className="flex items-center gap-1 text-xs text-emerald-700 mb-0.5"><CheckCircle2 className="h-3 w-3" /> تقارير معتمدة</div>
+          <p className="text-xl font-bold tabular-nums text-emerald-600">{stats?.approvedReports || 0}</p>
+        </Card>
+        <Card className="p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+          <div className="flex items-center gap-1 text-xs text-amber-700 mb-0.5"><Clock className="h-3 w-3" /> قيد المراجعة</div>
+          <p className="text-xl font-bold tabular-nums text-amber-600">{stats?.underReviewReports || 0}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><FileText className="h-3 w-3" /> إصدار المنهجية</div>
+          <p className="text-xs font-mono">{stats?.latestMethodology || '—'}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Database className="h-3 w-3" /> معامل الانبعاث</div>
+          <p className="text-xs font-mono">{stats?.latestEmissionFactor || '—'}</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Database className="h-3 w-3" /> قراءات غير موثقة</div>
+          <p className="text-xl font-bold tabular-nums">{stats?.unattestedReadings?.toLocaleString() || 0}</p>
         </Card>
       </div>
 

@@ -29,6 +29,69 @@ export async function GET(request: NextRequest) {
       totalItems: attestations.reduce((s, a) => s + a.itemCount, 0),
     }
 
+    // Additional attestation-specific stats
+    const confirmedAttestations = attestations.filter((a) => a.status === 'confirmed')
+    const lastAttestation = attestations[0] // most recent
+    const lastConsensusTimestamp = confirmedAttestations
+      .sort((a, b) => (b.confirmedAt?.getTime() || 0) - (a.confirmedAt?.getTime() || 0))[0]?.consensusTimestamp
+
+    // Count unattested readings (readings without attestation in their project)
+    const projectIds = [...new Set(attestations.map((a) => a.projectId))]
+    const totalReadings = await db.energyReading.count()
+    const attestedReadingsCount = attestations
+      .filter((a) => a.status === 'confirmed')
+      .reduce((s, a) => s + a.itemCount, 0)
+    const unattestedReadings = Math.max(0, totalReadings - attestedReadingsCount)
+
+    // Count attestation batches (confirmed vs unattested)
+    const attestedBatches = stats.confirmed
+    const unattestedBatches = stats.pending + stats.failed
+
+    // Count retries (estimated from audit events)
+    const retryCount = await db.auditEvent.count({
+      where: { action: { contains: 'retry' } },
+    })
+
+    // Count mismatches
+    const mismatchCount = stats.mismatch
+
+    // Count approved and under-review reports
+    const approvedReports = await db.report.count({ where: { status: 'published' } })
+    const underReviewReports = await db.report.count({ where: { status: 'under_review' } })
+
+    // Latest methodology and emission factor versions
+    const latestMethodology = 'ghg_protocol_scope2_v1.2'
+    const latestEmissionFactor = '0.432 kgCO₂e/kWh (Saudi Grid - 2024)'
+
+    // Hedera network status
+    const hederaStatus = confirmedAttestations.length > 0 ? 'connected' : 'disconnected'
+
+    const extendedStats = {
+      ...stats,
+      // New required stats
+      attestedBatches,
+      unattestedBatches,
+      unattestedReadings,
+      hederaStatus,
+      lastAttestation: lastAttestation
+        ? {
+            id: lastAttestation.id,
+            project: lastAttestation.project,
+            status: lastAttestation.status,
+            confirmedAt: lastAttestation.confirmedAt,
+            itemCount: lastAttestation.itemCount,
+            hederaTransactionId: lastAttestation.hederaTransactionId,
+          }
+        : null,
+      lastConsensusTimestamp,
+      retryCount,
+      mismatchCount,
+      approvedReports,
+      underReviewReports,
+      latestMethodology,
+      latestEmissionFactor,
+    }
+
     return NextResponse.json({
       attestations: attestations.map((a) => ({
         id: a.id,
@@ -45,7 +108,7 @@ export async function GET(request: NextRequest) {
         submittedAt: a.submittedAt,
         confirmedAt: a.confirmedAt,
       })),
-      stats,
+      stats: extendedStats,
     })
   } catch (error) {
     console.error('Attestations API error:', error)

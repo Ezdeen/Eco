@@ -63,19 +63,31 @@ export function ReportsSection() {
         }
         const pdfBlob = await res.blob()
 
-        // Trigger download
+        // Trigger download using a more robust method
         const url = URL.createObjectURL(pdfBlob)
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.pdf`
+        a.rel = 'noopener'
+        a.target = '_self'
         a.style.display = 'none'
         document.body.appendChild(a)
-        a.click()
-        // Cleanup after a delay to ensure download starts
+
+        // Use programmatic click
+        const clickEvent = new MouseEvent('click', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+        })
+        a.dispatchEvent(clickEvent)
+
+        // Cleanup after download starts
         setTimeout(() => {
-          document.body.removeChild(a)
+          if (a.parentNode) {
+            document.body.removeChild(a)
+          }
           URL.revokeObjectURL(url)
-        }, 1000)
+        }, 2000)
 
         toast.success(`تم تحميل التقرير بصيغة PDF (${(pdfBlob.size / 1024).toFixed(0)} KB)`)
       } else if (format === 'csv') {
@@ -87,13 +99,15 @@ export function ReportsSection() {
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.csv`
+        a.rel = 'noopener'
         a.style.display = 'none'
         document.body.appendChild(a)
-        a.click()
+        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true })
+        a.dispatchEvent(clickEvent)
         setTimeout(() => {
-          document.body.removeChild(a)
+          if (a.parentNode) document.body.removeChild(a)
           URL.revokeObjectURL(url)
-        }, 1000)
+        }, 2000)
         toast.success('تم تحميل التقرير بصيغة CSV')
       } else if (format === 'html') {
         const res = await fetch(`/api/reports/${report.id}/download?format=html`)
@@ -104,13 +118,15 @@ export function ReportsSection() {
         const a = document.createElement('a')
         a.href = url
         a.download = `${reportName}.html`
+        a.rel = 'noopener'
         a.style.display = 'none'
         document.body.appendChild(a)
-        a.click()
+        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true })
+        a.dispatchEvent(clickEvent)
         setTimeout(() => {
-          document.body.removeChild(a)
+          if (a.parentNode) document.body.removeChild(a)
           URL.revokeObjectURL(url)
-        }, 1000)
+        }, 2000)
         toast.success('تم تحميل التقرير بصيغة HTML')
       }
     } catch (e: any) {

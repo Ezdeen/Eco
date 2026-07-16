@@ -6,6 +6,7 @@ import { Header } from '@/components/platform/header'
 import { LoginSection } from '@/components/auth/login-section'
 import { DashboardSection } from '@/components/sections/dashboard-section'
 import { ProjectsSection } from '@/components/sections/projects-section'
+import { EnergyPerformanceSection } from '@/components/sections/energy-performance-section'
 import { AssetsDevicesSection } from '@/components/sections/assets-devices-section'
 import { DataCenterSection } from '@/components/sections/data-section'
 import { MonitoringSection } from '@/components/sections/monitoring-section'
@@ -22,10 +23,11 @@ import { Loader2, Sun } from 'lucide-react'
 const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   dashboard: { title: 'مركز القيادة', subtitle: 'نظرة شاملة على أداء محفظة المشاريع الشمسية' },
   projects: { title: 'المشاريع والمواقع', subtitle: 'إدارة المشاريع الشمسية عبر دورة حياتها الكاملة' },
+  'energy-performance': { title: 'الطاقة الكهربائية', subtitle: 'مؤشرات الأداء التشغيلي - Energy Performance' },
   'assets-devices': { title: 'الأصول والأجهزة', subtitle: 'المصفوفات الشمسية والإنفرترات والأجهزة في قسم موحد' },
   data: { title: 'مركز البيانات', subtitle: 'القراءات الخام والمطبّعة مع جودة وتدقيق' },
   monitoring: { title: 'مركز المراقبة', subtitle: 'الحوادث والتنبيهات وصحة النظام' },
-  calculations: { title: 'الحسابات والمنهجيات', subtitle: 'حساب الكربون والأداء والوفر بإصدارات قابلة لإعادة الإنتاج' },
+  calculations: { title: 'الحسابات (KPI Catalog)', subtitle: 'Environmental KPI Catalog - جميع المؤشرات البيئية بشكل موحد' },
   attestations: { title: 'التوثيق والمطابقة', subtitle: 'توثيق حزم البيانات على شبكة Hedera' },
   reports: { title: 'التقارير', subtitle: 'تقارير معتمدة قابلة للتحميل بصيغ متعددة مع رسوم بيانية' },
   impact: { title: 'سجل وحدات الأثر', subtitle: 'حسابات وأرصدة وحركات غير قابلة للتعديل' },
@@ -149,6 +151,7 @@ export default function Home() {
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
           {section === 'dashboard' && <DashboardSection />}
           {section === 'projects' && <ProjectsSection />}
+          {section === 'energy-performance' && <EnergyPerformanceSection />}
           {section === 'assets-devices' && <AssetsDevicesSection />}
           {section === 'data' && <DataCenterSection />}
           {section === 'monitoring' && <MonitoringSection />}

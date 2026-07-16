@@ -6,20 +6,163 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Calculator, FlaskConical, Code2, Database, TrendingUp, Leaf, DollarSign, Activity } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import {
+  Calculator, Zap, Leaf, Droplet, Recycle, TreePine, Bird, DollarSign,
+  ShieldCheck, Database, Activity, Gauge, TrendingUp, FlaskConical, Code2,
+} from 'lucide-react'
 import { toast } from 'sonner'
+
+const KPI_CATEGORIES = [
+  {
+    key: 'energy',
+    title: 'الطاقة',
+    titleEn: 'Energy',
+    icon: Zap,
+    color: 'amber',
+    kpis: [
+      { key: 'energyGenerated', label: 'Energy Generated', labelAr: 'الطاقة المُولّدة', unit: 'kWh' },
+      { key: 'energyExported', label: 'Energy Exported', labelAr: 'الطاقة المُصدَّرة', unit: 'kWh' },
+      { key: 'energyImported', label: 'Energy Imported', labelAr: 'الطاقة المستوردة', unit: 'kWh' },
+      { key: 'selfConsumption', label: 'Self Consumption', labelAr: 'الاستهلاك الذاتي', unit: 'kWh' },
+      { key: 'renewableFraction', label: 'Renewable Fraction', labelAr: 'نسبة الطاقة المتجددة', unit: '%' },
+    ],
+  },
+  {
+    key: 'carbon',
+    title: 'الكربون',
+    titleEn: 'Carbon',
+    icon: Leaf,
+    color: 'emerald',
+    kpis: [
+      { key: 'co2Avoided', label: 'CO₂e Avoided', labelAr: 'CO₂e متجنب', unit: 'kg' },
+      { key: 'co2Stored', label: 'CO₂e Stored', labelAr: 'CO₂e مخزّن', unit: 'kg' },
+      { key: 'co2Sequestered', label: 'CO₂e Sequestered', labelAr: 'CO₂e ممتص', unit: 'kg' },
+      { key: 'carbonIntensity', label: 'Carbon Intensity', labelAr: 'كثافة الكربون', unit: 'kgCO₂e/kWh' },
+    ],
+  },
+  {
+    key: 'water',
+    title: 'المياه',
+    titleEn: 'Water',
+    icon: Droplet,
+    color: 'blue',
+    kpis: [
+      { key: 'waterSaved', label: 'Water Saved', labelAr: 'مياه موفّرة', unit: 'لتر' },
+      { key: 'waterConsumed', label: 'Water Consumed', labelAr: 'مياه مستهلكة', unit: 'لتر' },
+    ],
+  },
+  {
+    key: 'waste',
+    title: 'النفايات',
+    titleEn: 'Waste',
+    icon: Recycle,
+    color: 'violet',
+    kpis: [
+      { key: 'wasteDiverted', label: 'Waste Diverted', labelAr: 'نفايات مُحوّلة', unit: 'kg' },
+      { key: 'wasteRecycled', label: 'Waste Recycled', labelAr: 'نفايات مُعاد تدويرها', unit: 'kg' },
+    ],
+  },
+  {
+    key: 'afforestation',
+    title: 'التشجير',
+    titleEn: 'Afforestation',
+    icon: TreePine,
+    color: 'green',
+    kpis: [
+      { key: 'treesPlanted', label: 'Trees Planted', labelAr: 'أشجار مزروعة', unit: 'شجرة' },
+      { key: 'survivalRate', label: 'Survival Rate', labelAr: 'معدل البقاء', unit: '%' },
+      { key: 'biomass', label: 'Biomass', labelAr: 'الكتلة الحيوية', unit: 'kg' },
+      { key: 'carbonStock', label: 'Carbon Stock', labelAr: 'الكربون المخزن', unit: 'kgCO₂e' },
+      { key: 'carbonSequestration', label: 'Carbon Sequestration', labelAr: 'امتصاص الكربون', unit: 'kgCO₂e/سنة' },
+    ],
+  },
+  {
+    key: 'biodiversity',
+    title: 'التنوع الحيوي',
+    titleEn: 'Biodiversity',
+    icon: Bird,
+    color: 'teal',
+    kpis: [
+      { key: 'restoredArea', label: 'Restored Area', labelAr: 'مساحة مُستعادة', unit: 'ha' },
+      { key: 'protectedArea', label: 'Protected Area', labelAr: 'مساحة محمية', unit: 'ha' },
+      { key: 'habitatIndex', label: 'Habitat Index', labelAr: 'مؤشر الموئل', unit: '/100' },
+      { key: 'speciesCount', label: 'Species Count', labelAr: 'عدد الأنواع', unit: 'نوع' },
+    ],
+  },
+  {
+    key: 'economy',
+    title: 'الاقتصاد',
+    titleEn: 'Economy',
+    icon: DollarSign,
+    color: 'amber',
+    kpis: [
+      { key: 'costSavings', label: 'Cost Savings', labelAr: 'وفر تكاليف', unit: 'SAR' },
+      { key: 'greenInvestment', label: 'Green Investment', labelAr: 'استثمار أخضر', unit: 'SAR' },
+      { key: 'costPerTCo2e', label: 'Cost per tCO₂e', labelAr: 'تكلفة لكل طن CO₂e', unit: 'SAR/tCO₂e' },
+      { key: 'costPerKwh', label: 'Cost per kWh', labelAr: 'تكلفة لكل kWh', unit: 'SAR/kWh' },
+    ],
+  },
+  {
+    key: 'dataQuality',
+    title: 'جودة البيانات',
+    titleEn: 'Data Quality',
+    icon: ShieldCheck,
+    color: 'blue',
+    kpis: [
+      { key: 'completeness', label: 'Completeness', labelAr: 'الاكتمال', unit: '%' },
+      { key: 'accuracy', label: 'Accuracy', labelAr: 'الدقة', unit: '%' },
+      { key: 'timeliness', label: 'Timeliness', labelAr: 'الحداثة', unit: '%' },
+      { key: 'validationRate', label: 'Validation Rate', labelAr: 'نسبة التحقق', unit: '%' },
+    ],
+  },
+  {
+    key: 'attestation',
+    title: 'التوثيق',
+    titleEn: 'Attestation',
+    icon: Database,
+    color: 'violet',
+    kpis: [
+      { key: 'verifiedDataPercent', label: 'Verified Data %', labelAr: 'بيانات موثقة', unit: '%' },
+      { key: 'traceabilityPercent', label: 'Traceability %', labelAr: 'قابلية التتبع', unit: '%' },
+      { key: 'auditCoveragePercent', label: 'Audit Coverage %', labelAr: 'تغطية التدقيق', unit: '%' },
+      { key: 'attestationCount', label: 'Attestation Count', labelAr: 'عدد التوثيقات', unit: 'دفعة' },
+    ],
+  },
+]
+
+const COLOR_MAP: Record<string, { bg: string; text: string; border: string; gradient: string }> = {
+  amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200', gradient: 'from-amber-500 to-orange-600' },
+  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200', gradient: 'from-emerald-500 to-teal-600' },
+  blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200', gradient: 'from-blue-500 to-cyan-600' },
+  violet: { bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-200', gradient: 'from-violet-500 to-purple-600' },
+  green: { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-200', gradient: 'from-green-500 to-emerald-600' },
+  teal: { bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200', gradient: 'from-teal-500 to-cyan-600' },
+}
+
+const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+const fmtCompact = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toString()
 
 export function CalculationsSection() {
   const [projects, setProjects] = useState<any[]>([])
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [recentRuns, setRecentRuns] = useState<any[]>([])
+  const [kpiCatalog, setKpiCatalog] = useState<any>(null)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<any>(null)
 
   useEffect(() => {
     fetch('/api/projects').then((r) => r.json()).then((d) => setProjects(d.projects || []))
-    fetch('/api/calculations').then((r) => r.json()).then((d) => setRecentRuns(d.calculationRuns || []))
+    fetchCalculations()
   }, [])
+
+  const fetchCalculations = async () => {
+    const res = await fetch('/api/calculations')
+    const data = await res.json()
+    setRecentRuns(data.calculationRuns || [])
+    setKpiCatalog(data.kpiCatalog || null)
+  }
 
   const runCalculation = async () => {
     if (!selectedProject) {
@@ -45,10 +188,7 @@ export function CalculationsSection() {
       if (data.success) {
         setResult(data)
         toast.success('اكتمل الحساب بنجاح')
-        // Refresh recent runs
-        const r = await fetch('/api/calculations')
-        const d = await r.json()
-        setRecentRuns(d.calculationRuns || [])
+        fetchCalculations()
       } else {
         toast.error('فشل الحساب')
       }
@@ -59,64 +199,28 @@ export function CalculationsSection() {
     }
   }
 
-  const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
-
   return (
-    <div className="space-y-4">
-      {/* Methodology cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900 text-emerald-600">
-              <Leaf className="h-5 w-5" />
-            </div>
+    <div className="space-y-5">
+      {/* Header */}
+      <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-0">
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-semibold text-sm">الكربون المتجنب</p>
-              <p className="text-xs text-muted-foreground">GHG Protocol Scope 2</p>
+              <h2 className="font-cairo text-2xl font-bold mb-1">Environmental KPI Catalog</h2>
+              <p className="text-sm opacity-90">
+                جميع المؤشرات البيئية بشكل موحد - 9 فئات تشمل الطاقة والكربون والمياه والنفايات والتشجير والتنوع الحيوي والاقتصاد وجودة البيانات والتوثيق
+              </p>
             </div>
+            <Database className="h-12 w-12 opacity-80" />
           </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            CO₂e = الطاقة الصافية × معامل انبعاث الشبكة (location-based)
-          </p>
-          <Badge variant="outline" className="mt-2 text-xs">v1.2 - معتمد</Badge>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900 text-blue-600">
-              <Activity className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">الأداء</p>
-              <p className="text-xs text-muted-foreground">IEC 61724</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            PR = Final Yield / Reference Yield
-          </p>
-          <Badge variant="outline" className="mt-2 text-xs">v2.0 - معتمد</Badge>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900 text-amber-600">
-              <DollarSign className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">الوفر المالي</p>
-              <p className="text-xs text-muted-foreground">Self-consumption + Feed-in</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            الوفر = (Self-consumed × Retail) + (Exported × Feed-in)
-          </p>
-          <Badge variant="outline" className="mt-2 text-xs">v1.0 - معتمد</Badge>
-        </Card>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Run new calculation */}
+      {/* Run calculation */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
+            <Calculator className="h-5 w-5 text-primary" />
             تشغيل حساب جديد
           </CardTitle>
           <CardDescription className="text-xs">
@@ -128,9 +232,7 @@ export function CalculationsSection() {
             <div className="space-y-1.5">
               <Label className="text-xs">المشروع</Label>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر مشروعًا" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="اختر مشروعًا" /></SelectTrigger>
                 <SelectContent>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
@@ -143,12 +245,9 @@ export function CalculationsSection() {
             <div className="space-y-1.5">
               <Label className="text-xs">المنهجية</Label>
               <Select defaultValue="ghg_protocol_scope2_v1.2">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ghg_protocol_scope2_v1.2">GHG Protocol Scope 2 v1.2</SelectItem>
-                  <SelectItem value="ghg_protocol_scope2_v1.1">GHG Protocol Scope 2 v1.1</SelectItem>
                   <SelectItem value="iso_14064_2_v1.0">ISO 14064-2 v1.0</SelectItem>
                 </SelectContent>
               </Select>
@@ -156,9 +255,7 @@ export function CalculationsSection() {
             <div className="space-y-1.5">
               <Label className="text-xs">الفترة</Label>
               <Select defaultValue="30d">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="7d">آخر 7 أيام</SelectItem>
                   <SelectItem value="30d">آخر 30 يومًا</SelectItem>
@@ -167,8 +264,7 @@ export function CalculationsSection() {
               </Select>
             </div>
           </div>
-
-          <Button onClick={runCalculation} disabled={running || !selectedProject} className="w-full md:w-auto">
+          <Button onClick={runCalculation} disabled={running || !selectedProject}>
             <Calculator className="h-4 w-4 ml-1" />
             {running ? 'جاري الحساب...' : 'تشغيل الحساب'}
           </Button>
@@ -197,100 +293,56 @@ export function CalculationsSection() {
                   <p className="text-xs text-muted-foreground">Performance Ratio</p>
                   <p className="font-bold tabular-nums">{(result.details.performanceRatio * 100).toFixed(1)}%</p>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Specific Yield</p>
-                  <p className="font-bold tabular-nums">{fmt(result.details.specificYield)} kWh/kWp</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">التوافر</p>
-                  <p className="font-bold tabular-nums">{(result.details.availability * 100).toFixed(1)}%</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">أشجار مكافئة</p>
-                  <p className="font-bold tabular-nums">{fmt(result.details.treeEquivalent)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">كم سيارة متجنّب</p>
-                  <p className="font-bold tabular-nums">{fmt(result.details.carKmAvoided)} km</p>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-emerald-200 text-xs text-muted-foreground">
-                <p>معامل الانبعاث: {result.details.emissionFactor.factor} kgCO₂e/kWh ({result.details.emissionFactor.source})</p>
-                <p>عدد القراءات: {result.details.readingsCount} • Hash: <code className="font-mono">{result.run.parametersHash?.slice(0, 24)}...</code></p>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Reference data */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            المعاملات المرجعية
-          </CardTitle>
-          <CardDescription className="text-xs">معاملات موثقة ذات إصدارات - لا تستخدم قيمًا ثابتة افتراضية</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs p-3 rounded-lg bg-muted/40">
-              <div>
-                <p className="text-muted-foreground">المعامل</p>
-                <p className="font-semibold">معامل انبعاث الشبكة (SA)</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">القيمة</p>
-                <p className="font-semibold tabular-nums">0.432 kgCO₂e/kWh</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">المصدر</p>
-                <p className="font-semibold">Saudi Electricity Company</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">السريان</p>
-                <p className="font-semibold">2024-01-01 → حالي</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs p-3 rounded-lg bg-muted/40">
-              <div>
-                <p className="text-muted-foreground">المعامل</p>
-                <p className="font-semibold">عامل الشجرة المكافئ</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">القيمة</p>
-                <p className="font-semibold tabular-nums">21 kg CO₂/شجرة/سنة</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">المصدر</p>
-                <p className="font-semibold">EPA - 2024</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">السريان</p>
-                <p className="font-semibold">2024-01-01 → حالي</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs p-3 rounded-lg bg-muted/40">
-              <div>
-                <p className="text-muted-foreground">المعامل</p>
-                <p className="font-semibold">عامل السيارة المكافف</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">القيمة</p>
-                <p className="font-semibold tabular-nums">0.12 kg CO₂/km</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">المصدر</p>
-                <p className="font-semibold">EPA - 2024</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">السريان</p>
-                <p className="font-semibold">2024-01-01 → حالي</p>
-              </div>
-            </div>
+      {/* KPI Catalog */}
+      {kpiCatalog && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="h-5 w-5 text-primary" />
+            <h3 className="font-cairo text-lg font-bold">Environmental KPI Catalog</h3>
+            <Badge variant="outline" className="text-xs">9 فئات</Badge>
           </div>
-        </CardContent>
-      </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {KPI_CATEGORIES.map((cat) => {
+              const Icon = cat.icon
+              const colors = COLOR_MAP[cat.color] || COLOR_MAP.blue
+              const categoryData = kpiCatalog[cat.key] || {}
+              return (
+                <Card key={cat.key} className={`overflow-hidden ${colors.border}`}>
+                  <CardHeader className={`pb-2 bg-gradient-to-br ${colors.gradient} text-white`}>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Icon className="h-4 w-4" />
+                      {cat.title}
+                      <span className="text-xs opacity-80 mr-auto">{cat.titleEn}</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 space-y-2">
+                    {cat.kpis.map((kpi) => (
+                      <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
+                        </div>
+                        <div className="text-left shrink-0">
+                          <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
+                            {fmtCompact(categoryData[kpi.key] || 0)}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent runs */}
       <Card>
