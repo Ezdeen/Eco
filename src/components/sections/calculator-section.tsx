@@ -36,11 +36,17 @@ export function CalculatorSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(inputs),
       })
+      if (!res.ok) throw new Error()
       const data = await res.json()
-      setResult(data)
-      toast.success('اكتمل الحساب')
-    } catch (e) {
+      if (data && data.results) {
+        setResult(data)
+        toast.success('اكتمل الحساب')
+      } else {
+        toast.error('استجابة غير صالحة')
+      }
+    } catch {
       toast.error('خطأ في الحساب')
+      setResult(null)
     } finally {
       setLoading(false)
     }

@@ -23,10 +23,18 @@ export function ImpactSection() {
   useEffect(() => {
     let cancelled = false
     fetch('/api/impact')
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
         if (cancelled) return
-        setData(d)
+        if (d && d.stats && d.projectCarbon) {
+          setData(d)
+        } else {
+          setData(null)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setData(null)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -52,14 +60,14 @@ export function ImpactSection() {
   const { stats, projectCarbon, accounts, emissionFactors } = data
 
   // Separate solar vs afforestation projects
-  const solarProjects = projectCarbon.filter((p: any) => p.projectType !== 'afforestation')
-  const afforestationProjects = projectCarbon.filter((p: any) => p.projectType === 'afforestation')
+  const solarProjects = (projectCarbon || []).filter((p: any) => p.projectType !== 'afforestation')
+  const afforestationProjects = (projectCarbon || []).filter((p: any) => p.projectType === 'afforestation')
 
   // Chart colors
   const CHART_COLORS = ['#16a34a', '#0891b2', '#ca8a04', '#2563eb', '#dc2626', '#7c3aed']
 
   // Prepare carbon trend data (aggregate by project)
-  const carbonByProject = projectCarbon.map((p: any, i: number) => ({
+  const carbonByProject = (projectCarbon || []).map((p: any, i: number) => ({
     name: p.projectCode,
     kgCO2e: p.carbonAvoided.lifetime.kgCO2e,
     color: CHART_COLORS[i % CHART_COLORS.length],
@@ -179,7 +187,7 @@ export function ImpactSection() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.entries(emissionFactors).filter(([code]) => code !== 'default').slice(0, 9).map(([code, ef]: [string, any]) => (
+                {Object.entries(emissionFactors || {}).filter(([code]) => code !== 'default').slice(0, 9).map(([code, ef]: [string, any]) => (
                   <div key={code} className="p-3 rounded-lg border bg-muted/30">
                     <div className="flex items-center justify-between mb-2">
                       <Badge variant="outline" className="text-xs font-mono">{code}</Badge>

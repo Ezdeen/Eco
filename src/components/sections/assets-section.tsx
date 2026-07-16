@@ -54,8 +54,9 @@ export function AssetsSection() {
 
   useEffect(() => {
     fetch('/api/assets')
-      .then((r) => r.json())
-      .then((d) => setAssets(d.assets || []))
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { setAssets(d?.assets || []) })
+      .catch(() => { setAssets([]) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -89,7 +90,7 @@ export function AssetsSection() {
         </Card>
         <Card className="p-4">
           <p className="text-xs text-muted-foreground">الأجهزة المرتبطة</p>
-          <p className="text-2xl font-bold tabular-nums">{assets.reduce((s, a) => s + a.devices.length, 0)}</p>
+          <p className="text-2xl font-bold tabular-nums">{assets.reduce((s, a) => s + (a.devices?.length || 0), 0)}</p>
         </Card>
       </div>
 
@@ -148,7 +149,7 @@ export function AssetsSection() {
                       <p className="text-xs tabular-nums">{((a.moduleEfficiency || 0) * 100).toFixed(1)}%</p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-xs">{a.devices.length}</Badge>
+                      <Badge variant="secondary" className="text-xs">{a.devices?.length || 0}</Badge>
                     </TableCell>
                     <TableCell>
                       <p className="text-xs tabular-nums">{a.readingsCount.toLocaleString()}</p>

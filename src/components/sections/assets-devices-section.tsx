@@ -95,13 +95,16 @@ export function AssetsDevicesSection() {
           fetch('/api/assets'),
           fetch('/api/devices'),
         ])
+        if (!assetsRes.ok || !devicesRes.ok) throw new Error()
         const assetsData = await assetsRes.json()
         const devicesData = await devicesRes.json()
         if (cancelled) return
-        setAssets(assetsData.assets || [])
-        setDevices(devicesData.devices || [])
+        setAssets(assetsData?.assets || [])
+        setDevices(devicesData?.devices || [])
       } catch (e) {
-        console.error(e)
+        console.warn('Assets/devices fetch failed:', e)
+        setAssets([])
+        setDevices([])
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -128,7 +131,7 @@ export function AssetsDevicesSection() {
   const staleDevices = devices.filter((d) => d.status === 'stale').length
   const activeAssets = assets.filter((a) => a.status === 'active').length
   const totalCapacityKwp = assets.reduce((s, a) => s + (a.capacityKwp || 0), 0)
-  const totalReadings = assets.reduce((s, a) => s + a.readingsCount, 0)
+  const totalReadings = assets.reduce((s, a) => s + (a.readingsCount || 0), 0)
 
   return (
     <div className="space-y-4">
@@ -257,7 +260,7 @@ export function AssetsDevicesSection() {
                           <p className="text-xs tabular-nums">{((a.moduleEfficiency || 0) * 100).toFixed(1)}%</p>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-xs">{a.devices.length}</Badge>
+                          <Badge variant="secondary" className="text-xs">{a.devices?.length || 0}</Badge>
                         </TableCell>
                         <TableCell>
                           <p className="text-xs tabular-nums">{a.readingsCount.toLocaleString()}</p>

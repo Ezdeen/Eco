@@ -21,17 +21,24 @@ export function AttestationsSection() {
   const fetchData = () => {
     setLoading(true)
     fetch('/api/attestations')
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
-        setAttestations(d.attestations || [])
-        setStats(d.stats)
+        setAttestations(d?.attestations || [])
+        setStats(d?.stats || null)
+      })
+      .catch(() => {
+        setAttestations([])
+        setStats(null)
       })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     fetchData()
-    fetch('/api/projects').then((r) => r.json()).then((d) => setProjects(d.projects || []))
+    fetch('/api/projects')
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { setProjects(d?.projects || []) })
+      .catch(() => { setProjects([]) })
   }, [])
 
   const submitAttestation = async () => {
@@ -43,8 +50,9 @@ export function AttestationsSection() {
     try {
       // Fetch recent readings for the project
       const readingsRes = await fetch(`/api/readings?projectId=${selectedProject}&limit=50&days=7`)
+      if (!readingsRes.ok) throw new Error('readings')
       const readingsData = await readingsRes.json()
-      const readings = readingsData.readings || []
+      const readings = readingsData?.readings || []
 
       if (readings.length === 0) {
         toast.error('لا توجد قراءات لتوثيقها في آخر 7 أيام')
@@ -61,14 +69,15 @@ export function AttestationsSection() {
           methodologyVersion: 'ghg_protocol_scope2_v1.2',
         }),
       })
+      if (!res.ok) throw new Error('attest')
       const data = await res.json()
-      if (data.success) {
+      if (data?.success) {
         toast.success(`تم توثيق ${readings.length} قراءة على Hedera`)
         fetchData()
       } else {
         toast.error('فشل التوثيق')
       }
-    } catch (e) {
+    } catch {
       toast.error('خطأ في الاتصال')
     } finally {
       setSubmitting(false)

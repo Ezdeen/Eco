@@ -112,10 +112,14 @@ export function DataCenterSection() {
     params.set('days', '7')
 
     fetch(`/api/readings?${params}`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
-        setReadings(d.readings || [])
-        setQuality(d.qualitySummary || null)
+        setReadings(d?.readings || [])
+        setQuality(d?.qualitySummary || null)
+      })
+      .catch(() => {
+        setReadings([])
+        setQuality(null)
       })
       .finally(() => setLoading(false))
   }, [projectId, qualityFilter])
@@ -123,9 +127,12 @@ export function DataCenterSection() {
   useEffect(() => {
     let cancelled = false
     fetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
-        if (!cancelled) setProjects(d.projects || [])
+        if (!cancelled) setProjects(d?.projects || [])
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([])
       })
     return () => {
       cancelled = true
@@ -145,11 +152,16 @@ export function DataCenterSection() {
     })
 
     fetch(`/api/readings?${params}`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
         if (cancelled) return
-        setReadings(d.readings || [])
-        setQuality(d.qualitySummary || null)
+        setReadings(d?.readings || [])
+        setQuality(d?.qualitySummary || null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setReadings([])
+        setQuality(null)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

@@ -209,15 +209,16 @@ export function CalculationsSection() {
           methodologyVersion: 'ghg_protocol_scope2_v1.2',
         }),
       })
+      if (!res.ok) throw new Error()
       const data = await res.json()
-      if (data.success) {
+      if (data && data.success) {
         setResult(data)
         toast.success('اكتمل الحساب بنجاح')
         fetchCalculations()
       } else {
         toast.error('فشل الحساب')
       }
-    } catch (e) {
+    } catch {
       toast.error('خطأ في الاتصال')
     } finally {
       setRunning(false)

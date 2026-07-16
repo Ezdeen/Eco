@@ -15,10 +15,14 @@ export function NotificationsSection() {
   const fetchNotifications = useCallback(() => {
     setLoading(true)
     fetch('/api/notifications')
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
-        setNotifications(d.notifications || [])
-        setStats(d.stats)
+        setNotifications(d?.notifications || [])
+        setStats(d?.stats || null)
+      })
+      .catch(() => {
+        setNotifications([])
+        setStats(null)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -29,11 +33,16 @@ export function NotificationsSection() {
       if (!cancelled) {
         setLoading(true)
         fetch('/api/notifications')
-          .then((r) => r.json())
+          .then((r) => { if (!r.ok) throw new Error(); return r.json() })
           .then((d) => {
             if (cancelled) return
-            setNotifications(d.notifications || [])
-            setStats(d.stats)
+            setNotifications(d?.notifications || [])
+            setStats(d?.stats || null)
+          })
+          .catch(() => {
+            if (cancelled) return
+            setNotifications([])
+            setStats(null)
           })
           .finally(() => {
             if (!cancelled) setLoading(false)
@@ -46,24 +55,34 @@ export function NotificationsSection() {
   }, [])
 
   const markAsRead = async (id: string) => {
-    await fetch('/api/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, isRead: true }),
-    })
-    fetchNotifications()
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isRead: true }),
+      })
+      if (!res.ok) throw new Error()
+      fetchNotifications()
+    } catch {
+      toast.error('فشل تحديث الإشعار')
+    }
   }
 
   const markAllAsRead = async () => {
-    for (const n of notifications.filter((n) => !n.isRead)) {
-      await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: n.id, isRead: true }),
-      })
+    try {
+      for (const n of notifications.filter((n) => !n.isRead)) {
+        const res = await fetch('/api/notifications', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: n.id, isRead: true }),
+        })
+        if (!res.ok) throw new Error()
+      }
+      toast.success('تم تعليم الكل كمقروء')
+      fetchNotifications()
+    } catch {
+      toast.error('فشل تحديث الإشعارات')
     }
-    toast.success('تم تعليم الكل كمقروء')
-    fetchNotifications()
   }
 
   if (loading) {

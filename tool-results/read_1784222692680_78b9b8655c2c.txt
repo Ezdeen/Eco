@@ -1,0 +1,608 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { StatusBadge } from '@/components/platform/status-badge'
+     7→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+     8→import { Separator } from '@/components/ui/separator'
+     9→import {
+    10→  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+    11→  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+    12→} from 'recharts'
+    13→import {
+    14→  Coins, Leaf, TrendingUp, TrendingDown, Ban, CheckCircle2, TreePine,
+    15→  Droplet, Fuel, Zap, Activity, Gauge, Calendar, MapPin, Database,
+    16→  Sprout, Heart, Ruler, Beaker, Clock, Users, AlertCircle,
+    17→} from 'lucide-react'
+    18→
+    19→export function ImpactSection() {
+    20→  const [data, setData] = useState<any>(null)
+    21→  const [loading, setLoading] = useState(true)
+    22→
+    23→  useEffect(() => {
+    24→    let cancelled = false
+    25→    fetch('/api/impact')
+    26→      .then((r) => r.json())
+    27→      .then((d) => {
+    28→        if (cancelled) return
+    29→        setData(d)
+    30→      })
+    31→      .finally(() => {
+    32→        if (!cancelled) setLoading(false)
+    33→      })
+    34→    return () => {
+    35→      cancelled = true
+    36→    }
+    37→  }, [])
+    38→
+    39→  if (loading || !data) {
+    40→    return (
+    41→      <div className="space-y-4">
+    42→        <Card className="h-32 animate-pulse bg-muted/40" />
+    43→        <Card className="h-96 animate-pulse bg-muted/40" />
+    44→      </div>
+    45→    )
+    46→  }
+    47→
+    48→  const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+    49→  const fmtCompact = (n: number) =>
+    50→    n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toString()
+    51→
+    52→  const { stats, projectCarbon, accounts, emissionFactors } = data
+    53→
+    54→  // Separate solar vs afforestation projects
+    55→  const solarProjects = projectCarbon.filter((p: any) => p.projectType !== 'afforestation')
+    56→  const afforestationProjects = projectCarbon.filter((p: any) => p.projectType === 'afforestation')
+    57→
+    58→  // Chart colors
+    59→  const CHART_COLORS = ['#16a34a', '#0891b2', '#ca8a04', '#2563eb', '#dc2626', '#7c3aed']
+    60→
+    61→  // Prepare carbon trend data (aggregate by project)
+    62→  const carbonByProject = projectCarbon.map((p: any, i: number) => ({
+    63→    name: p.projectCode,
+    64→    kgCO2e: p.carbonAvoided.lifetime.kgCO2e,
+    65→    color: CHART_COLORS[i % CHART_COLORS.length],
+    66→  }))
+    67→
+    68→  return (
+    69→    <div className="space-y-5">
+    70→      {/* Top banner */}
+    71→      <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-0">
+    72→        <CardContent className="p-5">
+    73→          <div className="flex items-start justify-between gap-4">
+    74→            <div>
+    75→              <h2 className="font-cairo text-2xl font-bold mb-1">منصة قياس الأثر البيئي</h2>
+    76→              <p className="text-sm opacity-90">
+    77→                الكربون المتجنب من الطاقة المتجددة + الكربون الممتص من مشاريع التشجير
+    78→              </p>
+    79→            </div>
+    80→            <div className="text-left">
+    81→              <p className="text-xs opacity-80">إجمالي الكربون (kgCO₂e)</p>
+    82→              <p className="font-cairo text-3xl font-bold tabular-nums">
+    83→                {fmt(stats.totalCo2AvoidedKg + stats.afforestation.totalCarbonAbsorbed)}
+    84→              </p>
+    85→              <p className="text-xs opacity-80 mt-1">
+    86→                ≈ {fmt((stats.totalCo2AvoidedKg + stats.afforestation.totalCarbonAbsorbed) / 1000)} tCO₂e
+    87→              </p>
+    88→            </div>
+    89→          </div>
+    90→        </CardContent>
+    91→      </Card>
+    92→
+    93→      {/* Tabs: Solar vs Afforestation */}
+    94→      <Tabs defaultValue="solar" className="w-full">
+    95→        <TabsList className="grid w-full grid-cols-2 max-w-md">
+    96→          <TabsTrigger value="solar" className="gap-2">
+    97→            <Zap className="h-3.5 w-3.5" />
+    98→            الطاقة الشمسية ({solarProjects.length})
+    99→          </TabsTrigger>
+   100→          <TabsTrigger value="afforestation" className="gap-2">
+   101→            <TreePine className="h-3.5 w-3.5" />
+   102→            التشجير ({afforestationProjects.length})
+   103→          </TabsTrigger>
+   104→        </TabsList>
+   105→
+   106→        {/* ===================== SOLAR TAB ===================== */}
+   107→        <TabsContent value="solar" className="space-y-4 mt-4">
+   108→          {/* Carbon Avoided - Main KPIs */}
+   109→          <div>
+   110→            <div className="flex items-center gap-2 mb-3">
+   111→              <Leaf className="h-5 w-5 text-emerald-600" />
+   112→              <h3 className="font-cairo text-lg font-bold">الكربون المتجنب (CO₂e)</h3>
+   113→              <Badge variant="outline" className="text-xs">
+   114→                {stats.solarProjectsCount} مشاريع شمسية
+   115→              </Badge>
+   116→            </div>
+   117→            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   118→              <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
+   119→                <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 mb-1">
+   120→                  <Calendar className="h-3.5 w-3.5" /> اليوم
+   121→                </div>
+   122→                <p className="text-xl font-bold tabular-nums text-emerald-600">
+   123→                  {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.daily.kgCO2e, 0))}
+   124→                </p>
+   125→                <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   126→                <p className="text-[10px] text-muted-foreground mt-1">
+   127→                  ≈ {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.daily.tCO2e, 0))} tCO₂e
+   128→                </p>
+   129→              </Card>
+   130→              <Card className="p-4 bg-teal-50 dark:bg-teal-950/30 border-teal-200">
+   131→                <div className="flex items-center gap-2 text-xs text-teal-700 dark:text-teal-400 mb-1">
+   132→                  <Calendar className="h-3.5 w-3.5" /> الشهر
+   133→                </div>
+   134→                <p className="text-xl font-bold tabular-nums text-teal-600">
+   135→                  {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.monthly.kgCO2e, 0))}
+   136→                </p>
+   137→                <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   138→                <p className="text-[10px] text-muted-foreground mt-1">
+   139→                  ≈ {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.monthly.tCO2e, 0))} tCO₂e
+   140→                </p>
+   141→              </Card>
+   142→              <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
+   143→                <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 mb-1">
+   144→                  <Calendar className="h-3.5 w-3.5" /> السنة
+   145→                </div>
+   146→                <p className="text-xl font-bold tabular-nums text-blue-600">
+   147→                  {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.yearly.kgCO2e, 0))}
+   148→                </p>
+   149→                <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   150→                <p className="text-[10px] text-muted-foreground mt-1">
+   151→                  ≈ {fmt(solarProjects.reduce((s: number, p: any) => s + p.carbonAvoided.yearly.tCO2e, 0))} tCO₂e
+   152→                </p>
+   153→              </Card>
+   154→              <Card className="p-4 bg-violet-50 dark:bg-violet-950/30 border-violet-200">
+   155→                <div className="flex items-center gap-2 text-xs text-violet-700 dark:text-violet-400 mb-1">
+   156→                  <Clock className="h-3.5 w-3.5" /> العمر التشغيلي
+   157→                </div>
+   158→                <p className="text-xl font-bold tabular-nums text-violet-600">
+   159→                  {fmt(stats.totalCo2AvoidedKg)}
+   160→                </p>
+   161→                <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   162→                <p className="text-[10px] text-muted-foreground mt-1">
+   163→                  ≈ {fmt(stats.totalCo2AvoidedTons)} tCO₂e
+   164→                </p>
+   165→              </Card>
+   166→            </div>
+   167→          </div>
+   168→
+   169→          {/* Emission Factor Details */}
+   170→          <Card>
+   171→            <CardHeader className="pb-3">
+   172→              <CardTitle className="text-base flex items-center gap-2">
+   173→                <Database className="h-5 w-5 text-primary" />
+   174→                معامل الانبعاث المستخدم
+   175→              </CardTitle>
+   176→              <CardDescription className="text-xs">
+   177→                المعاملات الموثقة المستخدمة في حسابات الكربون المتجنب
+   178→              </CardDescription>
+   179→            </CardHeader>
+   180→            <CardContent>
+   181→              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   182→                {Object.entries(emissionFactors).filter(([code]) => code !== 'default').slice(0, 9).map(([code, ef]: [string, any]) => (
+   183→                  <div key={code} className="p-3 rounded-lg border bg-muted/30">
+   184→                    <div className="flex items-center justify-between mb-2">
+   185→                      <Badge variant="outline" className="text-xs font-mono">{code}</Badge>
+   186→                      <Badge variant="outline" className={`text-xs ${ef.type === 'location-based' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700' : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700'}`}>
+   187→                        {ef.type === 'location-based' ? 'Location-based' : 'Market-based'}
+   188→                      </Badge>
+   189→                    </div>
+   190→                    <div className="space-y-1 text-xs">
+   191→                      <div className="flex justify-between">
+   192→                        <span className="text-muted-foreground">القيمة:</span>
+   193→                        <span className="font-bold tabular-nums">{ef.factor} kgCO₂e/kWh</span>
+   194→                      </div>
+   195→                      <div className="flex justify-between">
+   196→                        <span className="text-muted-foreground">المصدر:</span>
+   197→                        <span className="font-medium text-left">{ef.source}</span>
+   198→                      </div>
+   199→                      <div className="flex justify-between">
+   200→                        <span className="text-muted-foreground">الإصدار:</span>
+   201→                        <span className="font-mono">{ef.version}</span>
+   202→                      </div>
+   203→                    </div>
+   204→                  </div>
+   205→                ))}
+   206→              </div>
+   207→            </CardContent>
+   208→          </Card>
+   209→
+   210→          {/* Additional Indicators */}
+   211→          <div>
+   212→            <div className="flex items-center gap-2 mb-3">
+   213→              <Activity className="h-5 w-5 text-primary" />
+   214→              <h3 className="font-cairo text-lg font-bold">مؤشرات إضافية</h3>
+   215→            </div>
+   216→            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   217→              <Card className="p-4">
+   218→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   219→                  <Fuel className="h-3.5 w-3.5" /> وقود ديزل مستبدل
+   220→                </div>
+   221→                <p className="text-xl font-bold tabular-nums text-amber-600">{fmt(stats.totalDieselReplaced)}</p>
+   222→                <p className="text-xs text-muted-foreground">لتر</p>
+   223→              </Card>
+   224→              <Card className="p-4">
+   225→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   226→                  <Fuel className="h-3.5 w-3.5" /> غاز طبيعي مستبدل
+   227→                </div>
+   228→                <p className="text-xl font-bold tabular-nums text-blue-600">{fmt(stats.totalGasReplaced)}</p>
+   229→                <p className="text-xs text-muted-foreground">م³</p>
+   230→              </Card>
+   231→              <Card className="p-4">
+   232→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   233→                  <Zap className="h-3.5 w-3.5" /> كهرباء تقليدية مستبدلة
+   234→                </div>
+   235→                <p className="text-xl font-bold tabular-nums text-emerald-600">{fmt(stats.totalEnergyLifetime)}</p>
+   236→                <p className="text-xs text-muted-foreground">kWh</p>
+   237→              </Card>
+   238→              <Card className="p-4">
+   239→                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   240→                  <Gauge className="h-3.5 w-3.5" /> كثافة الكربون
+   241→                </div>
+   242→                <p className="text-xl font-bold tabular-nums text-violet-600">
+   243→                  {stats.totalEnergyLifetime > 0 ? (stats.totalCo2AvoidedKg / stats.totalEnergyLifetime).toFixed(3) : '0'}
+   244→                </p>
+   245→                <p className="text-xs text-muted-foreground">kgCO₂e/kWh</p>
+   246→              </Card>
+   247→            </div>
+   248→          </div>
+   249→
+   250→          {/* Carbon by Project Chart */}
+   251→          <Card>
+   252→            <CardHeader className="pb-2">
+   253→              <CardTitle className="text-base">الكربون المتجنب حسب المشروع</CardTitle>
+   254→              <CardDescription className="text-xs">إجمالي kgCO₂e لكل مشروع شمسي</CardDescription>
+   255→            </CardHeader>
+   256→            <CardContent>
+   257→              <ResponsiveContainer width="100%" height={300}>
+   258→                <BarChart data={carbonByProject.filter((p: any) => p.kgCO2e > 0)} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+   259→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+   260→                  <XAxis type="number" tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => fmtCompact(v)} />
+   261→                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} width={70} />
+   262→                  <Tooltip
+   263→                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+   264→                    formatter={(v: number) => [`${fmt(v)} kgCO₂e`, 'الكربون المتجنب']}
+   265→                  />
+   266→                  <Bar dataKey="kgCO2e" radius={[0, 4, 4, 0]}>
+   267→                    {carbonByProject.map((p: any, i: number) => (
+   268→                      <Cell key={i} fill={p.color} />
+   269→                    ))}
+   270→                  </Bar>
+   271→                </BarChart>
+   272→              </ResponsiveContainer>
+   273→            </CardContent>
+   274→          </Card>
+   275→
+   276→          {/* Per-project detailed table */}
+   277→          <Card>
+   278→            <CardHeader>
+   279→              <CardTitle className="text-base">تفاصيل الكربون لكل مشروع</CardTitle>
+   280→              <CardDescription className="text-xs">
+   281→                تفصيل يومي/شهري/سنوي/عمر تشغيلي + معامل الانبعاث + المؤشرات الإضافية
+   282→              </CardDescription>
+   283→            </CardHeader>
+   284→            <CardContent className="p-0">
+   285→              <div className="overflow-x-auto">
+   286→                <table className="w-full text-xs">
+   287→                  <thead className="bg-muted/50">
+   288→                    <tr>
+   289→                      <th className="p-2 text-right">المشروع</th>
+   290→                      <th className="p-2 text-center">يومي</th>
+   291→                      <th className="p-2 text-center">شهري</th>
+   292→                      <th className="p-2 text-center">سنوي</th>
+   293→                      <th className="p-2 text-center">عمر تشغيلي</th>
+   294→                      <th className="p-2 text-center">معامل الانبعاث</th>
+   295→                      <th className="p-2 text-center">نوعه</th>
+   296→                      <th className="p-2 text-center">ديزل مستبدل</th>
+   297→                      <th className="p-2 text-center">غاز مستبدل</th>
+   298→                      <th className="p-2 text-center">كثافة الكربون</th>
+   299→                    </tr>
+   300→                  </thead>
+   301→                  <tbody>
+   302→                    {solarProjects.map((p: any) => (
+   303→                      <tr key={p.projectId} className="border-b hover:bg-muted/30">
+   304→                        <td className="p-2">
+   305→                          <p className="font-medium">{p.projectName}</p>
+   306→                          <p className="text-[10px] text-muted-foreground">{p.projectCode} • {p.city}</p>
+   307→                        </td>
+   308→                        <td className="p-2 text-center tabular-nums">{fmt(p.carbonAvoided.daily.kgCO2e)}</td>
+   309→                        <td className="p-2 text-center tabular-nums">{fmt(p.carbonAvoided.monthly.kgCO2e)}</td>
+   310→                        <td className="p-2 text-center tabular-nums">{fmt(p.carbonAvoided.yearly.kgCO2e)}</td>
+   311→                        <td className="p-2 text-center tabular-nums font-semibold text-violet-600">{fmt(p.carbonAvoided.lifetime.kgCO2e)}</td>
+   312→                        <td className="p-2 text-center tabular-nums">{p.emissionFactor.value}</td>
+   313→                        <td className="p-2 text-center">
+   314→                          <Badge variant="outline" className={`text-[10px] ${p.emissionFactor.type === 'location-based' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+   315→                            {p.emissionFactor.type === 'location-based' ? 'Location' : 'Market'}
+   316→                          </Badge>
+   317→                        </td>
+   318→                        <td className="p-2 text-center tabular-nums text-amber-600">{fmt(p.fossilFuelReplaced.dieselLiters)} L</td>
+   319→                        <td className="p-2 text-center tabular-nums text-blue-600">{fmt(p.fossilFuelReplaced.naturalGasM3)} m³</td>
+   320→                        <td className="p-2 text-center tabular-nums text-violet-600">{p.carbonIntensity}</td>
+   321→                      </tr>
+   322→                    ))}
+   323→                  </tbody>
+   324→                </table>
+   325→              </div>
+   326→            </CardContent>
+   327→          </Card>
+   328→        </TabsContent>
+   329→
+   330→        {/* ===================== AFFORESTATION TAB ===================== */}
+   331→        <TabsContent value="afforestation" className="space-y-4 mt-4">
+   332→          {afforestationProjects.length === 0 ? (
+   333→            <Card>
+   334→              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+   335→                <TreePine className="h-12 w-12 text-muted-foreground/50 mb-3" />
+   336→                <p className="text-muted-foreground">لا توجد مشاريع تشجير بعد</p>
+   337→                <p className="text-xs text-muted-foreground mt-1">أنشئ مشروعًا من نوع "مشروع تشجير" لعرض المؤشرات هنا</p>
+   338→              </CardContent>
+   339→            </Card>
+   340→          ) : (
+   341→            <>
+   342→              {/* Afforestation Overview */}
+   343→              <Card className="bg-gradient-to-br from-emerald-500 to-green-600 text-white border-0">
+   344→                <CardContent className="p-5">
+   345→                  <div className="flex items-center gap-3 mb-4">
+   346→                    <TreePine className="h-8 w-8" />
+   347→                    <div>
+   348→                      <h3 className="font-cairo text-xl font-bold">مؤشرات التشجير (Nature Based)</h3>
+   349→                      <p className="text-sm opacity-90">{stats.afforestation.totalProjects} مشاريع • {stats.afforestation.totalPlantedAreaHa} هكتار</p>
+   350→                    </div>
+   351→                  </div>
+   352→                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   353→                    <div className="p-3 rounded-lg bg-white/10">
+   354→                      <p className="text-xs opacity-80">إجمالي الأشجار المزروعة</p>
+   355→                      <p className="text-2xl font-bold tabular-nums">{fmt(stats.afforestation.totalPlantedTrees)}</p>
+   356→                    </div>
+   357→                    <div className="p-3 rounded-lg bg-white/10">
+   358→                      <p className="text-xs opacity-80">الأشجار الحية</p>
+   359→                      <p className="text-2xl font-bold tabular-nums text-emerald-200">{fmt(stats.afforestation.totalAliveTrees)}</p>
+   360→                    </div>
+   361→                    <div className="p-3 rounded-lg bg-white/10">
+   362→                      <p className="text-xs opacity-80">الأشجار المفقودة</p>
+   363→                      <p className="text-2xl font-bold tabular-nums text-red-200">{fmt(stats.afforestation.totalLostTrees)}</p>
+   364→                    </div>
+   365→                    <div className="p-3 rounded-lg bg-white/10">
+   366→                      <p className="text-xs opacity-80">معدل البقاء</p>
+   367→                      <p className="text-2xl font-bold tabular-nums">{stats.afforestation.averageSurvivalRate}%</p>
+   368→                    </div>
+   369→                  </div>
+   370→                </CardContent>
+   371→              </Card>
+   372→
+   373→              {/* Carbon Absorption KPIs */}
+   374→              <div>
+   375→                <div className="flex items-center gap-2 mb-3">
+   376→                  <Leaf className="h-5 w-5 text-emerald-600" />
+   377→                  <h3 className="font-cairo text-lg font-bold">الكربون الممتص من الأشجار</h3>
+   378→                </div>
+   379→                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   380→                  <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
+   381→                    <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 mb-1">
+   382→                      <Sprout className="h-3.5 w-3.5" /> الكربون المخزن
+   383→                    </div>
+   384→                    <p className="text-xl font-bold tabular-nums text-emerald-600">{fmt(stats.afforestation.totalCarbonStored)}</p>
+   385→                    <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   386→                  </Card>
+   387→                  <Card className="p-4 bg-teal-50 dark:bg-teal-950/30 border-teal-200">
+   388→                    <div className="flex items-center gap-2 text-xs text-teal-700 dark:text-teal-400 mb-1">
+   389→                      <Calendar className="h-3.5 w-3.5" /> ممتص سنويًا
+   390→                    </div>
+   391→                    <p className="text-xl font-bold tabular-nums text-teal-600">{fmt(stats.afforestation.annualCarbonAbsorbed)}</p>
+   392→                    <p className="text-xs text-muted-foreground">kgCO₂e/سنة</p>
+   393→                  </Card>
+   394→                  <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
+   395→                    <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 mb-1">
+   396→                      <Activity className="h-3.5 w-3.5" /> إجمالي ممتص
+   397→                    </div>
+   398→                    <p className="text-xl font-bold tabular-nums text-blue-600">{fmt(stats.afforestation.totalCarbonAbsorbed)}</p>
+   399→                    <p className="text-xs text-muted-foreground">kgCO₂e</p>
+   400→                  </Card>
+   401→                  <Card className="p-4 bg-violet-50 dark:bg-violet-950/30 border-violet-200">
+   402→                    <div className="flex items-center gap-2 text-xs text-violet-700 dark:text-violet-400 mb-1">
+   403→                      <Gauge className="h-3.5 w-3.5" /> معدل الامتصاص/هكتار
+   404→                    </div>
+   405→                    <p className="text-xl font-bold tabular-nums text-violet-600">
+   406→                      {stats.afforestation.totalPlantedAreaHa > 0 ? fmt(Math.round(stats.afforestation.annualCarbonAbsorbed / stats.afforestation.totalPlantedAreaHa)) : '0'}
+   407→                    </p>
+   408→                    <p className="text-xs text-muted-foreground">kgCO₂e/ha/سنة</p>
+   409→                  </Card>
+   410→                </div>
+   411→              </div>
+   412→
+   413→              {/* Per-project afforestation details */}
+   414→              {afforestationProjects.map((p: any) => (
+   415→                <Card key={p.projectId}>
+   416→                  <CardHeader className="pb-3">
+   417→                    <div className="flex items-start justify-between gap-2">
+   418→                      <div>
+   419→                        <CardTitle className="text-base flex items-center gap-2">
+   420→                          <TreePine className="h-5 w-5 text-emerald-600" />
+   421→                          {p.projectName}
+   422→                        </CardTitle>
+   423→                        <CardDescription className="text-xs mt-1">
+   424→                          {p.projectCode} • {p.city} • {p.afforestation?.treeSpecies}
+   425→                        </CardDescription>
+   426→                      </div>
+   427→                      <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700">
+   428→                        <Heart className="h-3 w-3 ml-1" />
+   429→                        صحة الموقع: {p.afforestation?.healthScore}%
+   430→                      </Badge>
+   431→                    </div>
+   432→                  </CardHeader>
+   433→                  <CardContent className="space-y-4">
+   434→                    {/* Trees stats */}
+   435→                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   436→                      <div className="p-3 rounded-lg bg-muted/30">
+   437→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   438→                          <Sprout className="h-3 w-3" /> مزروعة
+   439→                        </div>
+   440→                        <p className="text-lg font-bold tabular-nums">{fmt(p.afforestation.plantedTrees)}</p>
+   441→                      </div>
+   442→                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   443→                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
+   444→                          <CheckCircle2 className="h-3 w-3" /> حية
+   445→                        </div>
+   446→                        <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(p.afforestation.aliveTrees)}</p>
+   447→                      </div>
+   448→                      <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+   449→                        <div className="flex items-center gap-1.5 text-xs text-red-700 mb-1">
+   450→                          <Ban className="h-3 w-3" /> مفقودة
+   451→                        </div>
+   452→                        <p className="text-lg font-bold tabular-nums text-red-600">{fmt(p.afforestation.lostTrees)}</p>
+   453→                      </div>
+   454→                      <div className="p-3 rounded-lg bg-muted/30">
+   455→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   456→                          <Gauge className="h-3 w-3" /> معدل البقاء
+   457→                        </div>
+   458→                        <p className="text-lg font-bold tabular-nums">{p.afforestation.survivalRate}%</p>
+   459→                      </div>
+   460→                    </div>
+   461→
+   462→                    {/* Area & density */}
+   463→                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   464→                      <div className="p-3 rounded-lg bg-muted/30">
+   465→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   466→                          <MapPin className="h-3 w-3" /> المساحة المزروعة
+   467→                        </div>
+   468→                        <p className="text-lg font-bold tabular-nums">{p.afforestation.plantedAreaHa} <span className="text-xs font-normal">ha</span></p>
+   469→                      </div>
+   470→                      <div className="p-3 rounded-lg bg-muted/30">
+   471→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   472→                          <Ruler className="h-3 w-3" /> الكثافة النباتية
+   473→                        </div>
+   474→                        <p className="text-lg font-bold tabular-nums">{fmt(p.afforestation.treeDensity)} <span className="text-xs font-normal">شجرة/ha</span></p>
+   475→                      </div>
+   476→                      <div className="p-3 rounded-lg bg-muted/30">
+   477→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   478→                          <Clock className="h-3 w-3" /> العمر المتوسط
+   479→                        </div>
+   480→                        <p className="text-lg font-bold tabular-nums">{p.afforestation.averageTreeAge} <span className="text-xs font-normal">سنة</span></p>
+   481→                      </div>
+   482→                      <div className="p-3 rounded-lg bg-muted/30">
+   483→                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   484→                          <TrendingUp className="h-3 w-3" /> معدل النمو
+   485→                        </div>
+   486→                        <p className="text-lg font-bold tabular-nums">{p.afforestation.growthRate} <span className="text-xs font-normal">cm/سنة</span></p>
+   487→                      </div>
+   488→                    </div>
+   489→
+   490→                    {/* Carbon & biomass */}
+   491→                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   492→                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   493→                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
+   494→                          <Leaf className="h-3 w-3" /> الكتلة الحيوية
+   495→                        </div>
+   496→                        <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(p.afforestation.estimatedBiomass)} <span className="text-xs font-normal">kg</span></p>
+   497→                      </div>
+   498→                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   499→                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
+   500→                          <Database className="h-3 w-3" /> الكربون المخزن
+   501→                        </div>
+   502→                        <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(p.afforestation.carbonStored)} <span className="text-xs font-normal">kgCO₂e</span></p>
+   503→                      </div>
+   504→                      <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-950/30">
+   505→                        <div className="flex items-center gap-1.5 text-xs text-teal-700 mb-1">
+   506→                          <Calendar className="h-3 w-3" /> ممتص سنويًا
+   507→                        </div>
+   508→                        <p className="text-lg font-bold tabular-nums text-teal-600">{fmt(p.afforestation.annualCarbonAbsorbed)} <span className="text-xs font-normal">kgCO₂e</span></p>
+   509→                      </div>
+   510→                      <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/30">
+   511→                        <div className="flex items-center gap-1.5 text-xs text-violet-700 mb-1">
+   512→                          <Gauge className="h-3 w-3" /> امتصاص/شجرة
+   513→                        </div>
+   514→                        <p className="text-lg font-bold tabular-nums text-violet-600">{p.afforestation.absorptionPerTree} <span className="text-xs font-normal">kgCO₂e/سنة</span></p>
+   515→                      </div>
+   516→                    </div>
+   517→
+   518→                    {/* Operations */}
+   519→                    <Separator />
+   520→                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   521→                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+   522→                        <div className="flex items-center gap-1.5 text-xs text-blue-700 mb-1">
+   523→                          <Droplet className="h-3 w-3" /> عمليات الري
+   524→                        </div>
+   525→                        <p className="text-lg font-bold tabular-nums text-blue-600">{fmt(p.afforestation.irrigationCount)}</p>
+   526→                      </div>
+   527→                      <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
+   528→                        <div className="flex items-center gap-1.5 text-xs text-amber-700 mb-1">
+   529→                          <Users className="h-3 w-3" /> زيارات ميدانية
+   530→                        </div>
+   531→                        <p className="text-lg font-bold tabular-nums text-amber-600">{fmt(p.afforestation.siteVisits)}</p>
+   532→                      </div>
+   533→                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   534→                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
+   535→                          <Heart className="h-3 w-3" /> مؤشر صحة الموقع
+   536→                        </div>
+   537→                        <p className="text-lg font-bold tabular-nums text-emerald-600">{p.afforestation.healthScore}%</p>
+   538→                      </div>
+   539→                      {p.afforestation.iotSensor && (
+   540→                        <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/30">
+   541→                          <div className="flex items-center gap-1.5 text-xs text-violet-700 mb-1">
+   542→                            <Beaker className="h-3 w-3" /> مستشعر IoT
+   543→                          </div>
+   544→                          <p className="text-sm font-bold text-violet-600">{p.afforestation.iotSensor.type}</p>
+   545→                          <p className="text-[10px] text-muted-foreground font-mono">{p.afforestation.iotSensor.serial}</p>
+   546→                        </div>
+   547→                      )}
+   548→                    </div>
+   549→                  </CardContent>
+   550→                </Card>
+   551→              ))}
+   552→            </>
+   553→          )}
+   554→        </TabsContent>
+   555→      </Tabs>
+   556→
+   557→      {/* Accounts & Ledger */}
+   558→      <Card>
+   559→        <CardHeader>
+   560→          <CardTitle className="text-base flex items-center gap-2">
+   561→            <Coins className="h-5 w-5 text-primary" />
+   562→            سجل وحدات الأثر (Ledger)
+   563→          </CardTitle>
+   564→          <CardDescription className="text-xs">
+   565→            حسابات وأرصدة وحركات غير قابلة للتعديل - وحدات داخلية ليست اعتمادات تجارية
+   566→          </CardDescription>
+   567→        </CardHeader>
+   568→        <CardContent className="space-y-4">
+   569→          {/* Aggregate stats */}
+   570→          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+   571→            <div className="p-3 rounded-lg bg-muted/30">
+   572→              <p className="text-xs text-muted-foreground">الرصيد الكلي</p>
+   573→              <p className="text-lg font-bold tabular-nums">{fmt(stats.totalBalance)}</p>
+   574→              <p className="text-[10px] text-muted-foreground">kgCO₂e</p>
+   575→            </div>
+   576→            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   577→              <p className="text-xs text-emerald-700">مُصدَر/متحقّق</p>
+   578→              <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(stats.totalIssued)}</p>
+   579→              <p className="text-[10px] text-muted-foreground">kgCO₂e</p>
+   580→            </div>
+   581→            <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30">
+   582→              <p className="text-xs text-purple-700">مُحال (Retired)</p>
+   583→              <p className="text-lg font-bold tabular-nums text-purple-600">{fmt(stats.totalRetired)}</p>
+   584→              <p className="text-[10px] text-muted-foreground">kgCO₂e</p>
+   585→            </div>
+   586→            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+   587→              <p className="text-xs text-red-700">مُلغى</p>
+   588→              <p className="text-lg font-bold tabular-nums text-red-600">{fmt(stats.totalCancelled)}</p>
+   589→              <p className="text-[10px] text-muted-foreground">kgCO₂e</p>
+   590→            </div>
+   591→            <div className="p-3 rounded-lg bg-muted/30">
+   592→              <p className="text-xs text-muted-foreground">تقديري</p>
+   593→              <p className="text-lg font-bold tabular-nums">{fmt(stats.totalEstimated)}</p>
+   594→              <p className="text-[10px] text-muted-foreground">kgCO₂e</p>
+   595→            </div>
+   596→          </div>
+   597→
+   598→          {/* Disclaimer */}
+   599→          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 text-xs text-amber-800 dark:text-amber-300">
+   600→            <AlertCircle className="h-3 w-3 inline ml-1" />
+   601→            <strong>تنبيه:</strong> وحدات الأثر الداخلية ليست اعتمادات كربونية تجارية. التداول والاعتماد التجاري مؤجلان حتى استيفاء المتطلبات القانونية والمنهجية.
+   602→          </div>
+   603→        </CardContent>
+   604→      </Card>
+   605→    </div>
+   606→  )
+   607→}
+   608→

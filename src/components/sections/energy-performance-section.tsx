@@ -26,10 +26,18 @@ export function EnergyPerformanceSection() {
       ? '/api/energy-performance'
       : `/api/energy-performance?projectId=${selectedProjectId}`
     fetch(url)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
         if (cancelled) return
-        setData(d)
+        if (d && d.stats && d.projects) {
+          setData(d)
+        } else {
+          setData(null)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setData(null)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -55,7 +63,7 @@ export function EnergyPerformanceSection() {
   const { stats, projects } = data
 
   // Chart data: energy by project
-  const energyByProject = projects.map((p: any) => ({
+  const energyByProject = (projects || []).map((p: any) => ({
     name: p.project.code,
     daily: p.energy.daily,
     monthly: p.energy.monthly,
@@ -102,7 +110,7 @@ export function EnergyPerformanceSection() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">كل المشاريع</SelectItem>
-            {projects.map((p: any) => (
+            {(projects || []).map((p: any) => (
               <SelectItem key={p.project.id} value={p.project.id}>
                 {p.project.nameAr || p.project.name} ({p.project.code})
               </SelectItem>
@@ -185,7 +193,7 @@ export function EnergyPerformanceSection() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {projects.slice(0, 5).map((p: any) => (
+              {(projects || []).slice(0, 5).map((p: any) => (
                 <div key={p.project.id} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="font-medium">{p.project.code}</span>
@@ -376,7 +384,7 @@ export function EnergyPerformanceSection() {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((p: any) => (
+                {(projects || []).map((p: any) => (
                   <tr key={p.project.id} className="border-b hover:bg-muted/30">
                     <td className="p-2">
                       <p className="font-medium">{p.project.nameAr || p.project.name}</p>

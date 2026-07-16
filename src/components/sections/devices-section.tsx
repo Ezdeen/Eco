@@ -36,8 +36,9 @@ export function DevicesSection() {
 
   useEffect(() => {
     fetch('/api/devices')
-      .then((r) => r.json())
-      .then((d) => setDevices(d.devices || []))
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { setDevices(d?.devices || []) })
+      .catch(() => { setDevices([]) })
       .finally(() => setLoading(false))
   }, [])
 

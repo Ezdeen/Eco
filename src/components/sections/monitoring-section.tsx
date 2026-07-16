@@ -41,10 +41,14 @@ export function MonitoringSection() {
 
   useEffect(() => {
     fetch('/api/cases')
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => {
-        setCases(d.cases || [])
-        setStats(d.stats)
+        setCases(d?.cases || [])
+        setStats(d?.stats || null)
+      })
+      .catch(() => {
+        setCases([])
+        setStats(null)
       })
       .finally(() => setLoading(false))
   }, [])

@@ -96,7 +96,7 @@ export function DashboardSection() {
         setData(null)
       }
     } catch (e) {
-      console.error('Dashboard fetch error:', e)
+      console.warn('Dashboard fetch error:', e)
       setData(null)
     } finally {
       setLoading(false)

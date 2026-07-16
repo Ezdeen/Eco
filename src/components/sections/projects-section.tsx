@@ -73,8 +73,9 @@ export function ProjectsSection() {
   const fetchProjects = useCallback(() => {
     setLoading(true)
     fetch('/api/projects')
-      .then((r) => r.json())
-      .then((d) => setProjects(d.projects || []))
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { setProjects(d?.projects || []) })
+      .catch(() => { setProjects([]) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -84,10 +85,14 @@ export function ProjectsSection() {
       if (!cancelled) {
         setLoading(true)
         fetch('/api/projects')
-          .then((r) => r.json())
+          .then((r) => { if (!r.ok) throw new Error(); return r.json() })
           .then((d) => {
             if (cancelled) return
-            setProjects(d.projects || [])
+            setProjects(d?.projects || [])
+          })
+          .catch(() => {
+            if (cancelled) return
+            setProjects([])
           })
           .finally(() => {
             if (!cancelled) setLoading(false)

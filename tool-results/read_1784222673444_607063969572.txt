@@ -1,0 +1,677 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState } from 'react'
+     4→     4→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     5→     5→import { Badge } from '@/components/ui/badge'
+     6→     6→import { Button } from '@/components/ui/button'
+     7→     7→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+     8→     8→import { Label } from '@/components/ui/label'
+     9→     9→import { Separator } from '@/components/ui/separator'
+    10→    10→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    11→    11→import {
+    12→    12→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+    13→    13→} from '@/components/ui/dialog'
+    14→    14→import {
+    15→    15→  Calculator, Zap, Leaf, Droplet, Recycle, TreePine, Bird, DollarSign,
+    16→    16→  ShieldCheck, Database, Activity, Gauge, TrendingUp, FlaskConical, Code2,
+    17→    17→  FileCheck, ExternalLink, Eye, BookOpen, Network, AlertCircle, CheckCircle2,
+    18→    18→} from 'lucide-react'
+    19→    19→import { toast } from 'sonner'
+    20→    20→
+    21→    21→const KPI_CATEGORIES = [
+    22→    22→  {
+    23→    23→    key: 'energy',
+    24→    24→    title: 'الطاقة',
+    25→    25→    titleEn: 'Energy',
+    26→    26→    icon: Zap,
+    27→    27→    color: 'amber',
+    28→    28→    kpis: [
+    29→    29→      { key: 'energyGenerated', label: 'Energy Generated', labelAr: 'الطاقة المُولّدة', unit: 'kWh' },
+    30→    30→      { key: 'energyExported', label: 'Energy Exported', labelAr: 'الطاقة المُصدَّرة', unit: 'kWh' },
+    31→    31→      { key: 'energyImported', label: 'Energy Imported', labelAr: 'الطاقة المستوردة', unit: 'kWh' },
+    32→    32→      { key: 'selfConsumption', label: 'Self Consumption', labelAr: 'الاستهلاك الذاتي', unit: 'kWh' },
+    33→    33→      { key: 'renewableFraction', label: 'Renewable Fraction', labelAr: 'نسبة الطاقة المتجددة', unit: '%' },
+    34→    34→    ],
+    35→    35→  },
+    36→    36→  {
+    37→    37→    key: 'carbon',
+    38→    38→    title: 'الكربون',
+    39→    39→    titleEn: 'Carbon',
+    40→    40→    icon: Leaf,
+    41→    41→    color: 'emerald',
+    42→    42→    kpis: [
+    43→    43→      { key: 'co2Avoided', label: 'CO₂e Avoided', labelAr: 'CO₂e متجنب', unit: 'kg' },
+    44→    44→      { key: 'co2Stored', label: 'CO₂e Stored', labelAr: 'CO₂e مخزّن', unit: 'kg' },
+    45→    45→      { key: 'co2Sequestered', label: 'CO₂e Sequestered', labelAr: 'CO₂e ممتص', unit: 'kg' },
+    46→    46→      { key: 'carbonIntensity', label: 'Carbon Intensity', labelAr: 'كثافة الكربون', unit: 'kgCO₂e/kWh' },
+    47→    47→    ],
+    48→    48→  },
+    49→    49→  {
+    50→    50→    key: 'water',
+    51→    51→    title: 'المياه',
+    52→    52→    titleEn: 'Water',
+    53→    53→    icon: Droplet,
+    54→    54→    color: 'blue',
+    55→    55→    kpis: [
+    56→    56→      { key: 'waterSaved', label: 'Water Saved', labelAr: 'مياه موفّرة', unit: 'لتر' },
+    57→    57→      { key: 'waterConsumed', label: 'Water Consumed', labelAr: 'مياه مستهلكة', unit: 'لتر' },
+    58→    58→    ],
+    59→    59→  },
+    60→    60→  {
+    61→    61→    key: 'waste',
+    62→    62→    title: 'النفايات',
+    63→    63→    titleEn: 'Waste',
+    64→    64→    icon: Recycle,
+    65→    65→    color: 'violet',
+    66→    66→    kpis: [
+    67→    67→      { key: 'wasteDiverted', label: 'Waste Diverted', labelAr: 'نفايات مُحوّلة', unit: 'kg' },
+    68→    68→      { key: 'wasteRecycled', label: 'Waste Recycled', labelAr: 'نفايات مُعاد تدويرها', unit: 'kg' },
+    69→    69→    ],
+    70→    70→  },
+    71→    71→  {
+    72→    72→    key: 'afforestation',
+    73→    73→    title: 'التشجير',
+    74→    74→    titleEn: 'Afforestation',
+    75→    75→    icon: TreePine,
+    76→    76→    color: 'green',
+    77→    77→    kpis: [
+    78→    78→      { key: 'treesPlanted', label: 'Trees Planted', labelAr: 'أشجار مزروعة', unit: 'شجرة' },
+    79→    79→      { key: 'survivalRate', label: 'Survival Rate', labelAr: 'معدل البقاء', unit: '%' },
+    80→    80→      { key: 'biomass', label: 'Biomass', labelAr: 'الكتلة الحيوية', unit: 'kg' },
+    81→    81→      { key: 'carbonStock', label: 'Carbon Stock', labelAr: 'الكربون المخزن', unit: 'kgCO₂e' },
+    82→    82→      { key: 'carbonSequestration', label: 'Carbon Sequestration', labelAr: 'امتصاص الكربون', unit: 'kgCO₂e/سنة' },
+    83→    83→    ],
+    84→    84→  },
+    85→    85→  {
+    86→    86→    key: 'biodiversity',
+    87→    87→    title: 'التنوع الحيوي',
+    88→    88→    titleEn: 'Biodiversity',
+    89→    89→    icon: Bird,
+    90→    90→    color: 'teal',
+    91→    91→    kpis: [
+    92→    92→      { key: 'restoredArea', label: 'Restored Area', labelAr: 'مساحة مُستعادة', unit: 'ha' },
+    93→    93→      { key: 'protectedArea', label: 'Protected Area', labelAr: 'مساحة محمية', unit: 'ha' },
+    94→    94→      { key: 'habitatIndex', label: 'Habitat Index', labelAr: 'مؤشر الموئل', unit: '/100' },
+    95→    95→      { key: 'speciesCount', label: 'Species Count', labelAr: 'عدد الأنواع', unit: 'نوع' },
+    96→    96→    ],
+    97→    97→  },
+    98→    98→  {
+    99→    99→    key: 'economy',
+   100→   100→    title: 'الاقتصاد',
+   101→   101→    titleEn: 'Economy',
+   102→   102→    icon: DollarSign,
+   103→   103→    color: 'amber',
+   104→   104→    kpis: [
+   105→   105→      { key: 'costSavings', label: 'Cost Savings', labelAr: 'وفر تكاليف', unit: 'SAR' },
+   106→   106→      { key: 'greenInvestment', label: 'Green Investment', labelAr: 'استثمار أخضر', unit: 'SAR' },
+   107→   107→      { key: 'costPerTCo2e', label: 'Cost per tCO₂e', labelAr: 'تكلفة لكل طن CO₂e', unit: 'SAR/tCO₂e' },
+   108→   108→      { key: 'costPerKwh', label: 'Cost per kWh', labelAr: 'تكلفة لكل kWh', unit: 'SAR/kWh' },
+   109→   109→    ],
+   110→   110→  },
+   111→   111→  {
+   112→   112→    key: 'dataQuality',
+   113→   113→    title: 'جودة البيانات',
+   114→   114→    titleEn: 'Data Quality',
+   115→   115→    icon: ShieldCheck,
+   116→   116→    color: 'blue',
+   117→   117→    kpis: [
+   118→   118→      { key: 'completeness', label: 'Completeness', labelAr: 'الاكتمال', unit: '%' },
+   119→   119→      { key: 'accuracy', label: 'Accuracy', labelAr: 'الدقة', unit: '%' },
+   120→   120→      { key: 'timeliness', label: 'Timeliness', labelAr: 'الحداثة', unit: '%' },
+   121→   121→      { key: 'validationRate', label: 'Validation Rate', labelAr: 'نسبة التحقق', unit: '%' },
+   122→   122→    ],
+   123→   123→  },
+   124→   124→  {
+   125→   125→    key: 'attestation',
+   126→   126→    title: 'التوثيق',
+   127→   127→    titleEn: 'Attestation',
+   128→   128→    icon: Database,
+   129→   129→    color: 'violet',
+   130→   130→    kpis: [
+   131→   131→      { key: 'verifiedDataPercent', label: 'Verified Data %', labelAr: 'بيانات موثقة', unit: '%' },
+   132→   132→      { key: 'traceabilityPercent', label: 'Traceability %', labelAr: 'قابلية التتبع', unit: '%' },
+   133→   133→      { key: 'auditCoveragePercent', label: 'Audit Coverage %', labelAr: 'تغطية التدقيق', unit: '%' },
+   134→   134→      { key: 'attestationCount', label: 'Attestation Count', labelAr: 'عدد التوثيقات', unit: 'دفعة' },
+   135→   135→    ],
+   136→   136→  },
+   137→   137→]
+   138→   138→
+   139→   139→const COLOR_MAP: Record<string, { bg: string; text: string; border: string; gradient: string }> = {
+   140→   140→  amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200', gradient: 'from-amber-500 to-orange-600' },
+   141→   141→  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200', gradient: 'from-emerald-500 to-teal-600' },
+   142→   142→  blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200', gradient: 'from-blue-500 to-cyan-600' },
+   143→   143→  violet: { bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-200', gradient: 'from-violet-500 to-purple-600' },
+   144→   144→  green: { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-200', gradient: 'from-green-500 to-emerald-600' },
+   145→   145→  teal: { bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200', gradient: 'from-teal-500 to-cyan-600' },
+   146→   146→}
+   147→   147→
+   148→   148→const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+   149→   149→const fmtCompact = (n: number) =>
+   150→   150→  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toString()
+   151→   151→
+   152→   152→export function CalculationsSection() {
+   153→   153→  const [projects, setProjects] = useState<any[]>([])
+   154→   154→  const [selectedProject, setSelectedProject] = useState<string>('')
+   155→   155→  const [recentRuns, setRecentRuns] = useState<any[]>([])
+   156→   156→  const [kpiCatalog, setKpiCatalog] = useState<any>(null)
+   157→   157→  const [running, setRunning] = useState(false)
+   158→   158→  const [result, setResult] = useState<any>(null)
+   159→   159→  // ESG frameworks
+   160→   160→  const [esgData, setEsgData] = useState<any>(null)
+   161→   161→  const [traceDialog, setTraceDialog] = useState<any>(null)
+   162→   162→
+   163→   163→  useEffect(() => {
+   164→   164→    fetch('/api/projects')
+   165→   165→      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+   166→   166→      .then((d) => { if (d && d.projects) setProjects(d.projects) })
+   167→   167→      .catch(() => {})
+   168→   168→    fetchCalculations()
+   169→   169→    fetch('/api/esg-frameworks')
+   170→   170→      .then((r) => {
+   171→   171→        if (!r.ok) throw new Error('ESG frameworks API failed')
+   172→   172→        return r.json()
+   173→   173→      })
+   174→   174→      .then((d) => {
+   175→   175→        if (d && d.frameworks) {
+   176→   176→          setEsgData(d)
+   177→   177→        }
+   178→   178→      })
+   179→   179→      .catch(() => {})
+   180→   180→  }, [])
+   181→   181→
+   182→   182→  const fetchCalculations = async () => {
+   183→   183→    try {
+   184→   184→      const res = await fetch('/api/calculations')
+   185→   185→      if (!res.ok) return
+   186→   186→      const data = await res.json()
+   187→   187→      setRecentRuns(data.calculationRuns || [])
+   188→   188→      setKpiCatalog(data.kpiCatalog || null)
+   189→   189→    } catch {}
+   190→   190→  }
+   191→   191→
+   192→   192→  const runCalculation = async () => {
+   193→   193→    if (!selectedProject) {
+   194→   194→      toast.error('اختر مشروعًا أولاً')
+   195→   195→      return
+   196→   196→    }
+   197→   197→    setRunning(true)
+   198→   198→    setResult(null)
+   199→   199→    try {
+   200→   200→      const now = new Date()
+   201→   201→      const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+   202→   202→      const res = await fetch('/api/calculations', {
+   203→   203→        method: 'POST',
+   204→   204→        headers: { 'Content-Type': 'application/json' },
+   205→   205→        body: JSON.stringify({
+   206→   206→          projectId: selectedProject,
+   207→   207→          periodStart: periodStart.toISOString(),
+   208→   208→          periodEnd: now.toISOString(),
+   209→   209→          methodologyVersion: 'ghg_protocol_scope2_v1.2',
+   210→   210→        }),
+   211→   211→      })
+   212→   212→      const data = await res.json()
+   213→   213→      if (data.success) {
+   214→   214→        setResult(data)
+   215→   215→        toast.success('اكتمل الحساب بنجاح')
+   216→   216→        fetchCalculations()
+   217→   217→      } else {
+   218→   218→        toast.error('فشل الحساب')
+   219→   219→      }
+   220→   220→    } catch (e) {
+   221→   221→      toast.error('خطأ في الاتصال')
+   222→   222→    } finally {
+   223→   223→      setRunning(false)
+   224→   224→    }
+   225→   225→  }
+   226→   226→
+   227→   227→  return (
+   228→   228→    <div className="space-y-5">
+   229→   229→      {/* Header */}
+   230→   230→      <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-0">
+   231→   231→        <CardContent className="p-5">
+   232→   232→          <div className="flex items-start justify-between gap-4">
+   233→   233→            <div>
+   234→   234→              <h2 className="font-cairo text-2xl font-bold mb-1">Environmental KPI Catalog</h2>
+   235→   235→              <p className="text-sm opacity-90">
+   236→   236→                جميع المؤشرات البيئية بشكل موحد - 9 فئات تشمل الطاقة والكربون والمياه والنفايات والتشجير والتنوع الحيوي والاقتصاد وجودة البيانات والتوثيق
+   237→   237→              </p>
+   238→   238→            </div>
+   239→   239→            <Database className="h-12 w-12 opacity-80" />
+   240→   240→          </div>
+   241→   241→        </CardContent>
+   242→   242→      </Card>
+   243→   243→
+   244→   244→      {/* Run calculation */}
+   245→   245→      <Card>
+   246→   246→        <CardHeader>
+   247→   247→          <CardTitle className="text-base flex items-center gap-2">
+   248→   248→            <Calculator className="h-5 w-5 text-primary" />
+   249→   249→            تشغيل حساب جديد
+   250→   250→          </CardTitle>
+   251→   251→          <CardDescription className="text-xs">
+   252→   252→            يتم حفظ إصدار الصيغة والمعاملات والمدخلات لإعادة إنتاج كل نتيجة لاحقًا
+   253→   253→          </CardDescription>
+   254→   254→        </CardHeader>
+   255→   255→        <CardContent className="space-y-4">
+   256→   256→          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+   257→   257→            <div className="space-y-1.5">
+   258→   258→              <Label className="text-xs">المشروع</Label>
+   259→   259→              <Select value={selectedProject} onValueChange={setSelectedProject}>
+   260→   260→                <SelectTrigger><SelectValue placeholder="اختر مشروعًا" /></SelectTrigger>
+   261→   261→                <SelectContent>
+   262→   262→                  {projects.map((p) => (
+   263→   263→                    <SelectItem key={p.id} value={p.id}>
+   264→   264→                      {p.nameAr || p.name} ({p.code})
+   265→   265→                    </SelectItem>
+   266→   266→                  ))}
+   267→   267→                </SelectContent>
+   268→   268→              </Select>
+   269→   269→            </div>
+   270→   270→            <div className="space-y-1.5">
+   271→   271→              <Label className="text-xs">المنهجية</Label>
+   272→   272→              <Select defaultValue="ghg_protocol_scope2_v1.2">
+   273→   273→                <SelectTrigger><SelectValue /></SelectTrigger>
+   274→   274→                <SelectContent>
+   275→   275→                  <SelectItem value="ghg_protocol_scope2_v1.2">GHG Protocol Scope 2 v1.2</SelectItem>
+   276→   276→                  <SelectItem value="iso_14064_2_v1.0">ISO 14064-2 v1.0</SelectItem>
+   277→   277→                </SelectContent>
+   278→   278→              </Select>
+   279→   279→            </div>
+   280→   280→            <div className="space-y-1.5">
+   281→   281→              <Label className="text-xs">الفترة</Label>
+   282→   282→              <Select defaultValue="30d">
+   283→   283→                <SelectTrigger><SelectValue /></SelectTrigger>
+   284→   284→                <SelectContent>
+   285→   285→                  <SelectItem value="7d">آخر 7 أيام</SelectItem>
+   286→   286→                  <SelectItem value="30d">آخر 30 يومًا</SelectItem>
+   287→   287→                  <SelectItem value="90d">آخر 90 يومًا</SelectItem>
+   288→   288→                </SelectContent>
+   289→   289→              </Select>
+   290→   290→            </div>
+   291→   291→          </div>
+   292→   292→          <Button onClick={runCalculation} disabled={running || !selectedProject}>
+   293→   293→            <Calculator className="h-4 w-4 ml-1" />
+   294→   294→            {running ? 'جاري الحساب...' : 'تشغيل الحساب'}
+   295→   295→          </Button>
+   296→   296→
+   297→   297→          {result && (
+   298→   298→            <div className="mt-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200">
+   299→   299→              <div className="flex items-center gap-2 mb-3">
+   300→   300→                <TrendingUp className="h-5 w-5 text-emerald-600" />
+   301→   301→                <h4 className="font-semibold text-sm">نتائج الحساب</h4>
+   302→   302→                <Badge variant="outline" className="text-xs ml-auto">Run ID: {result.run.id.slice(0, 8)}</Badge>
+   303→   303→              </div>
+   304→   304→              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+   305→   305→                <div>
+   306→   306→                  <p className="text-xs text-muted-foreground">إجمالي الطاقة</p>
+   307→   307→                  <p className="font-bold tabular-nums">{fmt(result.details.totalEnergyKwh)} kWh</p>
+   308→   308→                </div>
+   309→   309→                <div>
+   310→   310→                  <p className="text-xs text-muted-foreground">CO₂e متجنب</p>
+   311→   311→                  <p className="font-bold tabular-nums">{fmt(result.details.totalCo2AvoidedKg)} kg</p>
+   312→   312→                </div>
+   313→   313→                <div>
+   314→   314→                  <p className="text-xs text-muted-foreground">الوفر</p>
+   315→   315→                  <p className="font-bold tabular-nums">{fmt(result.details.totalSavings)} SAR</p>
+   316→   316→                </div>
+   317→   317→                <div>
+   318→   318→                  <p className="text-xs text-muted-foreground">Performance Ratio</p>
+   319→   319→                  <p className="font-bold tabular-nums">{(result.details.performanceRatio * 100).toFixed(1)}%</p>
+   320→   320→                </div>
+   321→   321→              </div>
+   322→   322→            </div>
+   323→   323→          )}
+   324→   324→        </CardContent>
+   325→   325→      </Card>
+   326→   326→
+   327→   327→      {/* Tabs: KPI Catalog | ESG Frameworks | Traceable KPIs | Recent Runs */}
+   328→   328→      <Tabs defaultValue="kpi" className="w-full">
+   329→   329→        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-2xl">
+   330→   330→          <TabsTrigger value="kpi" className="gap-1 text-xs">
+   331→   331→            <Database className="h-3.5 w-3.5" /> KPI Catalog
+   332→   332→          </TabsTrigger>
+   333→   333→          <TabsTrigger value="esg" className="gap-1 text-xs">
+   334→   334→            <FileCheck className="h-3.5 w-3.5" /> أطر ESG
+   335→   335→          </TabsTrigger>
+   336→   336→          <TabsTrigger value="traceable" className="gap-1 text-xs">
+   337→   337→            <Network className="h-3.5 w-3.5" /> Traceable KPIs
+   338→   338→          </TabsTrigger>
+   339→   339→          <TabsTrigger value="runs" className="gap-1 text-xs">
+   340→   340→            <FlaskConical className="h-3.5 w-3.5" /> سجل الحسابات
+   341→   341→          </TabsTrigger>
+   342→   342→        </TabsList>
+   343→   343→
+   344→   344→        {/* KPI Catalog Tab */}
+   345→   345→        <TabsContent value="kpi" className="mt-4">
+   346→   346→          {kpiCatalog && (
+   347→   347→            <div>
+   348→   348→              <div className="flex items-center gap-2 mb-3">
+   349→   349→                <Activity className="h-5 w-5 text-primary" />
+   350→   350→                <h3 className="font-cairo text-lg font-bold">Environmental KPI Catalog</h3>
+   351→   351→                <Badge variant="outline" className="text-xs">9 فئات</Badge>
+   352→   352→              </div>
+   353→   353→              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   354→   354→                {KPI_CATEGORIES.map((cat) => {
+   355→   355→                  const Icon = cat.icon
+   356→   356→                  const colors = COLOR_MAP[cat.color] || COLOR_MAP.blue
+   357→   357→                  const categoryData = kpiCatalog[cat.key] || {}
+   358→   358→                  return (
+   359→   359→                    <Card key={cat.key} className={`overflow-hidden ${colors.border}`}>
+   360→   360→                      <CardHeader className={`pb-2 bg-gradient-to-br ${colors.gradient} text-white`}>
+   361→   361→                        <CardTitle className="text-sm flex items-center gap-2">
+   362→   362→                          <Icon className="h-4 w-4" />
+   363→   363→                          {cat.title}
+   364→   364→                          <span className="text-xs opacity-80 mr-auto">{cat.titleEn}</span>
+   365→   365→                        </CardTitle>
+   366→   366→                      </CardHeader>
+   367→   367→                      <CardContent className="p-3 space-y-2">
+   368→   368→                        {cat.kpis.map((kpi) => (
+   369→   369→                          <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+   370→   370→                            <div className="min-w-0">
+   371→   371→                              <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
+   372→   372→                              <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
+   373→   373→                            </div>
+   374→   374→                            <div className="text-left shrink-0">
+   375→   375→                              <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
+   376→   376→                                {fmtCompact(categoryData[kpi.key] || 0)}
+   377→   377→                              </p>
+   378→   378→                              <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
+   379→   379→                            </div>
+   380→   380→                          </div>
+   381→   381→                        ))}
+   382→   382→                      </CardContent>
+   383→   383→                    </Card>
+   384→   384→                  )
+   385→   385→                })}
+   386→   386→              </div>
+   387→   387→            </div>
+   388→   388→          )}
+   389→   389→        </TabsContent>
+   390→   390→
+   391→   391→        {/* ESG Frameworks Tab */}
+   392→   392→        <TabsContent value="esg" className="mt-4 space-y-4">
+   393→   393→          {esgData ? (
+   394→   394→            <>
+   395→   395→              <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200">
+   396→   396→                <CardContent className="p-4">
+   397→   397→                  <div className="flex items-start gap-3">
+   398→   398→                    <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+   399→   399→                    <div>
+   400→   400→                      <p className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-1">ملاحظة مهمة حول أطر ESG</p>
+   401→   401→                      <p className="text-xs text-blue-800 dark:text-blue-400 leading-relaxed">
+   402→   402→                        {esgData.note} المنصة توائم البيانات مع {esgData.totalFrameworks} أطر دولية مختلفة. كل مؤشر قابل للتتبع (Traceable) يعرض مصدره وطريقة حسابه والإطار المرتبط به.
+   403→   403→                      </p>
+   404→   404→                    </div>
+   405→   405→                  </div>
+   406→   406→                </CardContent>
+   407→   407→              </Card>
+   408→   408→
+   409→   409→              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   410→   410→                {esgData.frameworks.map((fw: any) => (
+   411→   411→                  <Card key={fw.code} className="overflow-hidden">
+   412→   412→                    <CardHeader className="pb-2 bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+   413→   413→                      <CardTitle className="text-sm flex items-center gap-2">
+   414→   414→                        <FileCheck className="h-4 w-4" />
+   415→   415→                        {fw.name}
+   416→   416→                        <span className="text-[10px] opacity-80 mr-auto">{fw.code}</span>
+   417→   417→                      </CardTitle>
+   418→   418→                      <p className="text-xs opacity-90">{fw.nameAr}</p>
+   419→   419→                    </CardHeader>
+   420→   420→                    <CardContent className="p-3 space-y-2">
+   421→   421→                      <p className="text-xs text-muted-foreground leading-relaxed">{fw.description}</p>
+   422→   422→                      <div className="flex items-center gap-2 text-[10px]">
+   423→   423→                        <Badge variant="outline" className="text-[10px]">{fw.scope}</Badge>
+   424→   424→                        <Badge variant="outline" className="text-[10px]">{fw.version}</Badge>
+   425→   425→                      </div>
+   426→   426→                      <Separator />
+   427→   427→                      <div className="space-y-1">
+   428→   428→                        <p className="text-[10px] font-semibold text-muted-foreground">المؤشرات المرتبطة ({fw.mapping.length}):</p>
+   429→   429→                        {fw.mapping.slice(0, 3).map((m: any, i: number) => (
+   430→   430→                          <div key={i} className="flex items-center gap-1 text-[10px]">
+   431→   431→                            <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+   432→   432→                            <span className="font-mono">{m.kpi}</span>
+   433→   433→                            <span className="text-muted-foreground truncate">→ {m.frameworkRef}</span>
+   434→   434→                          </div>
+   435→   435→                        ))}
+   436→   436→                        {fw.mapping.length > 3 && (
+   437→   437→                          <p className="text-[10px] text-muted-foreground">+ {fw.mapping.length - 3} المزيد</p>
+   438→   438→                        )}
+   439→   439→                      </div>
+   440→   440→                      <a
+   441→   441→                        href={fw.website}
+   442→   442→                        target="_blank"
+   443→   443→                        rel="noopener noreferrer"
+   444→   444→                        className="flex items-center gap-1 text-[10px] text-primary hover:underline"
+   445→   445→                      >
+   446→   446→                        <ExternalLink className="h-2.5 w-2.5" />
+   447→   447→                        زيارة الموقع الرسمي
+   448→   448→                      </a>
+   449→   449→                    </CardContent>
+   450→   450→                  </Card>
+   451→   451→                ))}
+   452→   452→              </div>
+   453→   453→            </>
+   454→   454→          ) : (
+   455→   455→            <Card className="animate-pulse h-96 bg-muted/40" />
+   456→   456→          )}
+   457→   457→        </TabsContent>
+   458→   458→
+   459→   459→        {/* Traceable KPIs Tab */}
+   460→   460→        <TabsContent value="traceable" className="mt-4 space-y-4">
+   461→   461→          {esgData?.traceableKPIs ? (
+   462→   462→            <>
+   463→   463→              <div className="flex items-center gap-2 mb-3">
+   464→   464→                <Network className="h-5 w-5 text-primary" />
+   465→   465→                <h3 className="font-cairo text-lg font-bold">Traceable KPIs - مؤشرات قابلة للتتبع</h3>
+   466→   466→                <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700">
+   467→   467→                  {esgData.traceableKPIs.length} مؤشر
+   468→   468→                </Badge>
+   469→   469→              </div>
+   470→   470→              <p className="text-xs text-muted-foreground mb-4">
+   471→   471→                كل مؤشر يعرض مصدره، طريقة حسابه، أصل البيانات، حالة التحقق، ومسار التدقيق - مما يضمن قابلية التتبع والشفافية الكاملة.
+   472→   472→              </p>
+   473→   473→              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   474→   474→                {esgData.traceableKPIs.map((kpi: any) => (
+   475→   475→                  <Card key={kpi.key} className="overflow-hidden">
+   476→   476→                    <CardHeader className="pb-2 bg-muted/30">
+   477→   477→                      <div className="flex items-start justify-between gap-2">
+   478→   478→                        <div className="min-w-0">
+   479→   479→                          <CardTitle className="text-sm">{kpi.labelAr}</CardTitle>
+   480→   480→                          <p className="text-[10px] text-muted-foreground">{kpi.labelEn}</p>
+   481→   481→                        </div>
+   482→   482→                        <div className="flex flex-col items-end gap-1 shrink-0">
+   483→   483→                          <p className="text-lg font-bold tabular-nums text-primary">{fmtCompact(kpi.value)}</p>
+   484→   484→                          <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
+   485→   485→                          {kpi.classification && (
+   486→   486→                            <Badge variant="outline" className={`text-[9px] ${
+   487→   487→                              kpi.classification === 'موثق' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200' :
+   488→   488→                              kpi.classification === 'محسوب' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200' :
+   489→   489→                              kpi.classification === 'تقديري' ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200' :
+   490→   490→                              'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border-violet-200'
+   491→   491→                            }`}>
+   492→   492→                              {kpi.classification}
+   493→   493→                            </Badge>
+   494→   494→                          )}
+   495→   495→                        </div>
+   496→   496→                      </div>
+   497→   497→                    </CardHeader>
+   498→   498→                    <CardContent className="p-3 space-y-2">
+   499→   499→                      <div className="space-y-1.5 text-xs">
+   500→   500→                        <div className="flex items-start gap-2">
+   501→   501→                          <Database className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   502→   502→                          <div>
+   503→   503→                            <p className="text-muted-foreground">المصدر:</p>
+   504→   504→                            <p className="font-medium">{kpi.source}</p>
+   505→   505→                          </div>
+   506→   506→                        </div>
+   507→   507→                        <div className="flex items-start gap-2">
+   508→   508→                          <Calculator className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   509→   509→                          <div>
+   510→   510→                            <p className="text-muted-foreground">طريقة الحساب:</p>
+   511→   511→                            <p className="font-medium text-[11px]">{kpi.calculationMethod}</p>
+   512→   512→                          </div>
+   513→   513→                        </div>
+   514→   514→                        <div className="flex items-start gap-2">
+   515→   515→                          <BookOpen className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   516→   516→                          <div>
+   517→   517→                            <p className="text-muted-foreground">أصل البيانات:</p>
+   518→   518→                            <p className="font-medium text-[11px]">{kpi.dataOrigin}</p>
+   519→   519→                          </div>
+   520→   520→                        </div>
+   521→   521→                        <div className="flex items-start gap-2">
+   522→   522→                          <ShieldCheck className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   523→   523→                          <div>
+   524→   524→                            <p className="text-muted-foreground">حالة التحقق:</p>
+   525→   525→                            <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700">
+   526→   526→                              {kpi.verificationStatus}
+   527→   527→                            </Badge>
+   528→   528→                          </div>
+   529→   529→                        </div>
+   530→   530→                        <div className="flex items-start gap-2">
+   531→   531→                          <FileCheck className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   532→   532→                          <div>
+   533→   533→                            <p className="text-muted-foreground">مسار التدقيق:</p>
+   534→   534→                            <p className="font-medium text-[11px]">{kpi.auditTrail}</p>
+   535→   535→                          </div>
+   536→   536→                        </div>
+   537→   537→                      </div>
+   538→   538→                      <Separator />
+   539→   539→                      <div>
+   540→   540→                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">الأطر المتوافقة ({kpi.frameworks.length}):</p>
+   541→   541→                        <div className="flex flex-wrap gap-1">
+   542→   542→                          {kpi.frameworks.map((fw: any, i: number) => (
+   543→   543→                            <Badge key={i} variant="outline" className="text-[9px] bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" title={fw.ref}>
+   544→   544→                              {fw.code}
+   545→   545→                            </Badge>
+   546→   546→                          ))}
+   547→   547→                        </div>
+   548→   548→                      </div>
+   549→   549→                      <Button
+   550→   550→                        variant="ghost"
+   551→   551→                        size="sm"
+   552→   552→                        className="w-full h-7 text-xs"
+   553→   553→                        onClick={() => setTraceDialog(kpi)}
+   554→   554→                      >
+   555→   555→                        <Eye className="h-3 w-3 ml-1" />
+   556→   556→                        عرض تفاصيل التتبع
+   557→   557→                      </Button>
+   558→   558→                    </CardContent>
+   559→   559→                  </Card>
+   560→   560→                ))}
+   561→   561→              </div>
+   562→   562→            </>
+   563→   563→          ) : (
+   564→   564→            <Card className="animate-pulse h-96 bg-muted/40" />
+   565→   565→          )}
+   566→   566→        </TabsContent>
+   567→   567→
+   568→   568→        {/* Recent Runs Tab */}
+   569→   569→        <TabsContent value="runs" className="mt-4">
+   570→   570→          <Card>
+   571→   571→            <CardHeader>
+   572→   572→              <CardTitle className="text-base flex items-center gap-2">
+   573→   573→                <FlaskConical className="h-5 w-5" />
+   574→   574→                آخر عمليات الحساب
+   575→   575→              </CardTitle>
+   576→   576→            </CardHeader>
+   577→   577→            <CardContent className="space-y-2">
+   578→   578→              {recentRuns.slice(0, 10).map((r) => (
+   579→   579→                <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40 hover:bg-muted transition-colors">
+   580→   580→                  <div className="flex items-center gap-3">
+   581→   581→                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   582→   582→                      <Code2 className="h-4 w-4" />
+   583→   583→                    </div>
+   584→   584→                    <div>
+   585→   585→                      <p className="text-sm font-medium">{r.project?.nameAr || r.project?.name}</p>
+   586→   586→                      <p className="text-xs text-muted-foreground">
+   587→   587→                        {new Date(r.periodStart).toLocaleDateString('ar-SA')} → {new Date(r.periodEnd).toLocaleDateString('ar-SA')}
+   588→   588→                      </p>
+   589→   589→                    </div>
+   590→   590→                  </div>
+   591→   591→                  <div className="flex items-center gap-3 text-xs">
+   592→   592→                    <div className="text-left">
+   593→   593→                      <p className="font-semibold tabular-nums">{r.totalEnergyKwh?.toLocaleString() || '—'} kWh</p>
+   594→   594→                      <p className="text-muted-foreground">{r.totalCo2AvoidedKg?.toLocaleString() || '—'} kgCO₂e</p>
+   595→   595→                    </div>
+   596→   596→                    <Badge variant="outline" className="text-xs">{r.methodologyVersion}</Badge>
+   597→   597→                    <Badge variant="default" className="text-xs bg-emerald-600">{r.status === 'completed' ? 'مكتمل' : r.status}</Badge>
+   598→   598→                  </div>
+   599→   599→                </div>
+   600→   600→              ))}
+   601→   601→            </CardContent>
+   602→   602→          </Card>
+   603→   603→        </TabsContent>
+   604→   604→      </Tabs>
+   605→   605→
+   606→   606→      {/* Trace Dialog */}
+   607→   607→      <Dialog open={!!traceDialog} onOpenChange={(open) => !open && setTraceDialog(null)}>
+   608→   608→        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+   609→   609→          <DialogHeader>
+   610→   610→            <DialogTitle className="flex items-center gap-2">
+   611→   611→              <Network className="h-5 w-5 text-primary" />
+   612→   612→              تفاصيل التتبع - {traceDialog?.labelAr}
+   613→   613→            </DialogTitle>
+   614→   614→            <DialogDescription>
+   615→   615→              {traceDialog?.labelEn} - معلومات كاملة عن مصدر البيانات وقابلية التدقيق
+   616→   616→            </DialogDescription>
+   617→   617→          </DialogHeader>
+   618→   618→          {traceDialog && (
+   619→   619→            <div className="space-y-4">
+   620→   620→              <div className="grid grid-cols-2 gap-3">
+   621→   621→                <div className="p-3 rounded-lg bg-muted/30">
+   622→   622→                  <p className="text-xs text-muted-foreground">القيمة الحالية</p>
+   623→   623→                  <p className="text-xl font-bold tabular-nums text-primary">{fmt(traceDialog.value)} {traceDialog.unit}</p>
+   624→   624→                </div>
+   625→   625→                <div className="p-3 rounded-lg bg-muted/30">
+   626→   626→                  <p className="text-xs text-muted-foreground">آخر تحقق</p>
+   627→   627→                  <p className="text-sm font-medium">{traceDialog.lastVerified}</p>
+   628→   628→                </div>
+   629→   629→              </div>
+   630→   630→              <Separator />
+   631→   631→              <div className="space-y-3">
+   632→   632→                <div>
+   633→   633→                  <p className="text-xs font-semibold text-muted-foreground mb-1">المصدر</p>
+   634→   634→                  <p className="text-sm">{traceDialog.source}</p>
+   635→   635→                </div>
+   636→   636→                <div>
+   637→   637→                  <p className="text-xs font-semibold text-muted-foreground mb-1">طريقة الحساب</p>
+   638→   638→                  <p className="text-sm font-mono bg-muted/30 p-2 rounded">{traceDialog.calculationMethod}</p>
+   639→   639→                </div>
+   640→   640→                <div>
+   641→   641→                  <p className="text-xs font-semibold text-muted-foreground mb-1">أصل البيانات</p>
+   642→   642→                  <p className="text-sm">{traceDialog.dataOrigin}</p>
+   643→   643→                </div>
+   644→   644→                <div>
+   645→   645→                  <p className="text-xs font-semibold text-muted-foreground mb-1">حالة التحقق</p>
+   646→   646→                  <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700">
+   647→   647→                    {traceDialog.verificationStatus}
+   648→   648→                  </Badge>
+   649→   649→                </div>
+   650→   650→                <div>
+   651→   651→                  <p className="text-xs font-semibold text-muted-foreground mb-1">مسار التدقيق</p>
+   652→   652→                  <p className="text-sm">{traceDialog.auditTrail}</p>
+   653→   653→                </div>
+   654→   654→              </div>
+   655→   655→              <Separator />
+   656→   656→              <div>
+   657→   657→                <p className="text-xs font-semibold text-muted-foreground mb-2">الأطر المتوافقة</p>
+   658→   658→                <div className="space-y-2">
+   659→   659→                  {traceDialog.frameworks.map((fw: any, i: number) => (
+   660→   660→                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
+   661→   661→                      <FileCheck className="h-3.5 w-3.5 text-primary shrink-0" />
+   662→   662→                      <div className="min-w-0">
+   663→   663→                        <p className="text-xs font-medium">{fw.name}</p>
+   664→   664→                        <p className="text-[10px] text-muted-foreground truncate">{fw.ref}</p>
+   665→   665→                      </div>
+   666→   666→                    </div>
+   667→   667→                  ))}
+   668→   668→                </div>
+   669→   669→              </div>
+   670→   670→            </div>
+   671→   671→          )}
+   672→   672→        </DialogContent>
+   673→   673→      </Dialog>
+   674→   674→    </div>
+   675→   675→  )
+   676→   676→}
+   677→   677→

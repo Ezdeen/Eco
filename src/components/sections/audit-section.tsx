@@ -12,8 +12,15 @@ export function AuditSection() {
 
   useEffect(() => {
     fetch('/api/audit')
-      .then((r) => r.json())
-      .then((d) => setData(d))
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => {
+        if (d && d.stats && d.events) {
+          setData(d)
+        } else {
+          setData(null)
+        }
+      })
+      .catch(() => { setData(null) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -29,25 +36,25 @@ export function AuditSection() {
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
             <ScrollText className="h-3 w-3" /> إجمالي الأحداث
           </div>
-          <p className="text-xl font-bold tabular-nums">{data.stats.total.toLocaleString()}</p>
+          <p className="text-xl font-bold tabular-nums">{(data.stats.total || 0).toLocaleString()}</p>
         </Card>
         <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
           <div className="flex items-center gap-1 text-xs text-emerald-700 mb-1">
             <CheckCircle2 className="h-3 w-3" /> ناجحة
           </div>
-          <p className="text-xl font-bold tabular-nums text-emerald-600">{data.stats.successful.toLocaleString()}</p>
+          <p className="text-xl font-bold tabular-nums text-emerald-600">{(data.stats.successful || 0).toLocaleString()}</p>
         </Card>
         <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200">
           <div className="flex items-center gap-1 text-xs text-red-700 mb-1">
             <XCircle className="h-3 w-3" /> فاشلة
           </div>
-          <p className="text-xl font-bold tabular-nums text-red-600">{data.stats.failed.toLocaleString()}</p>
+          <p className="text-xl font-bold tabular-nums text-red-600">{(data.stats.failed || 0).toLocaleString()}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
             <Activity className="h-3 w-3" /> اليوم
           </div>
-          <p className="text-xl font-bold tabular-nums">{data.stats.today.toLocaleString()}</p>
+          <p className="text-xl font-bold tabular-nums">{(data.stats.today || 0).toLocaleString()}</p>
         </Card>
       </div>
 
@@ -77,7 +84,7 @@ export function AuditSection() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.events.map((e: any) => (
+                {(data.events || []).map((e: any) => (
                   <TableRow key={e.id} className="hover:bg-muted/40">
                     <TableCell>
                       <p className="text-xs tabular-nums">

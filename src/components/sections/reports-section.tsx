@@ -25,8 +25,9 @@ export function ReportsSection() {
   const fetchReports = useCallback(() => {
     setLoading(true)
     fetch('/api/reports')
-      .then((r) => r.json())
-      .then((d) => setReports(d.reports || []))
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((d) => { setReports(d?.reports || []) })
+      .catch(() => { setReports([]) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -35,10 +36,14 @@ export function ReportsSection() {
     Promise.resolve().then(() => {
       if (cancelled) return
       fetch('/api/reports')
-        .then((r) => r.json())
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
         .then((d) => {
           if (cancelled) return
-          setReports(d.reports || [])
+          setReports(d?.reports || [])
+        })
+        .catch(() => {
+          if (cancelled) return
+          setReports([])
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -130,7 +135,7 @@ export function ReportsSection() {
         toast.success('تم تحميل التقرير بصيغة HTML')
       }
     } catch (e: any) {
-      console.error('Download error:', e)
+      console.warn('Download error:', e)
       toast.error(e.message || 'فشل تحميل التقرير')
     } finally {
       setDownloadingId(null)
@@ -142,9 +147,15 @@ export function ReportsSection() {
     setPreviewOpen(true)
     try {
       const res = await fetch(`/api/reports/${report.id}/download?format=json`)
+      if (!res.ok) throw new Error('فشل تحميل المعاينة')
       const data = await res.json()
-      setPreviewReport({ ...report, data, loading: false })
-    } catch (e) {
+      if (data && data.project && data.summary) {
+        setPreviewReport({ ...report, data, loading: false })
+      } else {
+        setPreviewReport({ ...report, loading: false, error: true })
+        toast.error('استجابة غير صالحة')
+      }
+    } catch {
       setPreviewReport({ ...report, loading: false, error: true })
       toast.error('فشل تحميل معاينة التقرير')
     }
