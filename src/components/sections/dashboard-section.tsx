@@ -81,9 +81,16 @@ export function DashboardSection() {
     try {
       const res = await fetch('/api/dashboard')
       const json = await res.json()
-      setData(json)
+      // Validate response has expected structure (not an error object)
+      if (json && json.kpis) {
+        setData(json)
+      } else {
+        console.error('Dashboard API returned unexpected data:', json)
+        setData(null)
+      }
     } catch (e) {
       console.error(e)
+      setData(null)
     } finally {
       setLoading(false)
     }
