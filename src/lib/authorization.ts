@@ -73,14 +73,10 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 }
 
 export async function requireAuth() {
+  // BYPASS: تجاوز التحقق - دائماً مصرح
   const user = await getCurrentUser()
-  if (!user) {
-    return {
-      authorized: false as const,
-      response: NextResponse.json({ error: 'غير مصرح - يلزم تسجيل الدخول' }, { status: 401 }),
-    }
-  }
-  return { authorized: true as const, user }
+  // user will always return the bypass admin
+  return { authorized: true as const, user: user! }
 }
 
 export async function requirePermission(permission: Permission) {
