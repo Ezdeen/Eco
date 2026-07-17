@@ -16,9 +16,9 @@ export async function GET() {
         id: 'mem-001',
         role: 'org_admin',
         organization: {
-          id: 'org-001',
-          name: 'BrightFuture Energy',
-          nameAr: 'شركة المستقبل المشرق للطاقة',
+          id: 'cmrnf5gt30000q5gstpflforx',
+          name: 'BrightFuture Energy Co.',
+          nameAr: 'شركة مستقبل مشرق للطاقة',
           code: 'BFEC',
           currency: 'SAR',
           timezone: 'Asia/Riyadh',
