@@ -5,8 +5,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// IMPORTANT: For production, change provider to "postgresql"
-// and set DATABASE_URL to your PostgreSQL connection string
+// IMPORTANT: This schema is designed for PostgreSQL.
+// For local development with SQLite, change provider to "sqlite".
+// For production, use provider = "postgresql" with a proper DATABASE_URL.
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
@@ -30,6 +31,7 @@ model Organization {
   projects    Project[]
   impactAccounts ImpactAccount[]
   auditEvents AuditEvent[]
+  subscriptions  Subscription[]
 }
 
 model User {
@@ -621,4 +623,86 @@ model ReconciliationRun {
   completedAt     DateTime?
 
   project         Project? @relation(fields: [projectId], references: [id])
+}
+
+// ============== SaaS: Integration Config & Secrets ==============
+
+model IntegrationConfig {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  name            String   @unique // hedera, open-meteo, n8n, stripe, etc.
+  displayName     String
+  description     String?
+  category        String   @default("integration") // integration, payment, notification
+  isActive        Boolean  @default(false)
+  // Encrypted secrets stored as base64 strings (never returned in API)
+  config          String?  // JSON of non-secret config (e.g., network, apiUrl)
+  encryptedSecret String?  // AES-256-GCM encrypted secret blob
+  secretKey       String?  // Key identifier for rotation
+  lastTestedAt    DateTime?
+  lastTestResult  String?  // success, failed
+  lastTestError   String?
+  createdBy       String?  // user email
+  updatedBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId, name])
+}
+
+// ============== SaaS: Webhook Events (n8n etc.) ==============
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  source          String   @default("n8n") // n8n, custom, external
+  eventId         String?  @unique // x-n8n-event-id for idempotency
+  eventType       String?  // reading_ingest, alert, etc.
+  signature       String?  // HMAC signature from header
+  timestamp       DateTime? // from x-n8n-timestamp
+  sourceId        String?  // from x-source-id
+  payloadHash     String?  // SHA-256 of raw payload
+  status          String   @default("received") // received, processed, failed, duplicate
+  payload         String?  // JSON of decrypted payload
+  errorMessage    String?
+  ingestionBatchId String? // link to IngestionBatch if processed
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+
+  @@index([source, status])
+  @@index([eventId])
+}
+
+// ============== SaaS: Plans & Subscriptions ==============
+
+model Plan {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  nameAr          String?
+  description     String?
+  priceMonthly    Float    @default(0)
+  currency        String   @default("SAR")
+  maxProjects     Int      @default(10)
+  maxDevices      Int      @default(50)
+  maxUsers        Int      @default(10)
+  features        String?  // JSON array of feature flags
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id              String   @id @default(cuid())
+  organizationId  String   @unique
+  planId          String
+  status          String   @default("trial") // trial, active, suspended, cancelled
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan            Plan         @relation(fields: [planId], references: [id])
 }
