@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { requirePermission } from '@/lib/authorization'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -148,10 +148,9 @@ async function generateReportData(reportId: string) {
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-    }
+    // Authorization: require report:download permission
+    const auth = await requirePermission('report:download')
+    if (!auth.authorized) return auth.response
 
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'json' // json, csv, html

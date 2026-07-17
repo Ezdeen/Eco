@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { requireAuth, requirePermission } from '@/lib/authorization'
+import { createProjectSchema } from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   try {
-    // PRIORITY 3: Require authentication for projects list
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح - يلزم تسجيل الدخول' }, { status: 401 })
-    }
+    // Authorization: require authentication
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+    const { user } = auth
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
 
     const projects = await db.project.findMany({
-      where: status ? { status } : undefined,
+      where: {
+        organizationId: user.organizationId!,
+        ...(status ? { status } : {}),
+      },
       include: {
         sites: true,
         assets: { include: { solarProfile: true } },
@@ -77,12 +80,21 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-    }
+    // Authorization: require project:create permission
+    const auth = await requirePermission('project:create')
+    if (!auth.authorized) return auth.response
+    const { user } = auth
 
     const body = await request.json()
+
+    // Validate body with Zod
+    const parsed = createProjectSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
+        { status: 400 },
+      )
+    }
     const {
       name,
       nameAr,
@@ -114,29 +126,7 @@ export async function POST(request: NextRequest) {
       iotGatewayId,
       iotProtocol,
       iotDataFrequency,
-    } = body
-
-    // Validate required fields
-    if (!name || !code) {
-      return NextResponse.json(
-        { error: 'اسم المشروع والرمز مطلوبان' },
-        { status: 400 },
-      )
-    }
-
-    if (!country || !city) {
-      return NextResponse.json(
-        { error: 'الدولة والمدينة مطلوبان' },
-        { status: 400 },
-      )
-    }
-
-    if (latitude === undefined || longitude === undefined) {
-      return NextResponse.json(
-        { error: 'إحداثيات الطول والعرض مطلوبة' },
-        { status: 400 },
-      )
-    }
+    } = parsed.data
 
     // Type-specific validation
     const SOLAR_TYPES = ['grid_tied', 'hybrid', 'off_grid']
@@ -157,13 +147,13 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         )
       }
-      if (!treeCount || parseInt(treeCount) <= 0) {
+      if (!treeCount || parseInt(String(treeCount)) <= 0) {
         return NextResponse.json(
           { error: 'عدد الأشجار يجب أن يكون رقمًا موجبًا' },
           { status: 400 },
         )
       }
-      if (!plantedAreaM2 || parseFloat(plantedAreaM2) <= 0) {
+      if (!plantedAreaM2 || parseFloat(String(plantedAreaM2)) <= 0) {
         return NextResponse.json(
           { error: 'المساحة المزروعة يجب أن تكون رقمًا موجبًا' },
           { status: 400 },
@@ -224,13 +214,13 @@ export async function POST(request: NextRequest) {
         projectType: projectType || 'grid_tied',
         country,
         city,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
+        latitude: parseFloat(String(latitude)),
+        longitude: parseFloat(String(longitude)),
         timezone: timezone || 'Asia/Riyadh',
-        capacityKwp: capacityKwp ? parseFloat(capacityKwp) : null,
+        capacityKwp: capacityKwp ? parseFloat(String(capacityKwp)) : null,
         currency: currency || 'SAR',
-        tariffRetail: tariffRetail ? parseFloat(tariffRetail) : null,
-        tariffFeedIn: tariffFeedIn ? parseFloat(tariffFeedIn) : null,
+        tariffRetail: tariffRetail ? parseFloat(String(tariffRetail)) : null,
+        tariffFeedIn: tariffFeedIn ? parseFloat(String(tariffFeedIn)) : null,
         methodology: 'ghg_protocol_scope2',
         sponsorName: sponsorName || null,
         sponsorPhone: sponsorPhone || null,
@@ -238,10 +228,10 @@ export async function POST(request: NextRequest) {
         inverterType: isSolar ? (inverterType || 'string') : null,
         // Afforestation fields
         treeSpecies: isAfforestation ? treeSpecies : null,
-        treeCount: isAfforestation && treeCount ? parseInt(treeCount) : null,
-        plantedAreaM2: isAfforestation && plantedAreaM2 ? parseFloat(plantedAreaM2) : null,
+        treeCount: isAfforestation && treeCount ? parseInt(String(treeCount)) : null,
+        plantedAreaM2: isAfforestation && plantedAreaM2 ? parseFloat(String(plantedAreaM2)) : null,
         plantingDate: isAfforestation && plantingDate ? new Date(plantingDate) : null,
-        survivalRateTarget: isAfforestation && survivalRateTarget ? parseFloat(survivalRateTarget) : null,
+        survivalRateTarget: isAfforestation && survivalRateTarget ? parseFloat(String(survivalRateTarget)) : null,
         // IoT fields
         iotSensorType: isAfforestation ? (iotSensorType || null) : null,
         iotSensorModel: isAfforestation ? (iotSensorModel || null) : null,
@@ -260,8 +250,8 @@ export async function POST(request: NextRequest) {
         nameAr: `${nameAr || name} - الموقع الرئيسي`,
         country,
         city,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
+        latitude: parseFloat(String(latitude)),
+        longitude: parseFloat(String(longitude)),
         timezone: timezone || 'Asia/Riyadh',
       },
     })
@@ -282,8 +272,8 @@ export async function POST(request: NextRequest) {
         await db.solarAssetProfile.create({
           data: {
             assetId: asset.id,
-            capacityKwp: parseFloat(capacityKwp),
-            panelAreaM2: parseFloat(capacityKwp) * 5,
+            capacityKwp: parseFloat(String(capacityKwp)),
+            panelAreaM2: parseFloat(String(capacityKwp)) * 5,
             tiltDegrees: 25,
             azimuthDegrees: 180,
             technology: 'mono_si',
@@ -303,7 +293,7 @@ export async function POST(request: NextRequest) {
           name: `${code}-INV-001`,
           manufacturer: 'Generic',
           model: 'Inverter',
-          serialNumber: inverterSerial,
+          serialNumber: inverterSerial!,
           protocol: 'http_api',
           status: 'registered',
         },

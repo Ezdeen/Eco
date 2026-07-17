@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
 import { computeBatchHash, computeMerkleRoot, createOutboxEvent, submitAttestation } from '@/lib/hedera'
+import { attestationSchema } from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -125,11 +126,16 @@ export async function POST(request: NextRequest) {
     if (!auth.authorized) return auth.response
 
     const body = await request.json()
-    const { projectId, readings, methodologyVersion } = body
 
-    if (!projectId || !readings || !Array.isArray(readings) || readings.length === 0) {
-      return NextResponse.json({ error: 'projectId and readings[] are required' }, { status: 400 })
+    // Validate body with Zod
+    const parsed = attestationSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
+        { status: 400 },
+      )
     }
+    const { projectId, readings, methodologyVersion } = parsed.data
 
     // Build canonical payload using sorted keys for consistency
     const canonicalPayload = {

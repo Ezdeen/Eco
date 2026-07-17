@@ -4,7 +4,7 @@ import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { requirePermission } from '@/lib/authorization'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -305,10 +305,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   try {
     const { id } = await params
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-    }
+    // Authorization: require report:download permission
+    const auth = await requirePermission('report:download')
+    if (!auth.authorized) return auth.response
 
     const data = await generateReportData(id)
     if (!data) {

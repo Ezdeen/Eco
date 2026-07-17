@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } from '@/lib/reference-data'
 import { requireProjectAccess } from '@/lib/authorization'
+import { calculationSchema } from '@/lib/validation'
 
 // Legacy constants removed - now using reference-data.ts library
 
@@ -205,11 +206,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectId, periodStart, periodEnd, methodologyVersion } = body
 
-    if (!projectId || !periodStart || !periodEnd) {
-      return NextResponse.json({ error: 'projectId, periodStart, periodEnd required' }, { status: 400 })
+    // Validate body with Zod
+    const parsed = calculationSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
+        { status: 400 },
+      )
     }
+    const { projectId, periodStart, periodEnd, methodologyVersion } = parsed.data
 
     // Authorization: require project access
     const auth = await requireProjectAccess(projectId, 'calculation:run')

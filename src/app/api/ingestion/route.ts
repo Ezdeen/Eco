@@ -2,37 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireProjectAccess } from '@/lib/authorization'
 import { ingestReadings, getIngestionBatchStatus } from '@/lib/ingestion'
 import { db } from '@/lib/db'
+import { ingestionSchema } from '@/lib/validation'
 
 // POST /api/ingestion - Submit readings for ingestion
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectId, readings, idempotencyKey, source } = body
 
-    if (!projectId || !readings || !Array.isArray(readings) || readings.length === 0) {
+    // Validate body with Zod
+    const parsed = ingestionSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'projectId and readings[] are required' },
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
         { status: 400 },
       )
     }
+    const { projectId, readings, idempotencyKey, source } = parsed.data
 
     // Authorization: check project access
     const auth = await requireProjectAccess(projectId, 'reading:audit')
     if (!auth.authorized) return auth.response
 
     // Transform input to IngestReadingInput format
-    const inputs = readings.map((r: any) => ({
+    const inputs = readings.map((r) => ({
       projectId,
       deviceId: r.deviceId,
       siteId: r.siteId,
       assetId: r.assetId,
-      metricType: r.metricType || 'energy_export_kwh',
+      metricType: r.metricType,
       measuredAt: new Date(r.measuredAt),
       intervalStart: new Date(r.intervalStart || r.measuredAt),
       intervalEnd: r.intervalEnd ? new Date(r.intervalEnd) : undefined,
-      value: parseFloat(r.value),
-      unit: r.unit || 'kWh',
-      cumulativeValue: r.cumulativeValue ? parseFloat(r.cumulativeValue) : undefined,
+      value: typeof r.value === 'string' ? parseFloat(r.value) : r.value,
+      unit: r.unit,
+      cumulativeValue: r.cumulativeValue
+        ? (typeof r.cumulativeValue === 'string' ? parseFloat(r.cumulativeValue) : r.cumulativeValue)
+        : undefined,
       sourceEventId: r.sourceEventId,
       source: source || 'http_api',
       rawPayload: r,

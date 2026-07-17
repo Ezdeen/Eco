@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ingestReadings } from '@/lib/ingestion'
 import { verifyHmacSignature, isReplayAttack } from '@/lib/crypto'
+import { requirePermission } from '@/lib/authorization'
 import crypto from 'crypto'
 
 // POST /api/webhooks/n8n — Secure endpoint for n8n encrypted data ingestion
@@ -194,6 +195,9 @@ export async function POST(request: NextRequest) {
 // GET /api/webhooks/n8n — List recent webhook events (for admin)
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requirePermission('audit:read')
+    if (!auth.authorized) return auth.response
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const limit = parseInt(searchParams.get('limit') || '20')

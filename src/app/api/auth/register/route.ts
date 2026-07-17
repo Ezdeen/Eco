@@ -1,37 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hashPassword, createToken, setSessionCookie } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { registerSchema } from '@/lib/validation'
+import { checkRateLimit, RATE_LIMITS } from '@/lib/middleware-utils'
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 3 registrations per hour per IP
+    const rateCheck = checkRateLimit(request, RATE_LIMITS.register, 'register')
+    if (!rateCheck.allowed && rateCheck.response) {
+      return new NextResponse(rateCheck.response.body, {
+        status: rateCheck.response.status,
+        headers: rateCheck.response.headers,
+      })
+    }
+
     const body = await request.json()
-    const { email, password, name, nameAr } = body
 
-    // Validate
-    if (!email || !password || !name) {
+    // Validate body with Zod
+    const parsed = registerSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'البريد الإلكتروني وكلمة المرور والاسم مطلوبة' },
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
         { status: 400 },
       )
     }
+    const { email, password, name, nameAr } = parsed.data
 
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 })
-    }
+    // === Invite-only mode: require inviteToken in production ===
+    // In development, allow open registration for testing
+    // In production, require a valid invite token from an org_admin
+    const inviteToken = (body as any).inviteToken as string | undefined
+    const isProduction = process.env.NODE_ENV === 'production'
+    const allowOpenSignup = process.env.ALLOW_OPEN_SIGNUP === 'true'
 
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' },
-        { status: 400 },
-      )
-    }
+    if (isProduction && !allowOpenSignup) {
+      if (!inviteToken) {
+        return NextResponse.json(
+          { error: 'التسجيل يتطلب دعوة من مدير مؤسسة. يرجى التواصل مع المسؤول للحصول على رمز دعوة.' },
+          { status: 403 },
+        )
+      }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: 'صيغة البريد الإلكتروني غير صحيحة' },
-        { status: 400 },
-      )
+      // Verify invite token (stored as a membership with status='invited')
+      const invite = await db.userMembership.findFirst({
+        where: {
+          status: 'invited',
+          // The invite token is the membership ID itself (cuid)
+          id: inviteToken,
+        },
+        include: {
+          user: { select: { email: true } },
+        },
+      })
+
+      if (!invite) {
+        return NextResponse.json(
+          { error: 'رمز الدعوة غير صالح أو منتهي الصلاحية' },
+          { status: 403 },
+        )
+      }
+
+      // Check if the invited email matches
+      if (invite.user.email !== email.toLowerCase().trim()) {
+        return NextResponse.json(
+          { error: 'البريد الإلكتروني لا يتطابق مع الدعوة' },
+          { status: 403 },
+        )
+      }
     }
 
     // Check if user already exists

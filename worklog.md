@@ -185,3 +185,54 @@ $ bun run typecheck   # → tsc --noEmit — clean exit, 0 errors
 - The sections that store API data in a single `useState<any>(null)` (audit, dashboard, energy-performance, impact) now validate the expected top-level keys (`d.stats`, `d.events`, `d.projects`, `d.projectCarbon`) before calling `setData(d)`. If the API adds or renames top-level keys, those guards need to be updated.
 - `notifications-section.tsx`'s `markAsRead()` / `markAllAsRead()` previously had NO error handling at all — they would silently swallow network failures and the UI would look like the action succeeded. They now surface failures via `toast.error()`. If the UX team prefers optimistic updates with rollback, that's a future refactor.
 - The two `console.error` calls that remain in the codebase (`reports-section.tsx`'s `handlePrint` and one in `dashboard-section.tsx`'s pre-existing logging) — actually only `reports-section.tsx`'s download path remains, and it's been downgraded to `console.warn`. The dashboard fetch error was also downgraded. No `console.error` calls remain in any sections file.
+
+## Task saas-security-fixes — Org isolation + n8n + auth + Zod validation
+
+**Agent:** general-purpose sub-agent
+**Status:** ✅ Completed
+**Lint:** `bun run lint` passes with 0 errors
+**Typecheck:** `bun run typecheck` passes with 0 errors
+
+### Summary
+
+Implemented 5 security fixes: (1) organization isolation on the projects list API, (2) authentication on the n8n webhook events GET endpoint, (3) hardened JWT_SECRET handling so production runtime fails fast if missing, (4) standardized all project/report route handlers to use the centralized `requireAuth` / `requirePermission` / `requireProjectAccess` guards, and (5) introduced Zod request-body validation on 6 critical POST endpoints via a new `src/lib/validation.ts` module.
+
+### Changes by file
+
+| # | File | Change |
+| --- | --- | --- |
+| 1 | `src/app/api/projects/route.ts` | GET: switched from `getCurrentUser()` to `requireAuth()`; `db.project.findMany` `where` clause now filters by `organizationId: user.organizationId!` (with optional `status` spread). POST: switched to `requirePermission('project:create')`; added `createProjectSchema` validation; wrapped `parseFloat`/`parseInt` calls with `String()` (schema returns `string \| number`); added `inverterSerial!` non-null assertion at `device.create` (early-return check guarantees it's defined when `isSolar`). |
+| 2 | `src/app/api/webhooks/n8n/route.ts` | Added `import { requirePermission } from '@/lib/authorization'`; GET handler now starts with `requirePermission('audit:read')` check. POST (HMAC-signed ingestion) is untouched. |
+| 3 | `src/lib/auth.ts` | Replaced the JWT_SECRET check block: now fails with `FATAL: JWT_SECRET environment variable is required.` when missing in production runtime (skipped during build via the existing `IS_BUILD_TIME` flag, which is more robust than the task-spec's bare `NEXT_PRIVATE_BUILD_ID` check); falls back to the new dev-only string `'dev-fallback-insecure-only-not-for-production-use-32chars'` (55 chars). Removed the previous `length < 32` check per task spec. |
+| 4 | `src/app/api/projects/[id]/route.ts` | All 3 handlers (GET/PATCH/DELETE) now use `requireProjectAccess(id, permission)` with `project:read` / `project:update` / `project:delete` respectively. The inline `getCurrentUser()` + 401 check was removed; `user` is now destructured from the auth result for audit logging. |
+| 5 | `src/app/api/reports/[id]/pdf/route.ts` | GET now uses `requirePermission('report:download')` instead of `getCurrentUser()`. |
+| 6 | `src/app/api/reports/[id]/download/route.ts` | GET now uses `requirePermission('report:download')` instead of `getCurrentUser()`. |
+| 7 | `src/lib/validation.ts` (NEW) | Created with 6 Zod schemas: `loginSchema`, `registerSchema`, `createProjectSchema`, `ingestionSchema`, `attestationSchema`, `calculationSchema` (zod ^4.0.2 was already in `package.json`). |
+| 8 | `src/app/api/auth/login/route.ts` | POST: replaced 3 manual validation blocks (required, type, length) with a single `loginSchema.safeParse(body)` call. |
+| 9 | `src/app/api/auth/register/route.ts` | POST: replaced 4 manual validation blocks (required, type, length, email regex) with a single `registerSchema.safeParse(body)` call. |
+| 10 | `src/app/api/ingestion/route.ts` | POST: added `ingestionSchema.safeParse(body)`; uses `parsed.data.projectId` for `requireProjectAccess`; the `readings.map` callback is now typed from the schema, so `parseFloat`/`parseInt` are replaced with `typeof === 'string' ? parseFloat(x) : x` to handle the `string \| number` union. |
+| 11 | `src/app/api/attestations/route.ts` | POST: added `attestationSchema.safeParse(body)` after the existing `requirePermission('attestation:submit')` check; removed the inline `projectId/readings` shape check. |
+| 12 | `src/app/api/calculations/route.ts` | POST: added `calculationSchema.safeParse(body)`; uses `parsed.data.projectId` for `requireProjectAccess`; removed the inline `projectId/periodStart/periodEnd` required check. |
+
+### Deviations from task spec (justified)
+
+1. **`createProjectSchema` includes `nameAr: z.string().optional()`** — the task spec omitted this field, but the existing `projects/route.ts` POST destructures and uses `nameAr` (for both `project.nameAr` and `site.nameAr`). Without it in the schema, the destructuring would fail typecheck.
+2. **`ingestionSchema` readings include `siteId: z.string().optional()` and `assetId: z.string().optional()`** — the task spec omitted these fields, but the existing `ingestion/route.ts` POST passes them through to `IngestReadingInput` (which has `siteId?` and `assetId?` fields). Zod v4 strips unknown keys by default, so without them in the schema, the values would be lost at runtime.
+3. **`auth.ts` preserved the existing `IS_BUILD_TIME` flag** — the task spec's check was `process.env.NODE_ENV === 'production' && !process.env.NEXT_PRIVATE_BUILD_ID`, but the existing code already has a more robust check that also handles `NEXT_PHASE === 'phase-production-build'` and `typeof window !== 'undefined'`. Removing those would risk throwing during `next build` data collection.
+4. **In `ingestion/route.ts` and `calculations/route.ts`, Zod validation runs BEFORE `requireProjectAccess`** — the task spec said "after auth check, before processing", but `requireProjectAccess(projectId, permission)` requires `projectId` from the request body. For these two routes, validation must come first so the auth check has a validated `projectId` to use. For `projects/route.ts` POST and `attestations/route.ts` POST (which use `requirePermission` without an ID), the order is auth-first as specified.
+5. **`inverterSerial!` non-null assertion at `device.create`** — the early-return check `if (isSolar && !inverterSerial)` guarantees `inverterSerial` is defined when `isSolar` is true, but TypeScript can't narrow that across separate variables. The `!` is the minimal fix.
+
+### Verification
+
+```
+$ bun run lint        # → eslint . — clean exit, 0 errors
+$ bun run typecheck   # → tsc --noEmit — clean exit, 0 errors
+```
+
+### Notes for next agent
+
+- The `requireProjectAccess` helper does an extra DB roundtrip to look up the project's `organizationId`. For high-traffic routes this could be cached, but the cost is one indexed `findUnique` so it's fine for now.
+- The `auth.ts` fallback string `'dev-fallback-insecure-only-not-for-production-use-32chars'` is intentionally long and obviously-insecure-sounding so it's grep-able in any prod log scrape.
+- The new `src/lib/validation.ts` is the single source of truth for request-body schemas. If you add new POST routes, add a schema there and call `safeParse` at the top of the handler — do not inline manual `if (!field)` checks.
+- The `createProjectSchema` and `ingestionSchema` were extended beyond the task spec to match existing API behavior. If you ever tighten these schemas (e.g. add `z.coerce.number()` instead of `z.string().or(z.number())`), make sure to remove the corresponding `String()` wrappers in `projects/route.ts` and the `typeof === 'string'` checks in `ingestion/route.ts`.
+- Two TODOs not in scope but worth tracking: (a) the `getCurrentUser()` import in `projects/route.ts`, `projects/[id]/route.ts`, `reports/[id]/pdf/route.ts`, and `reports/[id]/download/route.ts` was removed since these handlers no longer use it directly — verify no other code in those files still references it. (b) `attestationSchema` uses `z.array(z.any())` for readings because the existing API accesses arbitrary fields like `canonicalPayloadHash` on each reading; if you want to tighten this, define a proper `attestationReadingSchema` and update the attestation POST handler accordingly.

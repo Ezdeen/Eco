@@ -1,29 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createToken, setSessionCookie } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { loginSchema } from '@/lib/validation'
+import { checkRateLimit, RATE_LIMITS } from '@/lib/middleware-utils'
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 5 login attempts per 15 minutes per IP
+    const rateCheck = checkRateLimit(request, RATE_LIMITS.login, 'login')
+    if (!rateCheck.allowed && rateCheck.response) {
+      return new NextResponse(rateCheck.response.body, {
+        status: rateCheck.response.status,
+        headers: rateCheck.response.headers,
+      })
+    }
+
     const body = await request.json()
-    const { email, password } = body
 
-    if (!email || !password) {
+    // Validate body with Zod
+    const parsed = loginSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'البريد الإلكتروني وكلمة المرور مطلوبان' },
+        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
         { status: 400 },
       )
     }
-
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 })
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' },
-        { status: 400 },
-      )
-    }
+    const { email, password } = parsed.data
 
     // Authenticate
     const session = await authenticateUser(email, password)

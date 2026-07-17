@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { requireProjectAccess } from '@/lib/authorization'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -10,6 +10,10 @@ interface Params {
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
+    // Authorization: require project read access
+    const auth = await requireProjectAccess(id, 'project:read')
+    if (!auth.authorized) return auth.response
+
     const project = await db.project.findUnique({
       where: { id },
       include: {
@@ -36,10 +40,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-    }
+    // Authorization: require project update access
+    const auth = await requireProjectAccess(id, 'project:update')
+    if (!auth.authorized) return auth.response
+    const { user } = auth
 
     const body = await request.json()
     const {
@@ -177,10 +181,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-    }
+    // Authorization: require project delete access
+    const auth = await requireProjectAccess(id, 'project:delete')
+    if (!auth.authorized) return auth.response
+    const { user } = auth
 
     const existing = await db.project.findUnique({
       where: { id },

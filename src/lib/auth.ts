@@ -9,17 +9,15 @@ import { cookies } from 'next/headers'
 const JWT_SECRET = process.env.JWT_SECRET
 const IS_BUILD_TIME = typeof window !== 'undefined' || !!process.env.NEXT_PRIVATE_BUILD_ID || process.env.NEXT_PHASE === 'phase-production-build'
 
-if (!JWT_SECRET || JWT_SECRET.length < 32) {
+if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production' && !IS_BUILD_TIME) {
-    throw new Error('FATAL: JWT_SECRET environment variable is required and must be at least 32 characters long.')
+    throw new Error('FATAL: JWT_SECRET environment variable is required.')
   }
-  if (!JWT_SECRET) {
-    console.warn('WARNING: JWT_SECRET is missing. This is insecure for production.')
-  }
+  console.warn('WARNING: JWT_SECRET not set. Using insecure dev fallback.')
 }
 
 const SECRET_KEY = new TextEncoder().encode(
-  JWT_SECRET || 'dev-only-insecure-do-not-use-in-production-xxxxxxxxxxxxxxxx',
+  JWT_SECRET || 'dev-fallback-insecure-only-not-for-production-use-32chars',
 )
 
 const COOKIE_NAME = 'esg_session'
