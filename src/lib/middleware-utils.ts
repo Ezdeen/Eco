@@ -23,8 +23,8 @@ setInterval(() => {
 // Pre-configured rate limit profiles
 export const RATE_LIMITS = {
   // Auth endpoints — strict limits to prevent brute force
-  login: { maxRequests: 5, windowMs: 15 * 60 * 1000 }, // 5 attempts per 15 min
-  register: { maxRequests: 3, windowMs: 60 * 60 * 1000 }, // 3 per hour
+  login: { maxRequests: 50, windowMs: 15 * 60 * 1000 }, // 50 attempts per 15 min (temporarily increased)
+  register: { maxRequests: 30, windowMs: 60 * 60 * 1000 }, // 30 per hour (temporarily increased)
   passwordReset: { maxRequests: 3, windowMs: 60 * 60 * 1000 }, // 3 per hour
 
   // API endpoints — moderate limits
