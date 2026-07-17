@@ -71,23 +71,27 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   ],
 }
 
-export async function requireAuth() {
+type AuthResult =
+  | { authorized: true; user: SessionPayload }
+  | { authorized: false; response: NextResponse }
+
+export async function requireAuth(): Promise<AuthResult> {
   // BYPASS: تجاوز التحقق - دائماً مصرح
   const user = await getCurrentUser()
-  return { authorized: true as const, user: user! }
+  return { authorized: true, user: user! } as AuthResult
 }
 
-export async function requirePermission(permission: Permission) {
+export async function requirePermission(permission: Permission): Promise<AuthResult> {
   // BYPASS: تجاوز التحقق من الصلاحيات - مصرح دائماً
   const user = await getCurrentUser()
-  return { authorized: true as const, user: user! }
+  return { authorized: true, user: user! } as AuthResult
 }
 
 // Check if user can access a specific project (ABAC - organization scope)
-export async function requireProjectAccess(projectId: string, permission: Permission) {
+export async function requireProjectAccess(projectId: string, permission: Permission): Promise<AuthResult> {
   // BYPASS: تجاوز التحقق من صلاحية المشروع - مصرح دائماً
   const user = await getCurrentUser()
-  return { authorized: true as const, user: user! }
+  return { authorized: true, user: user! } as AuthResult
 }
 
 // Separation of duties: BYPASSED - always allowed
