@@ -1,66 +1,30 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
-import { db } from '@/lib/db'
 
+// BYPASS: تجاوز التحقق من الجلسة - إرجاع مستخدم افتراضي دائماً
 export async function GET() {
-  try {
-    const session = await getCurrentUser()
-
-    if (!session) {
-      return NextResponse.json({ user: null }, { status: 200 })
-    }
-
-    // Fetch fresh user data from DB
-    const user = await db.user.findUnique({
-      where: { id: session.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        nameAr: true,
-        role: true,
-        preferredLang: true,
-        preferredTz: true,
-        mfaEnabled: true,
-      },
-    })
-
-    if (!user) {
-      return NextResponse.json({ user: null }, { status: 200 })
-    }
-
-    // Get organization membership
-    const membership = await db.userMembership.findFirst({
-      where: { userId: user.id, status: 'active' },
-      include: {
+  return NextResponse.json({
+    user: {
+      id: 'bypass-admin-001',
+      email: 'admin@bfec.sa',
+      name: 'مدير النظام',
+      nameAr: 'مدير النظام',
+      role: 'org_admin',
+      preferredLang: 'ar',
+      preferredTz: 'Asia/Riyadh',
+      mfaEnabled: false,
+      membership: {
+        id: 'mem-001',
+        role: 'org_admin',
         organization: {
-          select: {
-            id: true,
-            name: true,
-            nameAr: true,
-            code: true,
-            currency: true,
-            timezone: true,
-            language: true,
-          },
+          id: 'org-001',
+          name: 'BrightFuture Energy',
+          nameAr: 'شركة المستقبل المشرق للطاقة',
+          code: 'BFEC',
+          currency: 'SAR',
+          timezone: 'Asia/Riyadh',
+          language: 'ar',
         },
       },
-    })
-
-    return NextResponse.json({
-      user: {
-        ...user,
-        membership: membership
-          ? {
-              id: membership.id,
-              role: membership.role,
-              organization: membership.organization,
-            }
-          : null,
-      },
-    })
-  } catch (error) {
-    console.error('Get current user error:', error)
-    return NextResponse.json({ user: null }, { status: 200 })
-  }
+    },
+  })
 }
