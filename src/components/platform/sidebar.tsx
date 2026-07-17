@@ -21,6 +21,7 @@ import {
   Server,
   Zap,
   Users,
+  Plug,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,7 @@ export type Section =
   | 'notifications'
   | 'audit'
   | 'users'
+  | 'integrations'
   | 'settings'
 
 interface NavItem {
@@ -67,6 +69,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'notifications', label: 'الإشعارات', labelEn: 'Notifications', icon: Bell, group: 'system' },
   { id: 'audit', label: 'سجل التدقيق', labelEn: 'Audit Log', icon: ScrollText, group: 'system' },
   { id: 'users', label: 'إدارة المستخدمين', labelEn: 'User Management', icon: Users, group: 'system' },
+  { id: 'integrations', label: 'التكاملات', labelEn: 'Integrations', icon: Plug, group: 'system' },
   { id: 'settings', label: 'الإعدادات', labelEn: 'Settings', icon: Settings, group: 'system' },
 ]
 

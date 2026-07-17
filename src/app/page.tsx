@@ -18,6 +18,7 @@ import { CalculatorSection } from '@/components/sections/calculator-section'
 import { NotificationsSection } from '@/components/sections/notifications-section'
 import { AuditSection } from '@/components/sections/audit-section'
 import { UserManagementSection } from '@/components/sections/user-management-section'
+import { IntegrationsSection } from '@/components/sections/integrations-section'
 import { SettingsSection } from '@/components/sections/settings-section'
 import { Loader2, Sun, Shield } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,6 +38,7 @@ const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   notifications: { title: 'الإشعارات', subtitle: 'مركز الإشعارات والأحداث المهمة' },
   audit: { title: 'سجل التدقيق', subtitle: 'سجل append-only لكل الإجراءات الحساسة' },
   users: { title: 'إدارة المستخدمين', subtitle: 'إضافة وإزالة الأعضاء وتغيير الأدوار' },
+  integrations: { title: 'التكاملات', subtitle: 'إدارة حالة الربط مع الخدمات الخارجية ومصادر البيانات' },
   settings: { title: 'الإدارة والإعدادات', subtitle: 'المؤسسة والأعضاء والأدوار والأمن والتكاملات' },
 }
 
@@ -172,6 +174,7 @@ export default function Home() {
               </CardContent>
             </Card>
           )}
+          {section === 'integrations' && <IntegrationsSection />}
           {section === 'settings' && <SettingsSection />}
         </main>
 
