@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
 
+// Helper: compute period start date from period type
+function getPeriodStart(period: string): Date {
+  const now = new Date()
+  switch (period) {
+    case 'today':
+      const today = new Date(now)
+      today.setHours(0, 0, 0, 0)
+      return today
+    case 'week':
+      const week = new Date(now)
+      week.setDate(week.getDate() - 7)
+      return week
+    case 'month':
+      return new Date(now.getFullYear(), now.getMonth(), 1)
+    case 'quarter':
+      const qMonth = Math.floor(now.getMonth() / 3) * 3
+      return new Date(now.getFullYear(), qMonth, 1)
+    case 'year':
+      return new Date(now.getFullYear(), 0, 1)
+    default:
+      return new Date(0) // all time
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requirePermission('project:read')
@@ -9,165 +33,227 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
+    const period = searchParams.get('period') || 'all' // today, week, month, quarter, year, all
+    const city = searchParams.get('city')
+    const projectType = searchParams.get('projectType')
+    const deviceStatus = searchParams.get('deviceStatus')
 
-    // Fetch all solar projects (not afforestation)
+    const periodStart = getPeriodStart(period)
+
+    // Build where clause with filters
+    const where: any = {
+      projectType: { not: 'afforestation' },
+      ...(projectId ? { id: projectId } : {}),
+      ...(city ? { city } : {}),
+      ...(projectType ? { projectType } : {}),
+    }
+
     const projects = await db.project.findMany({
-      where: {
-        projectType: { not: 'afforestation' },
-        ...(projectId ? { id: projectId } : {}),
-      },
+      where,
       select: {
-        id: true,
-        name: true,
-        nameAr: true,
-        code: true,
-        projectType: true,
-        status: true,
-        city: true,
-        capacityKwp: true,
-        currency: true,
-        tariffRetail: true,
-        tariffFeedIn: true,
-        commissionedAt: true,
+        id: true, name: true, nameAr: true, code: true,
+        projectType: true, status: true, city: true,
+        capacityKwp: true, currency: true,
+        tariffRetail: true, tariffFeedIn: true, commissionedAt: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const now = new Date()
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const yearStart = new Date(now.getFullYear(), 0, 1)
-
     const result: any[] = []
+    const allAlerts: any[] = []
 
     for (const project of projects) {
-      // Fetch all validated readings for this project
+      // Fetch readings within the selected period
       const readings = await db.energyReading.findMany({
         where: {
           projectId: project.id,
           metricType: 'energy_export_kwh',
+          measuredAt: { gte: periodStart },
           qualityStatus: { in: ['validated', 'approved', 'corrected'] },
         },
-        select: { value: true, measuredAt: true },
+        select: { value: true, measuredAt: true, qualityStatus: true },
         orderBy: { measuredAt: 'asc' },
       })
 
-      // Time-based energy aggregation
-      let dailyEnergy = 0, monthlyEnergy = 0, yearlyEnergy = 0, totalEnergy = 0
-      let maxPower = 0
-      const hourlyPowers: number[] = []
+      // Also fetch suspect/rejected readings for SLA
+      const suspectReadings = await db.energyReading.findMany({
+        where: {
+          projectId: project.id,
+          metricType: 'energy_export_kwh',
+          measuredAt: { gte: periodStart },
+          qualityStatus: { in: ['suspect', 'rejected'] },
+        },
+        select: { value: true, measuredAt: true, qualityStatus: true, suspectReason: true, suspectSeverity: true },
+        orderBy: { measuredAt: 'asc' },
+      })
 
-      for (const r of readings) {
-        totalEnergy += r.value
-        if (r.measuredAt >= todayStart) dailyEnergy += r.value
-        if (r.measuredAt >= monthStart) monthlyEnergy += r.value
-        if (r.measuredAt >= yearStart) yearlyEnergy += r.value
-        // Max power = max energy in 1 hour (kWh ≈ kW for 1h interval)
-        if (r.value > maxPower) maxPower = r.value
-        hourlyPowers.push(r.value)
-      }
+      // Fetch devices with optional status filter
+      const devices = await db.device.findMany({
+        where: {
+          projectId: project.id,
+          ...(deviceStatus ? { status: deviceStatus } : {}),
+        },
+        select: { id: true, name: true, status: true, lastSeenAt: true, serialNumber: true },
+      })
 
-      // Current power (last reading)
+      // Skip project if deviceStatus filter doesn't match
+      if (deviceStatus && devices.length === 0) continue
+
+      // Energy aggregation
+      const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
+      const maxPower = readings.length > 0 ? Math.max(...readings.map((r) => r.value)) : 0
       const currentPower = readings.length > 0 ? readings[readings.length - 1].value : 0
 
-      // Expected energy (based on capacity and PSH)
-      const PSH = 5.5 // peak sun hours average
+      // Expected energy
+      const PSH = 5.5
       const systemLosses = 0.14
       const inverterEfficiency = 0.97
       const operationalDays = project.commissionedAt
         ? Math.floor((now.getTime() - project.commissionedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 0
-      const expectedEnergyLifetime = project.capacityKwp
-        ? project.capacityKwp * PSH * 365 * (operationalDays / 365) * (1 - systemLosses) * inverterEfficiency
-        : 0
-      const expectedEnergyDaily = project.capacityKwp
-        ? project.capacityKwp * PSH * (1 - systemLosses) * inverterEfficiency
-        : 0
-      const expectedEnergyMonthly = expectedEnergyDaily * 30
-      const expectedEnergyYearly = expectedEnergyDaily * 365
 
-      // Achievement rate (%)
-      const achievementRate = expectedEnergyLifetime > 0 ? (totalEnergy / expectedEnergyLifetime) * 100 : 0
+      const periodDays = Math.max(1, Math.ceil((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)))
+      const expectedEnergyPeriod = project.capacityKwp
+        ? project.capacityKwp * PSH * periodDays * (1 - systemLosses) * inverterEfficiency
+        : 0
+      const achievementRate = expectedEnergyPeriod > 0 ? (totalEnergy / expectedEnergyPeriod) * 100 : 0
 
-      // Performance Ratio (PR)
-      const referenceYield = project.capacityKwp ? (expectedEnergyDaily / project.capacityKwp) : 0
-      const finalYield = project.capacityKwp ? (dailyEnergy / project.capacityKwp) : 0
+      // Performance Ratio
+      const referenceYield = project.capacityKwp ? PSH * periodDays * (1 - systemLosses) : 0
+      const finalYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
       const performanceRatio = referenceYield > 0 ? (finalYield / referenceYield) * 100 : 0
-
-      // Specific Yield (kWh/kWp)
       const specificYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
 
-      // Availability - split into Technical vs Data Availability
-      // Technical Availability: based on device uptime (when device was connected)
-      const device = await db.device.findFirst({
-        where: { projectId: project.id },
-        select: { status: true, lastSeenAt: true },
-      })
-      const isDeviceConnected = device?.status === 'connected'
-      const deviceUptimeHours = operationalDays * 24 * 0.98 // 98% uptime assumed for connected devices
+      // Availability
+      const connectedDevices = devices.filter((d) => d.status === 'connected')
+      const isDeviceConnected = connectedDevices.length > 0
+      const deviceUptimeHours = operationalDays * 24 * 0.98
       const technicalAvailability = isDeviceConnected
-        ? Math.min(100, (deviceUptimeHours / (operationalDays * 24)) * 100)
+        ? Math.min(100, (deviceUptimeHours / Math.max(1, operationalDays * 24)) * 100)
         : 0
 
-      // Data Availability: based on actual data received vs expected
-      const expectedReadingsCount = operationalDays * 14 // 14 hours of production per day
+      const expectedReadingsCount = periodDays * 14
       const actualReadingsCount = readings.length
       const dataAvailability = expectedReadingsCount > 0 ? Math.min(100, (actualReadingsCount / expectedReadingsCount) * 100) : 0
-
-      // Overall Availability = min(technical, data) - the bottleneck
       const availability = Math.min(technicalAvailability, dataAvailability)
 
-      // Capacity Factor (%)
+      // Capacity Factor
       const capacityFactor = project.capacityKwp && operationalDays > 0
-        ? (totalEnergy / (project.capacityKwp * 24 * operationalDays)) * 100
+        ? (totalEnergy / (project.capacityKwp * 24 * periodDays)) * 100
         : 0
 
-      // Operating hours (estimated: 14 hours/day * operational days)
-      const operatingHours = operationalDays * 14
+      const operatingHours = periodDays * 14
+      const downtimeHours = Math.round(periodDays * 24 * 0.02)
 
-      // Downtime hours (estimated: 2% of total time)
-      const downtimeHours = operationalDays * 24 * 0.02
+      // === SLA Indicators ===
+      // 1. Device downtime (minutes since last seen for offline devices)
+      let deviceDowntimeMinutes = 0
+      for (const device of devices) {
+        if (device.status !== 'connected' && device.lastSeenAt) {
+          const downtime = Math.floor((now.getTime() - device.lastSeenAt.getTime()) / (1000 * 60))
+          deviceDowntimeMinutes += downtime
+        }
+      }
 
-      // Energy exported to grid (estimated 30% of total)
+      // 2. Case processing time (average time to resolve cases in this period)
+      const cases = await db.case.findMany({
+        where: {
+          projectId: project.id,
+          createdAt: { gte: periodStart },
+        },
+        select: { status: true, createdAt: true, updatedAt: true },
+      })
+      const resolvedCases = cases.filter((c) => c.status === 'resolved' || c.status === 'closed')
+      const avgCaseProcessingHours = resolvedCases.length > 0
+        ? resolvedCases.reduce((s, c) => {
+            const hours = (c.updatedAt.getTime() - c.createdAt.getTime()) / (1000 * 60 * 60)
+            return s + hours
+          }, 0) / resolvedCases.length
+        : 0
+
+      // 3. Missing readings percentage
+      const missingReadingsPct = expectedReadingsCount > 0
+        ? Math.max(0, ((expectedReadingsCount - actualReadingsCount) / expectedReadingsCount) * 100)
+        : 0
+
+      // Energy flow
       const energyExported = totalEnergy * 0.3
-
-      // Self-consumed energy (estimated 70%)
       const selfConsumed = totalEnergy * 0.7
-
-      // Energy lost due to faults (estimated 1%)
       const energyLostFaults = totalEnergy * 0.01
-
-      // Energy lost due to weather (estimated 5%)
       const energyLostWeather = totalEnergy * 0.05
+
+      // === Smart Alerts ===
+      const projectAlerts: any[] = []
+
+      // 1. Performance drop: PR < 70%
+      if (performanceRatio > 0 && performanceRatio < 70) {
+        projectAlerts.push({
+          type: 'performance_drop',
+          severity: performanceRatio < 50 ? 'critical' : 'high',
+          title: 'انخفاض الأداء',
+          message: `Performance Ratio = ${performanceRatio.toFixed(1)}% (أقل من 70%)`,
+          projectId: project.id,
+          projectCode: project.code,
+        })
+      }
+
+      // 2. Missing data: missing readings > 20%
+      if (missingReadingsPct > 20) {
+        projectAlerts.push({
+          type: 'missing_data',
+          severity: missingReadingsPct > 50 ? 'critical' : 'high',
+          title: 'بيانات مفقودة',
+          message: `${missingReadingsPct.toFixed(1)}% من القراءات المتوقعة غير متوفرة`,
+          projectId: project.id,
+          projectCode: project.code,
+        })
+      }
+
+      // 3. Device stopped: any device not connected
+      const stoppedDevices = devices.filter((d) => d.status !== 'connected')
+      if (stoppedDevices.length > 0) {
+        projectAlerts.push({
+          type: 'device_stopped',
+          severity: 'critical',
+          title: 'جهاز متوقف',
+          message: `${stoppedDevices.length} جهاز غير متصل: ${stoppedDevices.map((d) => d.name).join(', ')}`,
+          projectId: project.id,
+          projectCode: project.code,
+        })
+      }
+
+      // 4. Anomalous reading: suspect readings exist
+      if (suspectReadings.length > 0) {
+        const criticalReadings = suspectReadings.filter((r) => r.suspectSeverity === 'critical')
+        projectAlerts.push({
+          type: 'anomalous_reading',
+          severity: criticalReadings.length > 0 ? 'critical' : 'medium',
+          title: 'قراءة شاذة',
+          message: `${suspectReadings.length} قراءة مشبوهة (${criticalReadings.length} حرجة)`,
+          projectId: project.id,
+          projectCode: project.code,
+        })
+      }
+
+      allAlerts.push(...projectAlerts)
 
       result.push({
         project: {
-          id: project.id,
-          name: project.name,
-          nameAr: project.nameAr,
-          code: project.code,
-          projectType: project.projectType,
-          status: project.status,
-          city: project.city,
-          capacityKwp: project.capacityKwp,
-          currency: project.currency,
-          tariffRetail: project.tariffRetail,
-          tariffFeedIn: project.tariffFeedIn,
-          commissionedAt: project.commissionedAt,
-          operationalDays,
+          id: project.id, name: project.name, nameAr: project.nameAr,
+          code: project.code, projectType: project.projectType,
+          status: project.status, city: project.city,
+          capacityKwp: project.capacityKwp, currency: project.currency,
+          tariffRetail: project.tariffRetail, tariffFeedIn: project.tariffFeedIn,
+          commissionedAt: project.commissionedAt, operationalDays,
+          devicesCount: devices.length,
+          connectedDevices: connectedDevices.length,
         },
         energy: {
-          daily: Math.round(dailyEnergy),
-          monthly: Math.round(monthlyEnergy),
-          yearly: Math.round(yearlyEnergy),
-          lifetime: Math.round(totalEnergy),
+          total: Math.round(totalEnergy),
           currentPower: Math.round(currentPower),
           maxPower: Math.round(maxPower),
-          expectedDaily: Math.round(expectedEnergyDaily),
-          expectedMonthly: Math.round(expectedEnergyMonthly),
-          expectedYearly: Math.round(expectedEnergyYearly),
-          expectedLifetime: Math.round(expectedEnergyLifetime),
+          expected: Math.round(expectedEnergyPeriod),
           achievementRate: Math.round(achievementRate * 10) / 10,
         },
         performance: {
@@ -180,12 +266,19 @@ export async function GET(request: NextRequest) {
           operatingHours: Math.round(operatingHours),
           downtimeHours: Math.round(downtimeHours),
         },
+        sla: {
+          deviceDowntimeMinutes: Math.round(deviceDowntimeMinutes),
+          avgCaseProcessingHours: Math.round(avgCaseProcessingHours * 10) / 10,
+          missingReadingsPct: Math.round(missingReadingsPct * 10) / 10,
+          openCases: cases.filter((c) => c.status === 'open' || c.status === 'in_progress').length,
+        },
         energyFlow: {
           exportedToGrid: Math.round(energyExported),
           selfConsumed: Math.round(selfConsumed),
           lostDueToFaults: Math.round(energyLostFaults),
           lostDueToWeather: Math.round(energyLostWeather),
         },
+        alerts: projectAlerts,
       })
     }
 
@@ -193,10 +286,7 @@ export async function GET(request: NextRequest) {
     const stats = {
       totalProjects: result.length,
       totalCapacityKwp: projects.reduce((s, p) => s + (p.capacityKwp || 0), 0),
-      totalEnergyLifetime: result.reduce((s, p) => s + p.energy.lifetime, 0),
-      totalEnergyDaily: result.reduce((s, p) => s + p.energy.daily, 0),
-      totalEnergyMonthly: result.reduce((s, p) => s + p.energy.monthly, 0),
-      totalEnergyYearly: result.reduce((s, p) => s + p.energy.yearly, 0),
+      totalEnergy: result.reduce((s, p) => s + p.energy.total, 0),
       totalCurrentPower: result.reduce((s, p) => s + p.energy.currentPower, 0),
       totalMaxPower: result.reduce((s, p) => s + p.energy.maxPower, 0),
       totalExported: result.reduce((s, p) => s + p.energyFlow.exportedToGrid, 0),
@@ -207,9 +297,31 @@ export async function GET(request: NextRequest) {
       averageDataAvailability: result.length > 0 ? result.reduce((s, p) => s + p.performance.dataAvailability, 0) / result.length : 0,
       averageCapacityFactor: result.length > 0 ? result.reduce((s, p) => s + p.performance.capacityFactor, 0) / result.length : 0,
       averageAchievementRate: result.length > 0 ? result.reduce((s, p) => s + p.energy.achievementRate, 0) / result.length : 0,
+      // SLA aggregate
+      totalDeviceDowntimeMinutes: result.reduce((s, p) => s + p.sla.deviceDowntimeMinutes, 0),
+      avgCaseProcessingHours: result.length > 0 ? result.reduce((s, p) => s + p.sla.avgCaseProcessingHours, 0) / result.length : 0,
+      avgMissingReadingsPct: result.length > 0 ? result.reduce((s, p) => s + p.sla.missingReadingsPct, 0) / result.length : 0,
+      totalOpenCases: result.reduce((s, p) => s + p.sla.openCases, 0),
+      // Alerts
+      totalAlerts: allAlerts.length,
+      criticalAlerts: allAlerts.filter((a) => a.severity === 'critical').length,
+      highAlerts: allAlerts.filter((a) => a.severity === 'high').length,
+      mediumAlerts: allAlerts.filter((a) => a.severity === 'medium').length,
     }
 
-    return NextResponse.json({ projects: result, stats })
+    // Available filter options
+    const filterOptions = {
+      cities: [...new Set(projects.map((p) => p.city).filter(Boolean))],
+      projectTypes: [...new Set(projects.map((p) => p.projectType).filter(Boolean))],
+    }
+
+    return NextResponse.json({
+      projects: result,
+      stats,
+      alerts: allAlerts,
+      filterOptions,
+      period,
+    })
   } catch (error) {
     console.error('Energy performance API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
