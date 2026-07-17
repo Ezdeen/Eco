@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
         email: email || 'admin@bfec.sa',
         name: 'مدير النظام',
         role: 'org_admin',
-        organizationId: 'org-001',
+        organizationId: 'cmrnf5gt30000q5gstpflforx',
       },
     })
   } catch (error) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         email: 'admin@bfec.sa',
         name: 'مدير النظام',
         role: 'org_admin',
-        organizationId: 'org-001',
+        organizationId: 'cmrnf5gt30000q5gstpflforx',
       },
     })
   }
