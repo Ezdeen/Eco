@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Network, CloudSun, FileBarChart, Cpu, Bell, CreditCard,
   CheckCircle2, AlertCircle, AlertTriangle, Plug, Lightbulb,
-  ShieldAlert, Activity, Mail, Smartphone, MessageCircle, Lock,
+  ShieldAlert, Activity, Mail, Smartphone, MessageCircle, Lock, Settings,
 } from 'lucide-react'
+import { IntegrationConfigSection } from '@/components/sections/integration-config-section'
 
 interface IntegrationData {
   hedera: any
@@ -94,6 +97,18 @@ export function IntegrationsSection() {
           </div>
         </CardContent>
       </Card>
+
+      <Tabs defaultValue="status" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="status" className="gap-1 text-xs">
+            <Activity className="h-3.5 w-3.5" /> حالة التكاملات
+          </TabsTrigger>
+          <TabsTrigger value="config" className="gap-1 text-xs">
+            <Settings className="h-3.5 w-3.5" /> إدارة الإعدادات
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="status" className="space-y-5 mt-4">
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -316,6 +331,13 @@ export function IntegrationsSection() {
           ))}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Config Management Tab */}
+        <TabsContent value="config" className="mt-4">
+          <IntegrationConfigSection />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
