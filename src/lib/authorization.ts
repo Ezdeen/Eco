@@ -75,31 +75,65 @@ type AuthResult =
   | { authorized: true; user: SessionPayload }
   | { authorized: false; response: NextResponse }
 
+function unauthorizedResponse(message = 'يجب تسجيل الدخول للوصول لهذا المورد'): AuthResult {
+  return {
+    authorized: false,
+    response: NextResponse.json({ error: message }, { status: 401 }),
+  }
+}
+
+function forbiddenResponse(message = 'ليس لديك صلاحية للقيام بهذا الإجراء'): AuthResult {
+  return {
+    authorized: false,
+    response: NextResponse.json({ error: message }, { status: 403 }),
+  }
+}
+
 export async function requireAuth(): Promise<AuthResult> {
-  // BYPASS: تجاوز التحقق - دائماً مصرح
   const user = await getCurrentUser()
-  return { authorized: true, user: user! } as AuthResult
+  if (!user) return unauthorizedResponse()
+  return { authorized: true, user }
 }
 
 export async function requirePermission(permission: Permission): Promise<AuthResult> {
-  // BYPASS: تجاوز التحقق من الصلاحيات - مصرح دائماً
   const user = await getCurrentUser()
-  return { authorized: true, user: user! } as AuthResult
+  if (!user) return unauthorizedResponse()
+
+  const allowed = ROLE_PERMISSIONS[user.role]?.includes(permission)
+  if (!allowed) return forbiddenResponse()
+
+  return { authorized: true, user }
 }
 
 // Check if user can access a specific project (ABAC - organization scope)
 export async function requireProjectAccess(projectId: string, permission: Permission): Promise<AuthResult> {
-  // BYPASS: تجاوز التحقق من صلاحية المشروع - مصرح دائماً
   const user = await getCurrentUser()
-  return { authorized: true, user: user! } as AuthResult
+  if (!user) return unauthorizedResponse()
+
+  const allowed = ROLE_PERMISSIONS[user.role]?.includes(permission)
+  if (!allowed) return forbiddenResponse()
+
+  // platform_admin يتجاوز نطاق المؤسسة (وصول لكل شي)
+  if (user.role === 'platform_admin') return { authorized: true, user }
+
+  const { db } = await import('./db')
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    select: { organizationId: true },
+  })
+
+  if (!project || project.organizationId !== user.organizationId) {
+    return forbiddenResponse('لا يمكنك الوصول لهذا المشروع')
+  }
+
+  return { authorized: true, user }
 }
 
-// Separation of duties: BYPASSED - always allowed
+// Separation of duties: يمنع نفس الشخص من الموافقة على ما أنشأه هو نفسه
 export async function checkSeparationOfDuties(
   action: 'approve' | 'attest' | 'publish',
   resourceCreatorId: string,
   currentUserId: string,
 ): Promise<boolean> {
-  // BYPASS: تجاوز فصل المهام - مسموح دائماً
-  return true
+  return resourceCreatorId !== currentUserId
 }
