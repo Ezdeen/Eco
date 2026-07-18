@@ -1,70 +1,153 @@
 // Hedera Integration Library
 // Uses Hedera SDK for real blockchain attestation with outbox/retry/reconciliation
 import { db } from './db'
+import { decryptSecret } from './crypto'
 import crypto from 'crypto'
 
-// Hedera client configuration
-// In production, use environment variables for operator credentials
-const HEDERA_NETWORK = process.env.HEDERA_NETWORK || 'simulation'
-const HEDERA_OPERATOR_ID = process.env.HEDERA_OPERATOR_ID || ''
-const HEDERA_OPERATOR_KEY = process.env.HEDERA_OPERATOR_KEY || ''
-const HEDERA_TOPIC_ID = process.env.HEDERA_TOPIC_ID || '' // Required for attestation topic
+// === Configuration loading ===
+// Priority 1: IntegrationConfig table (database) — survives server migrations, works on any host
+// Priority 2: Environment variables — fallback for advanced/manual deployments
+interface HederaConfig {
+  network: 'simulation' | 'testnet' | 'mainnet'
+  accountId: string
+  privateKey: string // DER encoded private key
+  topicId: string
+  configId: string | null // IntegrationConfig row id, for auto-persisting a created topicId
+}
+
+async function loadHederaConfig(): Promise<HederaConfig> {
+  try {
+    const row = await db.integrationConfig.findUnique({ where: { name: 'hedera' } })
+
+    if (row && row.isActive) {
+      const cfg = row.config ? JSON.parse(row.config) : {}
+      const privateKey = row.encryptedSecret ? decryptSecret(row.encryptedSecret) : ''
+
+      if (cfg.accountId && privateKey) {
+        return {
+          network: (cfg.network || 'simulation') as HederaConfig['network'],
+          accountId: cfg.accountId,
+          privateKey,
+          topicId: cfg.topicId || '',
+          configId: row.id,
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Hedera] Failed to load config from database, falling back to env vars:', error)
+  }
+
+  // Fallback: environment variables (for manual/advanced setups)
+  return {
+    network: (process.env.HEDERA_NETWORK || 'simulation') as HederaConfig['network'],
+    accountId: process.env.HEDERA_OPERATOR_ID || '',
+    privateKey: process.env.HEDERA_OPERATOR_KEY || '',
+    topicId: process.env.HEDERA_TOPIC_ID || '',
+    configId: null,
+  }
+}
 
 // === PRIORITY 6: Block simulation in production ===
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 // During build, Next.js runs in production mode but we shouldn't throw
 const IS_BUILD_TIME = !!process.env.NEXT_PRIVATE_BUILD_ID || process.env.NEXT_PHASE === 'phase-production-build'
 
-if (IS_PRODUCTION && !IS_BUILD_TIME && HEDERA_NETWORK === 'simulation') {
-  throw new Error(
-    'FATAL: HEDERA_NETWORK=simulation is NOT allowed in production. ' +
-    'Set HEDERA_NETWORK to testnet or mainnet, and configure HEDERA_OPERATOR_ID, ' +
-    'HEDERA_OPERATOR_KEY, and HEDERA_TOPIC_ID.'
-  )
-}
+// Check if Hedera SDK is available (real vs mock)
+let cachedClient: { client: any; accountId: string } | null = null
 
-if (IS_PRODUCTION && !IS_BUILD_TIME && (HEDERA_NETWORK === 'testnet' || HEDERA_NETWORK === 'mainnet')) {
-  if (!HEDERA_OPERATOR_ID || !HEDERA_OPERATOR_KEY || !HEDERA_TOPIC_ID) {
-    throw new Error(
-      'FATAL: HEDERA_OPERATOR_ID, HEDERA_OPERATOR_KEY, and HEDERA_TOPIC_ID are required ' +
-      `when HEDERA_NETWORK=${HEDERA_NETWORK} in production.`
+async function getHederaClient(): Promise<{ client: any; mode: 'live' | 'simulation'; config: HederaConfig }> {
+  const config = await loadHederaConfig()
+
+  if (IS_PRODUCTION && !IS_BUILD_TIME && config.network === 'simulation') {
+    console.error(
+      '[Hedera] WARNING: network is set to simulation in production. ' +
+      'Configure a real network (testnet/mainnet) from Integrations settings.'
     )
+  }
+
+  if (!config.accountId || !config.privateKey || config.privateKey.length < 30) {
+    return { client: null, mode: 'simulation', config }
+  }
+
+  // Reuse cached client only if same account (avoids reconnecting on every call)
+  if (cachedClient && cachedClient.accountId === config.accountId) {
+    return { client: cachedClient.client, mode: 'live', config }
+  }
+
+  try {
+    const { Client, PrivateKey, AccountId } = await import('@hashgraph/sdk')
+
+    const client = config.network === 'mainnet' ? Client.forMainnet() : Client.forTestnet()
+
+    const operatorId = AccountId.fromString(config.accountId)
+    const operatorKey = PrivateKey.fromString(config.privateKey)
+    client.setOperator(operatorId, operatorKey)
+
+    cachedClient = { client, accountId: config.accountId }
+    return { client, mode: 'live', config }
+  } catch (error) {
+    console.error('Hedera SDK initialization failed, falling back to simulation:', error)
+    return { client: null, mode: 'simulation', config }
   }
 }
 
-// Log Hedera configuration status at startup
-console.log(`[Hedera] Network: ${HEDERA_NETWORK}, Mode: ${IS_PRODUCTION ? 'production' : 'development'}, ` +
-  `Operator: ${HEDERA_OPERATOR_ID ? 'configured' : 'NOT configured'}, ` +
-  `Topic: ${HEDERA_TOPIC_ID ? 'configured' : 'NOT configured'}`)
-
-// Check if Hedera SDK is available (real vs mock)
-let hederaClient: any = null
-
-async function getHederaClient() {
-  if (hederaClient) return hederaClient
+// Ensure a topic exists; create one automatically if none configured, and persist it
+async function ensureTopicId(client: any, config: HederaConfig): Promise<string | null> {
+  if (config.topicId) return config.topicId
 
   try {
-    // Dynamic import to avoid issues if SDK not configured
-    const { Client, PrivateKey, AccountId } = await import('@hashgraph/sdk')
+    const { TopicCreateTransaction } = await import('@hashgraph/sdk')
+    const tx = await new TopicCreateTransaction()
+      .setTopicMemo('ESG Solar Platform - Attestation Topic')
+      .execute(client)
+    const receipt = await tx.getReceipt(client)
+    const newTopicId = receipt.topicId?.toString()
 
-    if (HEDERA_NETWORK === 'mainnet') {
-      hederaClient = Client.forMainnet()
-    } else {
-      hederaClient = Client.forTestnet()
+    if (newTopicId && config.configId) {
+      // Persist the newly created topic ID back into IntegrationConfig
+      const row = await db.integrationConfig.findUnique({ where: { id: config.configId } })
+      const cfg = row?.config ? JSON.parse(row.config) : {}
+      await db.integrationConfig.update({
+        where: { id: config.configId },
+        data: { config: JSON.stringify({ ...cfg, topicId: newTopicId }) },
+      })
     }
 
-    // Only set operator if real credentials provided
-    if (HEDERA_OPERATOR_KEY && HEDERA_OPERATOR_KEY.length > 30) {
-      const operatorId = AccountId.fromString(HEDERA_OPERATOR_ID)
-      const operatorKey = PrivateKey.fromString(HEDERA_OPERATOR_KEY)
-      hederaClient.setOperator(operatorId, operatorKey)
-      return { client: hederaClient, mode: 'live' as const }
-    }
-
-    return { client: null, mode: 'simulation' as const }
+    return newTopicId || null
   } catch (error) {
-    console.error('Hedera SDK initialization failed, falling back to simulation:', error)
-    return { client: null, mode: 'simulation' as const }
+    console.error('[Hedera] Failed to auto-create topic:', error)
+    return null
+  }
+}
+
+// Test the Hedera connection with current stored credentials (used by Integrations UI "Test" button)
+export async function testHederaConnection(): Promise<{ success: boolean; message: string }> {
+  const config = await loadHederaConfig()
+
+  if (!config.accountId || !config.privateKey) {
+    return { success: false, message: 'الحساب أو المفتاح الخاص غير مكوّن' }
+  }
+
+  try {
+    const { Client, PrivateKey, AccountId, AccountBalanceQuery } = await import('@hashgraph/sdk')
+
+    const client = config.network === 'mainnet' ? Client.forMainnet() : Client.forTestnet()
+    const operatorId = AccountId.fromString(config.accountId)
+    const operatorKey = PrivateKey.fromString(config.privateKey)
+    client.setOperator(operatorId, operatorKey)
+
+    // A balance query is a lightweight, read-only way to confirm the credentials + network are valid
+    const balance = await new AccountBalanceQuery().setAccountId(operatorId).execute(client)
+
+    return {
+      success: true,
+      message: `الاتصال ناجح. رصيد الحساب: ${balance.hbars.toString()}`,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || 'فشل الاتصال بشبكة Hedera. تحقق من Account ID والمفتاح الخاص.',
+    }
   }
 }
 
@@ -107,13 +190,15 @@ export async function submitAttestation(
   topicId?: string
   isProductionEvidence: boolean
 }> {
-  const { client, mode } = await getHederaClient()
+  const { client, mode, config } = await getHederaClient()
 
   if (mode === 'live' && client) {
-    if (!HEDERA_TOPIC_ID) {
+    const topicId = await ensureTopicId(client, config)
+
+    if (!topicId) {
       return {
         success: false,
-        error: 'HEDERA_TOPIC_ID not configured. Cannot submit to topic.',
+        error: 'تعذّر تحديد أو إنشاء Topic ID على شبكة Hedera.',
         mode: 'live',
         isProductionEvidence: false,
       }
@@ -130,7 +215,7 @@ export async function submitAttestation(
       })
 
       const transaction = await new TopicMessageSubmitTransaction()
-        .setTopicId(TopicId.fromString(HEDERA_TOPIC_ID))
+        .setTopicId(TopicId.fromString(topicId))
         .setMessage(message)
         .execute(client)
 
@@ -143,7 +228,7 @@ export async function submitAttestation(
           ? `${(receipt as any).consensusTimestamp.seconds}.${(receipt as any).consensusTimestamp.nanos}`
           : new Date().toISOString(),
         mode: 'live',
-        topicId: HEDERA_TOPIC_ID,
+        topicId,
         isProductionEvidence: true,
       }
     } catch (error: any) {
@@ -151,13 +236,13 @@ export async function submitAttestation(
         success: false,
         error: error.message,
         mode: 'live',
-        topicId: HEDERA_TOPIC_ID,
+        topicId,
         isProductionEvidence: false,
       }
     }
   }
 
-  // Simulation mode (for development/testing)
+  // Simulation mode (for development/testing, or when Hedera is not yet configured)
   const simulatedTxId = `0.0.${Math.floor(Math.random() * 1000000)}-${Math.floor(Date.now() / 1000)}-${Math.floor(Math.random() * 100000)}`
   const simulatedTimestamp = `${Math.floor(Date.now() / 1000)}.${String(Math.floor(Math.random() * 1000000000)).padStart(9, '0')}`
 
@@ -166,7 +251,7 @@ export async function submitAttestation(
     transactionId: simulatedTxId,
     consensusTimestamp: simulatedTimestamp,
     mode: 'simulation',
-    topicId: HEDERA_TOPIC_ID || 'not-configured',
+    topicId: config.topicId || 'not-configured',
     isProductionEvidence: false, // CRITICAL: simulation is NOT production evidence
   }
 }
