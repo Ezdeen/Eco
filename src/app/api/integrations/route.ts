@@ -9,13 +9,18 @@ export async function GET() {
     if (!auth.authorized) return auth.response
 
     // === Hedera ===
-    const hederaNetwork = process.env.HEDERA_NETWORK || 'simulation'
-    const hederaOperatorId = process.env.HEDERA_OPERATOR_ID || ''
-    const hederaOperatorKey = process.env.HEDERA_OPERATOR_KEY || ''
-    const hederaTopicId = process.env.HEDERA_TOPIC_ID || ''
+    const hederaRow = await db.integrationConfig.findUnique({ where: { name: 'hedera' } })
+    const hederaCfg = hederaRow?.config ? JSON.parse(hederaRow.config) : {}
+
+    // Prefer database config; fall back to env vars for manual/advanced setups
+    const hederaNetwork = hederaCfg.network || process.env.HEDERA_NETWORK || 'simulation'
+    const hederaAccountId = hederaCfg.accountId || process.env.HEDERA_OPERATOR_ID || ''
+    const hederaHasKey = !!(hederaRow?.encryptedSecret) || !!process.env.HEDERA_OPERATOR_KEY
+    const hederaTopicId = hederaCfg.topicId || process.env.HEDERA_TOPIC_ID || ''
+    const hederaIsActive = hederaRow?.isActive ?? false
 
     const isSimulation = hederaNetwork === 'simulation'
-    const isConfigured = !!(hederaOperatorId && hederaOperatorKey && hederaTopicId)
+    const isConfigured = hederaIsActive && !!(hederaAccountId && hederaHasKey)
     const hederaMode = isSimulation ? 'simulation' : (isConfigured ? 'live' : 'needs_setup')
 
     // Fetch latest attestation from DB
@@ -35,9 +40,9 @@ export async function GET() {
       where: { status: { in: ['confirmed', 'submitted'] } },
     })
 
-    // Mask operator ID (show last 4 chars only)
-    const maskedOperatorId = hederaOperatorId
-      ? `****${hederaOperatorId.slice(-4)}`
+    // Mask account ID (show last 4 chars only)
+    const maskedOperatorId = hederaAccountId
+      ? `****${hederaAccountId.slice(-4)}`
       : null
 
     const hedera = {
@@ -47,13 +52,17 @@ export async function GET() {
       isProductionEvidence: hederaMode === 'live',
       topicId: hederaTopicId || null,
       maskedOperatorId,
-      operatorKeyConfigured: !!hederaOperatorKey,
+      operatorKeyConfigured: hederaHasKey,
+      lastTestedAt: hederaRow?.lastTestedAt?.toISOString() || null,
+      lastTestResult: hederaRow?.lastTestResult || null,
       lastTransactionId: lastAttestation?.hederaTransactionId || null,
       lastConsensusTimestamp: lastAttestation?.consensusTimestamp || null,
       lastConfirmedAt: lastAttestation?.confirmedAt?.toISOString() || null,
       totalAttestations: attestationCount,
       warning: isSimulation
-        ? 'هذا الوضع محاكاة (simulation) وليس دليلاً إنتاجيًا. اضبط HEDERA_NETWORK=testnet أو mainnet للتوثيق الفعلي.'
+        ? 'هذا الوضع محاكاة (simulation) وليس دليلاً إنتاجيًا. أضف بيانات حساب Hedera الحقيقية من قسم التكاملات → إدارة الإعدادات، واختر شبكة testnet أو mainnet.'
+        : !isConfigured
+        ? 'التكامل غير مفعّل بعد. أضف Account ID والمفتاح الخاص من قسم التكاملات → إدارة الإعدادات.'
         : null,
     }
 
