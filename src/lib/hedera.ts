@@ -120,6 +120,36 @@ async function ensureTopicId(client: any, config: HederaConfig): Promise<string 
   }
 }
 
+// Create a dedicated Hedera topic for a specific project and persist it to Project.hederaTopicId.
+// Used when n8n asks for a project's topicId and none exists yet (see /api/hedera/project-topic).
+export async function createProjectTopic(projectId: string): Promise<string | null> {
+  const { client, mode } = await getHederaClient()
+  if (mode !== 'live' || !client) {
+    console.error('[Hedera] Cannot create project topic: Hedera not configured (simulation mode)')
+    return null
+  }
+
+  try {
+    const { TopicCreateTransaction } = await import('@hashgraph/sdk')
+    const project = await db.project.findUnique({ where: { id: projectId }, select: { code: true, name: true } })
+
+    const tx = await new TopicCreateTransaction()
+      .setTopicMemo(`ESG Platform - Project ${project?.code || projectId} Inverter Attestation`)
+      .execute(client)
+    const receipt = await tx.getReceipt(client)
+    const newTopicId = receipt.topicId?.toString()
+
+    if (newTopicId) {
+      await db.project.update({ where: { id: projectId }, data: { hederaTopicId: newTopicId } })
+    }
+
+    return newTopicId || null
+  } catch (error) {
+    console.error('[Hedera] Failed to create project topic:', error)
+    return null
+  }
+}
+
 // Test the Hedera connection with current stored credentials (used by Integrations UI "Test" button)
 export async function testHederaConnection(): Promise<{ success: boolean; message: string }> {
   const config = await loadHederaConfig()
