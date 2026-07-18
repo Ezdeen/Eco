@@ -52,7 +52,7 @@ export function decryptSecret(encryptedBase64: string): string {
 // Mask a secret (show last 4 chars only)
 export function maskSecret(secret: string): string {
   if (!secret || secret.length < 4) return '****'
-  return `****${secret.slice(-4)}}`
+  return `****${secret.slice(-4)}`
 }
 
 // Verify HMAC signature (for n8n webhooks)
