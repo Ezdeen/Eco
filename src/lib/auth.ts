@@ -93,17 +93,12 @@ export async function getSessionToken(): Promise<string | undefined> {
 }
 
 // Get the current authenticated user (server-side, for API routes)
-// BYPASS: Always return default admin user without token verification
 export async function getCurrentUser(): Promise<SessionPayload | null> {
-  // تجاوز التحقق من التوكن - إرجاع مستخدم افتراضي دائماً
-  return {
-    userId: 'bypass-admin-001',
-    email: 'admin@bfec.sa',
-    name: 'مدير النظام',
-    role: 'org_admin',
-    organizationId: 'cmrnf5gt30000q5gstpflforx',
-    membershipId: 'mem-001',
-  }
+  const token = await getSessionToken()
+  if (!token) return null
+
+  const session = await verifyToken(token)
+  return session
 }
 
 // Authenticate a user with email and password
