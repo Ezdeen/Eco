@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
       topicId: result.topicId,
       warning: result.isProductionEvidence
         ? undefined
-        : '⚠️ هذه توثيق محاكاة (simulation) وليس دليلاً إنتاجيًا. للتوثيق الإنتاجي، اضبط HEDERA_OPERATOR_ID و HEDERA_OPERATOR_KEY و HEDERA_TOPIC_ID',
+        : '⚠️ هذه توثيق محاكاة (simulation) وليس دليلاً إنتاجيًا. للتوثيق الإنتاجي، أضف بيانات حساب Hedera الحقيقية من قسم التكاملات → إدارة الإعدادات',
     }, { status: 201 })
   } catch (error) {
     console.error('Create attestation error:', error)
