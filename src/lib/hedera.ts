@@ -55,6 +55,29 @@ const IS_BUILD_TIME = !!process.env.NEXT_PRIVATE_BUILD_ID || process.env.NEXT_PH
 // Check if Hedera SDK is available (real vs mock)
 let cachedClient: { client: any; accountId: string } | null = null
 
+// Parse a DER-encoded private key robustly, detecting ECDSA (secp256k1) vs ED25519
+// from the DER prefix itself. Hedera SDK's generic PrivateKey.fromString() can
+// misinterpret ECDSA keys in some versions, producing INVALID_SIGNATURE errors on
+// write transactions (TopicCreateTransaction, TopicMessageSubmitTransaction) even
+// though read-only queries (AccountBalanceQuery) succeed. Using the explicit
+// fromStringECDSA/fromStringED25519 methods avoids this ambiguity entirely.
+function parseHederaPrivateKey(PrivateKey: any, derKey: string): any {
+  const normalized = derKey.trim()
+  // ECDSA (secp256k1) DER keys contain this OID sequence right after the version/algorithm header
+  const isEcdsa = normalized.toLowerCase().includes('06052b8104000a')
+
+  if (isEcdsa) {
+    return PrivateKey.fromStringECDSA(normalized)
+  }
+
+  try {
+    return PrivateKey.fromStringED25519(normalized)
+  } catch {
+    // Fallback to the generic parser for any format we didn't anticipate
+    return PrivateKey.fromString(normalized)
+  }
+}
+
 async function getHederaClient(): Promise<{ client: any; mode: 'live' | 'simulation'; config: HederaConfig }> {
   const config = await loadHederaConfig()
 
@@ -80,7 +103,7 @@ async function getHederaClient(): Promise<{ client: any; mode: 'live' | 'simulat
     const client = config.network === 'mainnet' ? Client.forMainnet() : Client.forTestnet()
 
     const operatorId = AccountId.fromString(config.accountId)
-    const operatorKey = PrivateKey.fromString(config.privateKey)
+    const operatorKey = parseHederaPrivateKey(PrivateKey, config.privateKey)
     client.setOperator(operatorId, operatorKey)
 
     cachedClient = { client, accountId: config.accountId }
@@ -163,7 +186,7 @@ export async function testHederaConnection(): Promise<{ success: boolean; messag
 
     const client = config.network === 'mainnet' ? Client.forMainnet() : Client.forTestnet()
     const operatorId = AccountId.fromString(config.accountId)
-    const operatorKey = PrivateKey.fromString(config.privateKey)
+    const operatorKey = parseHederaPrivateKey(PrivateKey, config.privateKey)
     client.setOperator(operatorId, operatorKey)
 
     // A balance query is a lightweight, read-only way to confirm the credentials + network are valid
