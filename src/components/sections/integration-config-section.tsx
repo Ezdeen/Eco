@@ -54,10 +54,12 @@ const INTEGRATION_TEMPLATES = [
     category: 'integration',
     configFields: [
       { key: 'network', label: 'الشبكة', type: 'select', options: ['simulation', 'testnet', 'mainnet'] },
-      { key: 'operatorId', label: 'Operator ID', type: 'text', placeholder: '0.0.xxxx' },
-      { key: 'topicId', label: 'Topic ID', type: 'text', placeholder: '0.0.xxxx' },
+      { key: 'accountId', label: 'Account ID', type: 'text', placeholder: '0.0.xxxxxxx' },
+      { key: 'evmAddress', label: 'EVM Address (اختياري)', type: 'text', placeholder: '0x...' },
+      { key: 'derPublicKey', label: 'DER Encoded Public Key (اختياري)', type: 'text', placeholder: '302a300506032b6570...' },
+      { key: 'topicId', label: 'Topic ID', type: 'text', placeholder: '0.0.xxxxxxx (أنشئه من Hedera Portal أو اتركه فارغاً وسننشئه تلقائياً عند أول اختبار)' },
     ],
-    secretLabel: 'Operator Key',
+    secretLabel: 'DER Encoded Private Key',
     secretPlaceholder: '302e020100300506032b657004220420xxxx',
   },
   {
