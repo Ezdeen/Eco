@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { verifyApiKey, hasScope } from '@/lib/api-key'
-import { computeCanonicalHash, buildCanonicalString } from '@/lib/canonical-hash'
+import { computeCanonicalHash } from '@/lib/canonical-hash'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/middleware-utils'
 
 // n8n sends the clear reading data TOGETHER WITH the hash it already computed and
@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
         unit: 'kWh',
         cumulativeValue: productionTotal,
         sourceEventId: `${serialNumber}:${measuredAt.toISOString()}`,
-        qualityStatus: hashMatchStatus === 'match' ? 'received' : 'suspect',
-        validationStatus: 'pending',
+        qualityStatus: hashMatchStatus === 'match' ? 'validated' : 'suspect',
+        validationStatus: hashMatchStatus === 'match' ? 'valid' : 'invalid',
         canonicalPayloadHash: checkHash,
         n8nProvidedHash: n8nHash,
         hashMatchStatus,
@@ -173,11 +173,6 @@ export async function POST(request: NextRequest) {
         readingId: reading.id,
         hashMatchStatus,
         checkHash,
-        n8nHashReceived: n8nHash,
-        // TEMPORARY DEBUG FIELD — remove once hash mismatch is resolved.
-        // Shows the exact string the platform hashed, character for character,
-        // for direct comparison against whatever n8n actually sent.
-        debugPlatformCanonicalString: buildCanonicalString({ serialNumber, productionNow, productionTotal, timestamp }),
         hederaTransactionId,
       },
       { status: 201 },
