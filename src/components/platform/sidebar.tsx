@@ -8,7 +8,6 @@ import {
   Database,
   Activity,
   Calculator,
-  ShieldCheck,
   FileBarChart,
   Coins,
   Bell,
@@ -62,7 +61,9 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'data', label: 'مركز البيانات', labelEn: 'Data Center', icon: Database, group: 'data' },
   { id: 'monitoring', label: 'مركز المراقبة', labelEn: 'Monitoring', icon: Activity, group: 'data' },
   { id: 'calculations', label: 'الحسابات (KPI Catalog)', labelEn: 'Calculations', icon: Calculator, group: 'data' },
-  { id: 'attestations', label: 'التوثيق', labelEn: 'Attestation', icon: ShieldCheck, group: 'attestation' },
+  // 'attestations' (old batch-based Merkle Root attestation UI) intentionally hidden from
+  // navigation — the platform now uses per-reading n8n + Blind Signer attestation instead.
+  // The route and component still exist; only the sidebar entry point is removed.
   { id: 'impact', label: 'وحدات الأثر', labelEn: 'Impact Ledger', icon: Coins, group: 'attestation' },
   { id: 'reports', label: 'التقارير', labelEn: 'Reports', icon: FileBarChart, group: 'output' },
   { id: 'calculator', label: 'الحاسبة الاستثمارية', labelEn: 'Calculator', icon: Calculator, group: 'output' },
