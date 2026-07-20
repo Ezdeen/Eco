@@ -126,6 +126,39 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // === CUMULATIVE METER SANITY CHECK ===
+    // A cumulative production meter can only stay flat (inverter idle/offline) or increase —
+    // it can never decrease, and under normal operation with the sun up it should increase
+    // between readings. A repeated identical cumulative value across readings usually signals
+    // a data-source problem (e.g. n8n resending stale/test data) rather than a real meter
+    // reading, so we flag it for review instead of silently accepting it as validated.
+    const previousReading = await db.energyReading.findFirst({
+      where: {
+        deviceId: deviceId || undefined,
+        metricType: 'energy_export_kwh',
+        measuredAt: { lt: measuredAt },
+      },
+      orderBy: { measuredAt: 'desc' },
+      select: { cumulativeValue: true, measuredAt: true },
+    })
+
+    let cumulativeAnomaly: { reason: string; ruleCode: string; severity: string } | null = null
+    if (previousReading && previousReading.cumulativeValue !== null && previousReading.cumulativeValue !== undefined) {
+      if (productionTotal < previousReading.cumulativeValue) {
+        cumulativeAnomaly = {
+          reason: `القيمة التراكمية (${productionTotal}) أقل من القراءة السابقة (${previousReading.cumulativeValue}) بتاريخ ${previousReading.measuredAt.toISOString()} — هذا غير ممكن فيزيائياً لعداد تراكمي إلا في حال استبدال العداد`,
+          ruleCode: 'CUMULATIVE_DECREASED',
+          severity: 'critical',
+        }
+      } else if (productionTotal === previousReading.cumulativeValue) {
+        cumulativeAnomaly = {
+          reason: `القيمة التراكمية (${productionTotal}) مطابقة تماماً للقراءة السابقة بتاريخ ${previousReading.measuredAt.toISOString()} — لا زيادة تُسجَّل، يُحتمل خلل بمصدر البيانات أو توقف الإنفيرتر`,
+          ruleCode: 'CUMULATIVE_UNCHANGED',
+          severity: 'medium',
+        }
+      }
+    }
+
     const reading = await db.energyReading.create({
       data: {
         projectId,
@@ -139,15 +172,19 @@ export async function POST(request: NextRequest) {
         unit: 'kWh',
         cumulativeValue: productionTotal,
         sourceEventId: `${serialNumber}:${measuredAt.toISOString()}`,
-        qualityStatus: hashMatchStatus === 'match' ? 'validated' : 'suspect',
-        validationStatus: hashMatchStatus === 'match' ? 'valid' : 'invalid',
+        qualityStatus: hashMatchStatus === 'mismatch' ? 'suspect' : cumulativeAnomaly ? 'suspect' : 'validated',
+        validationStatus: hashMatchStatus === 'mismatch' ? 'invalid' : cumulativeAnomaly ? 'invalid' : 'valid',
         canonicalPayloadHash: checkHash,
         n8nProvidedHash: n8nHash,
         hashMatchStatus,
         hederaTransactionId,
         hederaConsensusAt: hederaConsensusAt || null,
-        suspectReason: hashMatchStatus === 'mismatch' ? 'عدم تطابق الهاش المرسل من n8n مع الهاش المحسوب بالمنصة' : null,
-        suspectSeverity: hashMatchStatus === 'mismatch' ? 'critical' : null,
+        // Hash mismatch takes priority as the more severe/security-relevant issue when both occur
+        suspectReason: hashMatchStatus === 'mismatch'
+          ? 'عدم تطابق الهاش المرسل من n8n مع الهاش المحسوب بالمنصة'
+          : cumulativeAnomaly?.reason || null,
+        suspectRuleCode: hashMatchStatus === 'mismatch' ? 'HASH_MISMATCH' : cumulativeAnomaly?.ruleCode || null,
+        suspectSeverity: hashMatchStatus === 'mismatch' ? 'critical' : cumulativeAnomaly?.severity || null,
       },
     })
 
@@ -162,8 +199,8 @@ export async function POST(request: NextRequest) {
         action: 'reading.ingest_attested',
         resource: 'energy_reading',
         resourceId: reading.id,
-        result: hashMatchStatus === 'match' ? 'success' : 'failure',
-        metadata: JSON.stringify({ serialNumber, hederaTransactionId, hashMatchStatus }),
+        result: hashMatchStatus === 'match' && !cumulativeAnomaly ? 'success' : 'failure',
+        metadata: JSON.stringify({ serialNumber, hederaTransactionId, hashMatchStatus, cumulativeAnomaly: cumulativeAnomaly?.ruleCode || null }),
       },
     }).catch(() => {})
 
@@ -174,6 +211,9 @@ export async function POST(request: NextRequest) {
         hashMatchStatus,
         checkHash,
         hederaTransactionId,
+        cumulativeCheck: cumulativeAnomaly
+          ? { status: 'anomaly', ruleCode: cumulativeAnomaly.ruleCode, reason: cumulativeAnomaly.reason }
+          : { status: 'ok' },
       },
       { status: 201 },
     )
