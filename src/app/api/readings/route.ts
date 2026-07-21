@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission } from '@/lib/authorization'
+import { requirePermission, projectScopeFilter } from '@/lib/authorization'
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await requirePermission('project:read')
     if (!auth.authorized) return auth.response
+    const { user } = auth
 
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
@@ -14,7 +15,15 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100')
     const days = parseInt(searchParams.get('days') || '7')
 
-    const where: any = {}
+    // Security: always scope to the user's organization (was previously unscoped —
+    // any authenticated user could see readings from any organization), and additionally
+    // scope to only the projects a project_manager is assigned to.
+    const where: any = {
+      project: {
+        organizationId: user.organizationId!,
+        ...projectScopeFilter(user),
+      },
+    }
     if (projectId) where.projectId = projectId
     if (metricType) where.metricType = metricType
     if (qualityStatus) where.qualityStatus = qualityStatus
@@ -34,9 +43,13 @@ export async function GET(request: NextRequest) {
       take: limit,
     })
 
-    // Quality summary
+    // Quality summary — must use the same organization + project-manager scope as above,
+    // not just projectId, otherwise this would leak cross-tenant aggregate counts.
     const allReadings = await db.energyReading.findMany({
-      where: { projectId: projectId || undefined },
+      where: {
+        project: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+        ...(projectId ? { projectId } : {}),
+      },
       select: { qualityStatus: true, validationStatus: true, value: true },
     })
 
