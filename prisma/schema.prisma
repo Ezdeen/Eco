@@ -41,7 +41,7 @@ model User {
   name         String?
   nameAr       String?
   passwordHash String?
-  role         String   @default("viewer") // platform_admin, org_admin, esg_manager, project_manager, operator, auditor, technician, viewer
+  role         String   @default("data_entry") // org_admin, project_manager, data_entry
   mfaEnabled   Boolean  @default(false)
   preferredLang String  @default("ar")
   preferredTz  String   @default("Asia/Riyadh")
@@ -51,13 +51,14 @@ model User {
   memberships  UserMembership[]
   auditEvents  AuditEvent[]
   notifications Notification[]
+  managedProjects Project[] @relation("ProjectManager")
 }
 
 model UserMembership {
   id              String   @id @default(cuid())
   userId          String
   organizationId  String
-  role            String   @default("viewer") // org_admin, esg_manager, project_manager, operator, auditor, technician, viewer
+  role            String   @default("data_entry") // org_admin, project_manager, data_entry
   status          String   @default("active") // active, invited, suspended
   createdAt       DateTime @default(now())
 
@@ -91,6 +92,7 @@ model Project {
   // Sponsor/Observer (funder) details - الممول/المراقب على المشروع
   sponsorName    String?  // اسم المراقب/الممول (بنك أو جهة إقراض)
   sponsorPhone   String?  // رقم المراقب/الممول
+  managerId      String?  // معرّف مدير المشروع (User) — يحدد عزل البيانات لدور project_manager
   // Inverter details entered at project creation
   inverterSerial String?  // سيريال نمبر الإنفرتر الرئيسي للمشروع
   inverterType   String?  // نوع الإنفرتر: string, central, micro, hybrid, battery
@@ -112,6 +114,7 @@ model Project {
   updatedAt      DateTime @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manager        User?        @relation("ProjectManager", fields: [managerId], references: [id])
   sites          Site[]
   assets         Asset[]
   devices        Device[]
