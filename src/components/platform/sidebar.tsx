@@ -107,14 +107,20 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
     }
   }
 
-  const grouped = NAV_ITEMS.reduce(
-    (acc, item) => {
-      if (!acc[item.group]) acc[item.group] = []
-      acc[item.group].push(item)
-      return acc
-    },
-    {} as Record<string, NavItem[]>,
-  )
+  const grouped = NAV_ITEMS
+    // Data isolation for project_manager: no access to system-level administration
+    // (integrations, user management, settings). They still get everything else —
+    // dashboard, projects, data, monitoring, calculations, attestations, reports, impact —
+    // scoped server-side to their own assigned projects.
+    .filter((item) => !(user?.role === 'project_manager' && item.group === 'system'))
+    .reduce(
+      (acc, item) => {
+        if (!acc[item.group]) acc[item.group] = []
+        acc[item.group].push(item)
+        return acc
+      },
+      {} as Record<string, NavItem[]>,
+    )
 
   const handleNav = (s: Section) => {
     onNavigate(s)
