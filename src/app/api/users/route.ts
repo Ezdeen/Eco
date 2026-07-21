@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Valid roles for assignment
-    const VALID_ROLES = ['org_admin', 'esg_manager', 'project_manager', 'operator', 'auditor', 'technician', 'viewer']
-    const assignedRole = VALID_ROLES.includes(role) ? role : 'viewer'
+    const VALID_ROLES = ['org_admin', 'project_manager', 'data_entry']
+    const assignedRole = VALID_ROLES.includes(role) ? role : 'data_entry'
 
     // Check if user already exists
     const existingUser = await db.user.findUnique({
