@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Sun, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, User, AlertCircle } from 'lucide-react'
+import { Sun, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface LoginSectionProps {
@@ -16,10 +16,7 @@ interface LoginSectionProps {
 
 const DEMO_ACCOUNTS = [
   { email: 'admin@bfec.sa', password: 'Admin@123456', role: 'مدير المؤسسة', icon: '👨‍💼', color: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300' },
-  { email: 'esg@bfec.sa', password: 'ESG@123456', role: 'مدير ESG', icon: '🌿', color: 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-300' },
   { email: 'project@bfec.sa', password: 'Project@123456', role: 'مدير المشروع', icon: '📋', color: 'bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300' },
-  { email: 'operator@bfec.sa', password: 'Operator@123456', role: 'مشغّل', icon: '⚙️', color: 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' },
-  { email: 'viewer@bfec.sa', password: 'Viewer@123456', role: 'مشاهد', icon: '👁️', color: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' },
 ]
 
 export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
@@ -28,8 +25,6 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [registerName, setRegisterName] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,46 +38,20 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
     setLoading(true)
 
     try {
-      if (mode === 'login') {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        })
-        const data = await res.json()
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
 
-        if (!res.ok) {
-          setError(data.error || 'فشل تسجيل الدخول')
-          return
-        }
-
-        toast.success(`أهلاً ${data.user.name}! تم تسجيل الدخول بنجاح`)
-        onLoginSuccess(data.user)
-      } else {
-        if (!registerName) {
-          setError('يرجى إدخال الاسم')
-          return
-        }
-        if (password.length < 8) {
-          setError('كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-          return
-        }
-
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, name: registerName }),
-        })
-        const data = await res.json()
-
-        if (!res.ok) {
-          setError(data.error || 'فشل إنشاء الحساب')
-          return
-        }
-
-        toast.success(`تم إنشاء الحساب بنجاح! أهلاً ${data.user.name}`)
-        onLoginSuccess(data.user)
+      if (!res.ok) {
+        setError(data.error || 'فشل تسجيل الدخول')
+        return
       }
+
+      toast.success(`أهلاً ${data.user.name}! تم تسجيل الدخول بنجاح`)
+      onLoginSuccess(data.user)
     } catch (err) {
       setError('حدث خطأ في الاتصال')
     } finally {
@@ -94,7 +63,6 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
     setEmail(account.email)
     setPassword(account.password)
     setError('')
-    setMode('login')
   }
 
   return (
@@ -179,58 +147,15 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
             </div>
 
             <div className="hidden lg:block">
-              <CardTitle className="text-2xl font-cairo">
-                {mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
-              </CardTitle>
+              <CardTitle className="text-2xl font-cairo">تسجيل الدخول</CardTitle>
               <CardDescription className="mt-1">
-                {mode === 'login'
-                  ? 'سجّل دخولك للوصول إلى لوحة القيادة'
-                  : 'أنشئ حسابًا للانضمام إلى المنصة'}
+                سجّل دخولك للوصول إلى لوحة القيادة
               </CardDescription>
-            </div>
-
-            <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => { setMode('login'); setError('') }}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${
-                  mode === 'login' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                دخول
-              </button>
-              <button
-                type="button"
-                onClick={() => { setMode('register'); setError('') }}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${
-                  mode === 'register' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                حساب جديد
-              </button>
             </div>
           </CardHeader>
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === 'register' && (
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-xs font-medium">الاسم الكامل</Label>
-                  <div className="relative">
-                    <User className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="name"
-                      type="text"
-                      placeholder="أحمد محمد"
-                      value={registerName}
-                      onChange={(e) => setRegisterName(e.target.value)}
-                      className="pr-9"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-xs font-medium">البريد الإلكتروني</Label>
                 <div className="relative">
@@ -251,22 +176,20 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-xs font-medium">كلمة المرور</Label>
-                  {mode === 'login' && (
-                    <button
-                      type="button"
-                      className="text-xs text-emerald-600 hover:underline"
-                      onClick={() => toast.info('تواصل مع مدير النظام لإعادة تعيين كلمة المرور')}
-                    >
-                      نسيت كلمة المرور؟
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-emerald-600 hover:underline"
+                    onClick={() => toast.info('تواصل مع مدير النظام لإعادة تعيين كلمة المرور')}
+                  >
+                    نسيت كلمة المرور؟
+                  </button>
                 </div>
                 <div className="relative">
                   <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder={mode === 'register' ? '8 أحرف على الأقل' : '••••••••'}
+                    placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pr-9 pl-9"
@@ -298,47 +221,43 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                    {mode === 'login' ? 'جاري تسجيل الدخول...' : 'جاري إنشاء الحساب...'}
+                    جاري تسجيل الدخول...
                   </>
                 ) : (
-                  <>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</>
+                  <>تسجيل الدخول</>
                 )}
               </Button>
             </form>
 
-            {mode === 'login' && (
-              <>
-                <div className="relative my-4">
-                  <Separator />
-                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-                    حسابات تجريبية
-                  </span>
-                </div>
+            <div className="relative my-4">
+              <Separator />
+              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                حسابات تجريبية
+              </span>
+            </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  {DEMO_ACCOUNTS.map((acc) => (
-                    <button
-                      key={acc.email}
-                      type="button"
-                      onClick={() => fillDemo(acc)}
-                      className="flex items-center gap-2 p-2.5 rounded-lg border bg-card hover:bg-muted/40 transition-all text-right group"
-                    >
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-base ${acc.color}`}>
-                        {acc.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{acc.role}</p>
-                        <p className="text-[10px] text-muted-foreground truncate" dir="ltr">{acc.email}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => fillDemo(acc)}
+                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-card hover:bg-muted/40 transition-all text-right group"
+                >
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-base ${acc.color}`}>
+                    {acc.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{acc.role}</p>
+                    <p className="text-[10px] text-muted-foreground truncate" dir="ltr">{acc.email}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
 
-                <p className="text-[10px] text-muted-foreground text-center mt-3">
-                  اضغط على حساب لتعبئة البيانات تلقائيًا
-                </p>
-              </>
-            )}
+            <p className="text-[10px] text-muted-foreground text-center mt-3">
+              اضغط على حساب لتعبئة البيانات تلقائيًا
+            </p>
           </CardContent>
         </Card>
       </div>
