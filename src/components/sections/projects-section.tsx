@@ -348,10 +348,12 @@ export function ProjectsSection() {
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <FolderKanban className="h-12 w-12 text-muted-foreground/50 mb-3" />
             <p className="text-muted-foreground mb-4">لا توجد مشاريع مطابقة</p>
-            <Button onClick={handleNew} className="bg-primary">
-              <Plus className="h-4 w-4 ml-1" />
-              إنشاء أول مشروع
-            </Button>
+            {canCreateProject && (
+              <Button onClick={handleNew} className="bg-primary">
+                <Plus className="h-4 w-4 ml-1" />
+                إنشاء أول مشروع
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
