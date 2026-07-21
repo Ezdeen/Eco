@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/authorization'
+import { requireAuth, projectScopeFilter } from '@/lib/authorization'
 
 // ESG Frameworks with mapping to KPIs
 const ESG_FRAMEWORKS = [
@@ -254,9 +254,12 @@ export async function GET() {
   try {
     const auth = await requireAuth()
     if (!auth.authorized) return auth.response
+    const { user } = auth
 
-    // Fetch KPI data from calculations API
+    // Security: scope to the user's organization (previously unscoped — leaked every
+    // organization's projects and readings), plus project_manager isolation
     const allProjects = await db.project.findMany({
+      where: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
       select: {
         id: true, name: true, nameAr: true, code: true, projectType: true,
         capacityKwp: true, currency: true, tariffRetail: true,
@@ -265,7 +268,10 @@ export async function GET() {
     })
 
     const allReadings = await db.energyReading.findMany({
-      where: { qualityStatus: { in: ['validated', 'approved', 'corrected'] } },
+      where: {
+        qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+        projectId: { in: allProjects.map((p) => p.id) },
+      },
       select: { value: true, measuredAt: true, projectId: true, qualityStatus: true },
     })
 
