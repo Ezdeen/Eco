@@ -31,6 +31,7 @@ interface ProjectFormData {
   longitude: string
   sponsorName: string
   sponsorPhone: string
+  managerId: string
   currency: string
   capacityKwp: string
   projectType: string
@@ -150,6 +151,7 @@ const EMPTY_FORM: ProjectFormData = {
   longitude: '',
   sponsorName: '',
   sponsorPhone: '',
+  managerId: '',
   currency: 'SAR',
   capacityKwp: '',
   projectType: 'grid_tied',
@@ -175,7 +177,17 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
   const [form, setForm] = useState<ProjectFormData>(EMPTY_FORM)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [managers, setManagers] = useState<{ id: string; name: string; email: string }[]>([])
   const isEditMode = !!initialData
+
+  useEffect(() => {
+    if (open) {
+      fetch('/api/users/project-managers')
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+        .then((d) => setManagers(d?.managers || []))
+        .catch(() => setManagers([]))
+    }
+  }, [open])
 
   useEffect(() => {
     if (initialData) {
@@ -196,6 +208,7 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         longitude: initialData.longitude?.toString() || '',
         sponsorName: initialData.sponsorName || '',
         sponsorPhone: initialData.sponsorPhone || '',
+        managerId: initialData.managerId || '',
         currency: initialData.currency || 'SAR',
         capacityKwp: initialData.capacityKwp?.toString() || '',
         projectType: initialData.projectType || 'grid_tied',
@@ -832,6 +845,24 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
             <p className="text-xs text-muted-foreground">
               الجهة الممولة للمشروع (بنك، جهة إقراض، مستثمر مؤسسي) التي تراقب الأداء المالي والبيئي
             </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="managerId" className="text-xs">مدير المشروع المسؤول</Label>
+              <Select value={form.managerId} onValueChange={(v) => updateField('managerId', v)}>
+                <SelectTrigger id="managerId">
+                  <SelectValue placeholder="اختر مدير المشروع" />
+                </SelectTrigger>
+                <SelectContent>
+                  {managers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} ({m.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                ربط المشروع بمدير مشروع محدد يحصر وصوله على بيانات هذا المشروع فقط (عزل البيانات)
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="sponsorName" className="text-xs">اسم المراقب / الممول</Label>
