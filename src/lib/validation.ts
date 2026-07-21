@@ -27,6 +27,7 @@ export const createProjectSchema = z.object({
   capacityKwp: z.string().or(z.number()).optional(),
   sponsorName: z.string().optional(),
   sponsorPhone: z.string().optional(),
+  managerId: z.string().optional(),
   // Afforestation
   treeSpecies: z.string().optional(),
   treeCount: z.string().or(z.number()).optional(),
