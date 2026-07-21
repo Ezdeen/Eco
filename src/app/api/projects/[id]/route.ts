@@ -58,6 +58,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       currency,
       sponsorName,
       sponsorPhone,
+      managerId,
       inverterSerial,
       inverterType,
       status,
@@ -127,6 +128,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (currency !== undefined) updateData.currency = currency
     if (sponsorName !== undefined) updateData.sponsorName = sponsorName || null
     if (sponsorPhone !== undefined) updateData.sponsorPhone = sponsorPhone || null
+    if (managerId !== undefined) {
+      if (managerId) {
+        const managerMembership = await db.userMembership.findFirst({
+          where: { userId: managerId, organizationId: user.organizationId!, role: 'project_manager', status: 'active' },
+        })
+        if (!managerMembership) {
+          return NextResponse.json(
+            { error: 'مدير المشروع المحدد غير صالح أو ليس له دور مدير مشروع فعّال في هذه المؤسسة' },
+            { status: 400 },
+          )
+        }
+      }
+      updateData.managerId = managerId || null
+    }
     if (inverterSerial !== undefined) updateData.inverterSerial = inverterSerial || null
     if (inverterType !== undefined) updateData.inverterType = inverterType || null
     if (status !== undefined) updateData.status = status
