@@ -69,6 +69,19 @@ export function ProjectsSection() {
   const [editingProject, setEditingProject] = useState<any | null>(null)
   const [deletingProject, setDeletingProject] = useState<any | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => setUserRole(d?.user?.role || null))
+      .catch(() => setUserRole(null))
+  }, [])
+
+  // project_manager has read-only access — creating/editing projects is reserved for
+  // org_admin. Hiding the button avoids the confusing "you don't have permission" error
+  // after already opening the form (the server still enforces this regardless).
+  const canCreateProject = userRole === 'org_admin'
 
   const fetchProjects = useCallback(() => {
     setLoading(true)
@@ -171,10 +184,12 @@ export function ProjectsSection() {
             </Button>
           ))}
         </div>
-        <Button className="bg-primary" onClick={handleNew}>
-          <Plus className="h-4 w-4 ml-1" />
-          مشروع جديد
-        </Button>
+        {canCreateProject && (
+          <Button className="bg-primary" onClick={handleNew}>
+            <Plus className="h-4 w-4 ml-1" />
+            مشروع جديد
+          </Button>
+        )}
       </div>
 
       <div className="text-sm text-muted-foreground">
@@ -196,27 +211,29 @@ export function ProjectsSection() {
                     <p className="text-xs text-muted-foreground mt-0.5">{p.code}</p>
                   </div>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleEdit(p)}>
-                      <Pencil className="h-3.5 w-3.5 ml-2" />
-                      تعديل
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => handleDeleteClick(p)}
-                      className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 ml-2" />
-                      حذف
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {canCreateProject && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEdit(p)}>
+                        <Pencil className="h-3.5 w-3.5 ml-2" />
+                        تعديل
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(p)}
+                        className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 ml-2" />
+                        حذف
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
               <div className="mt-2">
                 <StatusBadge status={p.status} />
