@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireProjectAccess } from '@/lib/authorization'
+import { requireProjectAccess, requirePermission, projectScopeFilter } from '@/lib/authorization'
 import { ingestReadings, getIngestionBatchStatus } from '@/lib/ingestion'
 import { db } from '@/lib/db'
 import { ingestionSchema } from '@/lib/validation'
@@ -64,6 +64,12 @@ export async function POST(request: NextRequest) {
 // GET /api/ingestion?batchId=xxx - Get batch status
 export async function GET(request: NextRequest) {
   try {
+    // Security: this endpoint had NO authentication check at all — any anonymous
+    // visitor could list ingestion batches from every organization on the platform.
+    const auth = await requirePermission('project:read')
+    if (!auth.authorized) return auth.response
+    const { user } = auth
+
     const { searchParams } = new URL(request.url)
     const batchId = searchParams.get('batchId')
 
@@ -72,11 +78,26 @@ export async function GET(request: NextRequest) {
       if (!batch) {
         return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
       }
+      // Verify this batch's project actually belongs to the user's organization
+      // (and, for project_manager, to their assigned project specifically)
+      const project = await db.project.findUnique({
+        where: { id: (batch as any).projectId },
+        select: { organizationId: true, managerId: true },
+      })
+      if (!project || project.organizationId !== user.organizationId) {
+        return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+      }
+      if (user.role === 'project_manager' && project.managerId !== user.userId) {
+        return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+      }
       return NextResponse.json({ batch })
     }
 
-    // List recent batches
+    // List recent batches — scoped to organization + project-manager assignment
     const batches = await db.ingestionBatch.findMany({
+      where: {
+        project: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+      },
       take: 20,
       orderBy: { createdAt: 'desc' },
       include: {
