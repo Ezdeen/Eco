@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/authorization'
+import { requireAuth, projectScopeFilter } from '@/lib/authorization'
 import { getEmissionFactor } from '@/lib/reference-data'
 
 export async function GET() {
@@ -25,7 +25,13 @@ export async function GET() {
       return NextResponse.json({ error: 'No organization found' }, { status: 404 })
     }
 
-    const projects = org.projects
+    // Data isolation: project_manager only sees their own assigned projects.
+    // Everything downstream (readings, calculations, savings) is derived from `projects`,
+    // so scoping it here automatically scopes the entire dashboard.
+    const scope = projectScopeFilter(user)
+    const projects = Object.keys(scope).length
+      ? org.projects.filter((p) => p.managerId === user.userId)
+      : org.projects
     const activeProjects = projects.filter((p) => p.status === 'active')
 
     // === PRIORITY 3: Filter readings by organization's projects only ===
