@@ -33,12 +33,8 @@ interface User {
 
 const ROLES = [
   { code: 'org_admin', name: 'مدير المؤسسة', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
-  { code: 'esg_manager', name: 'مدير ESG', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300' },
   { code: 'project_manager', name: 'مدير مشروع', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300' },
-  { code: 'operator', name: 'مشغّل', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
-  { code: 'auditor', name: 'مدقق', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  { code: 'technician', name: 'فني', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
-  { code: 'viewer', name: 'مشاهد', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+  { code: 'data_entry', name: 'مدخل بيانات', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
 ]
 
 const STATUSES: Record<string, { label: string; className: string }> = {
@@ -58,7 +54,7 @@ export function UserManagementSection() {
   const [submitting, setSubmitting] = useState(false)
 
   // Add form
-  const [addForm, setAddForm] = useState({ email: '', name: '', nameAr: '', password: '', role: 'viewer' })
+  const [addForm, setAddForm] = useState({ email: '', name: '', nameAr: '', password: '', role: 'data_entry' })
   const [showPassword, setShowPassword] = useState(false)
 
   // Edit form
@@ -97,7 +93,7 @@ export function UserManagementSection() {
       }
       toast.success('تم إضافة المستخدم بنجاح')
       setAddOpen(false)
-      setAddForm({ email: '', name: '', nameAr: '', password: '', role: 'viewer' })
+      setAddForm({ email: '', name: '', nameAr: '', password: '', role: 'data_entry' })
       fetchUsers()
     } catch {
       toast.error('حدث خطأ في الاتصال')
