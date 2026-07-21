@@ -85,14 +85,14 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await hashPassword(password)
 
-    // Create user (viewer role by default)
+    // Create user (data_entry role by default — least-privilege default)
     const user = await db.user.create({
       data: {
         email: email.toLowerCase().trim(),
         name,
         nameAr: nameAr || name,
         passwordHash,
-        role: 'viewer',
+        role: 'data_entry',
         preferredLang: 'ar',
         preferredTz: 'Asia/Riyadh',
       },
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId: user.id,
           organizationId: defaultOrg.id,
-          role: 'viewer',
+          role: 'data_entry',
           status: 'active',
         },
       })
