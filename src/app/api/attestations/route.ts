@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission } from '@/lib/authorization'
+import { requirePermission, projectScopeFilter } from '@/lib/authorization'
 import { computeBatchHash, computeMerkleRoot, createOutboxEvent, submitAttestation } from '@/lib/hedera'
 import { attestationSchema } from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   try {
+    // Security: this endpoint had NO authentication check at all — any anonymous
+    // visitor could list attestation batches (including hashes and Hedera transaction
+    // IDs) from every organization on the platform.
+    const auth = await requirePermission('project:read')
+    if (!auth.authorized) return auth.response
+    const { user } = auth
+
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
 
-    const where: any = {}
+    const where: any = {
+      project: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+    }
     if (projectId) where.projectId = projectId
     if (status) where.status = status
 
