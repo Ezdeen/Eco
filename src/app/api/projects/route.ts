@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission } from '@/lib/authorization'
+import { requirePermission, projectScopeFilter } from '@/lib/authorization'
 import { createProjectSchema } from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   try {
-    // Authorization: require authentication
-    const auth = await requireAuth()
+    // Authorization: require project:read permission (data_entry does not have this,
+    // so they cannot list/browse projects at all — only create new ones)
+    const auth = await requirePermission('project:read')
     if (!auth.authorized) return auth.response
     const { user } = auth
 
@@ -17,11 +18,14 @@ export async function GET(request: NextRequest) {
       where: {
         organizationId: user.organizationId!,
         ...(status ? { status } : {}),
+        // Data isolation: project_manager only sees projects assigned to them
+        ...projectScopeFilter(user),
       },
       include: {
         sites: true,
         assets: { include: { solarProfile: true } },
         devices: true,
+        manager: { select: { id: true, name: true, nameAr: true, email: true } },
         _count: { select: { readings: true, cases: true, attestations: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -47,6 +51,8 @@ export async function GET(request: NextRequest) {
       methodology: p.methodology,
       sponsorName: p.sponsorName,
       sponsorPhone: p.sponsorPhone,
+      managerId: p.managerId,
+      manager: p.manager,
       inverterSerial: p.inverterSerial,
       inverterType: p.inverterType,
       // Afforestation
@@ -107,6 +113,7 @@ export async function POST(request: NextRequest) {
       currency,
       sponsorName,
       sponsorPhone,
+      managerId,
       inverterSerial,
       inverterType,
       projectType,
@@ -127,6 +134,21 @@ export async function POST(request: NextRequest) {
       iotProtocol,
       iotDataFrequency,
     } = parsed.data
+
+    // Validate managerId: must be a project_manager within this organization, if provided.
+    // This is the enforcement point for data isolation — a project can only be assigned to
+    // a real project_manager account, never an arbitrary user ID.
+    if (managerId) {
+      const managerMembership = await db.userMembership.findFirst({
+        where: { userId: managerId, organizationId: user.organizationId!, role: 'project_manager', status: 'active' },
+      })
+      if (!managerMembership) {
+        return NextResponse.json(
+          { error: 'مدير المشروع المحدد غير صالح أو ليس له دور مدير مشروع فعّال في هذه المؤسسة' },
+          { status: 400 },
+        )
+      }
+    }
 
     // Type-specific validation
     const SOLAR_TYPES = ['grid_tied', 'hybrid', 'off_grid']
@@ -224,6 +246,7 @@ export async function POST(request: NextRequest) {
         methodology: 'ghg_protocol_scope2',
         sponsorName: sponsorName || null,
         sponsorPhone: sponsorPhone || null,
+        managerId: managerId || null,
         inverterSerial: isSolar ? inverterSerial : null,
         inverterType: isSolar ? (inverterType || 'string') : null,
         // Afforestation fields
