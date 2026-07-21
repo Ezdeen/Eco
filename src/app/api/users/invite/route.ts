@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       email: z.string().email('بريد إلكتروني غير صالح'),
       name: z.string().min(1, 'الاسم مطلوب'),
       nameAr: z.string().optional(),
-      role: z.enum(['org_admin', 'esg_manager', 'project_manager', 'operator', 'auditor', 'technician', 'viewer']).default('viewer'),
+      role: z.enum(['org_admin', 'project_manager', 'data_entry']).default('data_entry'),
     })
 
     const parsed = schema.safeParse(body)
