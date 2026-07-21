@@ -1,5 +1,6 @@
-// Server-side authorization library
-// BYPASS MODE: All auth checks disabled - تجاوز جميع فحوصات المصادقة
+// Server-side authorization library — 3-role system
+// org_admin: full access. project_manager: read-only, scoped to their own projects only.
+// data_entry: can only create new projects, no other access.
 import { getCurrentUser, SessionPayload } from './auth'
 import { NextResponse } from 'next/server'
 
@@ -20,54 +21,27 @@ export type Permission =
   | 'user:manage'
   | 'settings:manage'
 
-// Role-based permission matrix (kept for reference but not enforced)
+// Role-based permission matrix — enforced on every requirePermission/requireProjectAccess call.
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  platform_admin: [
-    'project:read', 'project:create', 'project:update', 'project:delete',
-    'reading:read', 'reading:audit', 'calculation:run', 'attestation:submit',
-    'report:create', 'report:approve', 'report:download', 'impact:manage',
-    'audit:read', 'user:manage', 'settings:manage',
-  ],
+  // مدير المؤسسة: كل الصلاحيات، بدون قيود
   org_admin: [
     'project:read', 'project:create', 'project:update', 'project:delete',
     'reading:read', 'reading:audit', 'calculation:run', 'attestation:submit',
     'report:create', 'report:approve', 'report:download', 'impact:manage',
     'audit:read', 'user:manage', 'settings:manage',
   ],
-  esg_manager: [
-    'project:read', 'project:update',
-    'reading:read', 'reading:audit', 'calculation:run', 'attestation:submit',
-    'report:create', 'report:approve', 'report:download', 'impact:manage',
-    'audit:read',
-  ],
+  // مدير المشروع: مراقبة فقط (قراءة)، محصور بمشاريعه المرتبط بها فقط (يُفرض بـ requireProjectAccess)
   project_manager: [
-    'project:read', 'project:update',
-    'reading:read', 'reading:audit', 'calculation:run',
-    'report:create', 'report:download',
-    'audit:read',
-  ],
-  operator: [
     'project:read',
     'reading:read', 'reading:audit',
+    'calculation:run',
+    'attestation:submit',
     'report:download',
+    'impact:manage',
   ],
-  auditor: [
-    'project:read',
-    'reading:read',
-    'report:download', 'report:approve',
-    'audit:read',
-  ],
-  technician: [
-    'project:read',
-    'reading:read',
-  ],
-  viewer: [
-    'project:read',
-    'reading:read',
-    'report:download',
-  ],
-  service_account: [
-    'reading:read', 'calculation:run', 'attestation:submit',
+  // مدخل البيانات: إنشاء مشروع جديد فقط، لا وصول لأي شيء آخر
+  data_entry: [
+    'project:create',
   ],
 }
 
@@ -105,7 +79,10 @@ export async function requirePermission(permission: Permission): Promise<AuthRes
   return { authorized: true, user }
 }
 
-// Check if user can access a specific project (ABAC - organization scope)
+// Check if user can access a specific project.
+// org_admin: unrestricted within their organization.
+// project_manager: ONLY projects where Project.managerId === user.userId — this is the
+// data-isolation guarantee. A project_manager must never see another manager's project data.
 export async function requireProjectAccess(projectId: string, permission: Permission): Promise<AuthResult> {
   const user = await getCurrentUser()
   if (!user) return unauthorizedResponse()
@@ -113,20 +90,35 @@ export async function requireProjectAccess(projectId: string, permission: Permis
   const allowed = ROLE_PERMISSIONS[user.role]?.includes(permission)
   if (!allowed) return forbiddenResponse()
 
-  // platform_admin يتجاوز نطاق المؤسسة (وصول لكل شي)
-  if (user.role === 'platform_admin') return { authorized: true, user }
-
   const { db } = await import('./db')
   const project = await db.project.findUnique({
     where: { id: projectId },
-    select: { organizationId: true },
+    select: { organizationId: true, managerId: true },
   })
 
-  if (!project || project.organizationId !== user.organizationId) {
+  if (!project) {
+    return forbiddenResponse('المشروع غير موجود')
+  }
+  if (project.organizationId !== user.organizationId) {
     return forbiddenResponse('لا يمكنك الوصول لهذا المشروع')
   }
 
+  // Data isolation: a project_manager may only access projects assigned to them specifically
+  if (user.role === 'project_manager' && project.managerId !== user.userId) {
+    return forbiddenResponse('هذا المشروع غير مرتبط بحسابك')
+  }
+
   return { authorized: true, user }
+}
+
+// Returns the Prisma `where` clause fragment that scopes any project-related query to what
+// the current user is allowed to see. org_admin gets no extra restriction (org-wide already
+// applied by callers); project_manager is restricted to their own managed projects only.
+export function projectScopeFilter(user: SessionPayload): Record<string, any> {
+  if (user.role === 'project_manager') {
+    return { managerId: user.userId }
+  }
+  return {}
 }
 
 // Separation of duties: يمنع نفس الشخص من الموافقة على ما أنشأه هو نفسه
