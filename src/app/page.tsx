@@ -20,6 +20,7 @@ import { AuditSection } from '@/components/sections/audit-section'
 import { UserManagementSection } from '@/components/sections/user-management-section'
 import { IntegrationsSection } from '@/components/sections/integrations-section'
 import { SettingsSection } from '@/components/sections/settings-section'
+import { DataEntryHome } from '@/components/platform/data-entry-home'
 import { Loader2, Sun, Shield } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -128,6 +129,13 @@ export default function Home() {
   // Not authenticated → show login
   if (!user) {
     return <LoginSection onLoginSuccess={handleLoginSuccess} />
+  }
+
+  // data_entry role: dedicated minimal screen, no sidebar, no access to any other section —
+  // enforced here at the UI level and separately (more importantly) at the API level via
+  // the 'project:create'-only permission set for this role.
+  if (user.role === 'data_entry') {
+    return <DataEntryHome user={user} onLogout={handleLogout} />
   }
 
   const meta = SECTION_META[section]
