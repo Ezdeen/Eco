@@ -152,7 +152,7 @@ export function AssetsSection() {
                       <Badge variant="secondary" className="text-xs">{a.devices?.length || 0}</Badge>
                     </TableCell>
                     <TableCell>
-                      <p className="text-xs tabular-nums">{a.readingsCount.toLocaleString()}</p>
+                      <p className="text-xs tabular-nums">{(a.readingsCount ?? 0).toLocaleString()}</p>
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={a.status} />
