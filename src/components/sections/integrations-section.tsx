@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Network, CloudSun, FileBarChart, Cpu, Bell, CreditCard,
-  CheckCircle2, AlertCircle, AlertTriangle, Plug,
+  CheckCircle2, AlertCircle, AlertTriangle, Plug, ShieldAlert,
   Activity, Mail, Smartphone, MessageCircle, Settings,
 } from 'lucide-react'
 import { IntegrationConfigSection } from '@/components/sections/integration-config-section'
