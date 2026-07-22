@@ -8,8 +8,8 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Network, CloudSun, FileBarChart, Cpu, Bell, CreditCard,
-  CheckCircle2, AlertCircle, AlertTriangle, Plug, Lightbulb,
-  ShieldAlert, Activity, Mail, Smartphone, MessageCircle, Lock, Settings,
+  CheckCircle2, AlertCircle, AlertTriangle, Plug,
+  Activity, Mail, Smartphone, MessageCircle, Settings,
 } from 'lucide-react'
 import { IntegrationConfigSection } from '@/components/sections/integration-config-section'
 
@@ -298,39 +298,7 @@ export function IntegrationsSection() {
         </IntegrationCard>
       </div>
 
-      {/* Setup Recommendations */}
-      <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Lightbulb className="h-5 w-5 text-blue-600" />
-            توصيات الإعداد
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {[
-            { text: 'ربط Hedera testnet أولاً قبل الإنتاج', icon: Network, done: hedera.mode !== 'simulation' },
-            { text: 'عدم استخدام simulation في الإنتاج', icon: ShieldAlert, done: false },
-            { text: 'عدم كشف المفاتيح السرية في الكود أو الواجهة', icon: Lock, done: true },
-            { text: 'إضافة الدفع والاشتراكات قبل الإطلاق التجاري', icon: CreditCard, done: false },
-            { text: 'ربط أجهزة فعلية تدريجياً (إنفرترات/عدادات)', icon: Cpu, done: devices.totalDevices > 0 },
-            { text: 'تفعيل البريد الإلكتروني للإشعارات الحرجة', icon: Mail, done: notifications.channels.email.enabled },
-          ].map((rec, i) => (
-            <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-white/50 dark:bg-white/5">
-              {rec.done ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              ) : (
-                <rec.icon className="h-4 w-4 text-blue-600 shrink-0" />
-              )}
-              <span className={`text-xs ${rec.done ? 'text-emerald-700 dark:text-emerald-400 line-through' : 'text-blue-800 dark:text-blue-300'}`}>
-                {rec.text}
-              </span>
-              {rec.done && (
-                <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 mr-auto">منجز</Badge>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+
         </TabsContent>
 
         {/* Config Management Tab */}
