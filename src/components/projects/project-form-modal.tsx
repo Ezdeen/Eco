@@ -317,16 +317,46 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       // Resolve final city value
       const finalCity = form.city === '__other__' ? form.cityOther.trim() : form.city
 
-      const payload: any = {
-        ...form,
+      // بناء payload نظيف — لا نرسل cityOther أو أي قيمة undefined
+      // السلاسل الفارغة تُحوَّل إلى null لتجنب أي التباس في الخادم
+      const cleanValue = (v: string): string | null => {
+        if (v === undefined || v === null) return null
+        const trimmed = String(v).trim()
+        return trimmed === '' ? null : trimmed
+      }
+
+      const payload: Record<string, unknown> = {
+        name: form.name.trim(),
+        nameAr: cleanValue(form.nameAr),
+        code: form.code.trim(),
+        inverterSerial: cleanValue(form.inverterSerial),
+        inverterType: cleanValue(form.inverterType) || 'string',
+        country: form.country,
         city: finalCity,
-        cityOther: undefined,
-        // Convert survivalRateTarget from percentage to decimal
+        latitude: form.latitude,
+        longitude: form.longitude,
+        sponsorName: cleanValue(form.sponsorName),
+        sponsorPhone: cleanValue(form.sponsorPhone),
+        managerId: cleanValue(form.managerId),
+        currency: form.currency || 'SAR',
+        capacityKwp: cleanValue(form.capacityKwp),
+        projectType: form.projectType,
+        timezone: form.timezone || 'Asia/Riyadh',
+        tariffRetail: cleanValue(form.tariffRetail),
+        tariffFeedIn: cleanValue(form.tariffFeedIn),
+        // Afforestation
+        treeSpecies: cleanValue(form.treeSpecies),
+        treeCount: cleanValue(form.treeCount),
+        plantedAreaM2: cleanValue(form.plantedAreaM2),
+        plantingDate: cleanValue(form.plantingDate),
         survivalRateTarget: form.survivalRateTarget ? parseFloat(form.survivalRateTarget) / 100 : null,
-        // Convert numbers
-        treeCount: form.treeCount ? parseInt(form.treeCount) : null,
-        plantedAreaM2: form.plantedAreaM2 ? parseFloat(form.plantedAreaM2) : null,
-        plantingDate: form.plantingDate || null,
+        // IoT
+        iotSensorType: cleanValue(form.iotSensorType),
+        iotSensorModel: cleanValue(form.iotSensorModel),
+        iotSensorSerial: cleanValue(form.iotSensorSerial),
+        iotGatewayId: cleanValue(form.iotGatewayId),
+        iotProtocol: cleanValue(form.iotProtocol),
+        iotDataFrequency: cleanValue(form.iotDataFrequency),
       }
 
       const res = await fetch(url, {
@@ -335,10 +365,35 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        toast.error(data.error || 'فشل حفظ المشروع')
+        // عرض الخطأ بشكل مفصّل: اجمع رسالة الخادم + اسم الحقل إن وُجد
+        const serverError = data?.error || data?.message || 'فشل حفظ المشروع'
+        const fieldName = data?.field as string | undefined
+
+        if (fieldName && errors[fieldName] === undefined) {
+          // ركّز على الحقل المُعني إذا أبلغ عنه الخادم
+          setErrors((prev) => ({ ...prev, [fieldName]: serverError }))
+        }
+
+        // إذا كانت هناك تفاصيل Zod (errors متعددة) اعرضها كقائمة
+        const zodDetails = data?.details?.fieldErrors
+        if (zodDetails && typeof zodDetails === 'object') {
+          const allMessages: string[] = []
+          for (const [field, msgs] of Object.entries(zodDetails)) {
+            if (Array.isArray(msgs)) {
+              msgs.forEach((m) => allMessages.push(`${field}: ${m}`))
+            }
+          }
+          if (allMessages.length > 0) {
+            toast.error(`${serverError}\n${allMessages.slice(0, 3).join('\n')}`)
+          } else {
+            toast.error(serverError)
+          }
+        } else {
+          toast.error(serverError)
+        }
         return
       }
 
@@ -346,7 +401,7 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       onOpenChange(false)
       onSaved()
     } catch (err) {
-      toast.error('حدث خطأ في الاتصال')
+      toast.error('حدث خطأ في الاتصال بالخادم')
     } finally {
       setLoading(false)
     }
