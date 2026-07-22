@@ -1,5 +1,30 @@
 'use client'
 
+/**
+ * ProjectsSection — نسخة مُصحَّحة
+ *
+ * السبب الجذري للانهيار (TypeError: Cannot read properties of undefined (reading 'toLocaleString'))
+ * كان في قراءة الحقول `p.readingsCount`, `p.sitesCount`, `p.devicesCount`, `p.casesCount`,
+ * `p.attestationsCount`, `p.assetsCount` كحقول مُسطّحة على المشروع.
+ *
+ * لكن الـ API في `/api/projects/route.ts` يُرجع شكل Prisma الخام:
+ *   - sites: array            (طوله = عدد المواقع)
+ *   - assets: array           (طوله = عدد الأصول)
+ *   - devices: array          (طوله = عدد الأجهزة)
+ *   - _count.readings         (عدد القراءات)
+ *   - _count.cases
+ *   - _count.attestations
+ *   - _count.reports
+ *
+ * إذًا `p.readingsCount` كان undefined دائمًا → undefined.toLocaleString() → انهيار.
+ *
+ * الإصلاح:
+ *  1. تحديث واجهة Project لتطابق شكل API الحقيقي.
+ *  2. إضافة دالة fmtNum مركزية لا تنهار على undefined/null/NaN.
+ *  3. قراءة الأعداد من المسارات الصحيحة (p._count.readings, p.sites.length, ...).
+ *  4. إضافة fallback صريح (|| 0) في كل مكان.
+ */
+
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,33 +56,48 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+/** شكل المشروع كما يُرجِعه /api/projects/route.ts (Prisma findMany مع include). */
 interface Project {
   id: string
   name: string
-  nameAr?: string
+  nameAr?: string | null
   code: string
   status: string
   projectType: string
-  country?: string
-  city?: string
-  latitude?: number
-  longitude?: number
-  commissionedAt?: string
-  capacityKwp?: number
-  currency: string
-  tariffRetail?: number
-  tariffFeedIn?: number
-  methodology: string
-  sponsorName?: string
-  sponsorPhone?: string
-  inverterSerial?: string
-  sitesCount: number
-  assetsCount: number
-  devicesCount: number
-  readingsCount: number
-  casesCount: number
-  attestationsCount: number
+  country?: string | null
+  city?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  commissionedAt?: string | null
+  capacityKwp?: number | null
+  currency?: string | null
+  tariffRetail?: number | null
+  tariffFeedIn?: number | null
+  methodology?: string
+  sponsorName?: string | null
+  sponsorPhone?: string | null
+  inverterSerial?: string | null
+  inverterType?: string | null
   createdAt: string
+
+  // علاقات (arrays) من Prisma
+  sites: unknown[]
+  assets: unknown[]
+  devices: unknown[]
+
+  // مجمّعات Prisma
+  _count: {
+    readings: number
+    cases: number
+    attestations: number
+    reports: number
+  }
+}
+
+/** تنسيق رقم آمن — لا ينهار على undefined/null/NaN. */
+function fmtNum(n: number | null | undefined, locale = 'en-US'): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '0'
+  return n.toLocaleString(locale)
 }
 
 export function ProjectsSection() {
@@ -66,16 +106,21 @@ export function ProjectsSection() {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [formOpen, setFormOpen] = useState(false)
-  const [editingProject, setEditingProject] = useState<any | null>(null)
-  const [deletingProject, setDeletingProject] = useState<any | null>(null)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    const controller = new AbortController()
+    fetch('/api/auth/me', { signal: controller.signal })
       .then((r) => r.json())
-      .then((d) => setUserRole(d?.user?.role || null))
-      .catch(() => setUserRole(null))
+      .then((d: { user?: { role?: string } }) => setUserRole(d?.user?.role || null))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setUserRole(null)
+      })
+    return () => controller.abort()
   }, [])
 
   // project_manager has read-only access — creating/editing projects is reserved for
@@ -86,8 +131,14 @@ export function ProjectsSection() {
   const fetchProjects = useCallback(() => {
     setLoading(true)
     fetch('/api/projects')
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then((d) => { setProjects(d?.projects || []) })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then((d: { projects?: Project[] }) => {
+        // فلترة صارمة: تجاهل أي عنصر لا يحقق الشكل المتوقع.
+        const safe = Array.isArray(d?.projects)
+          ? d.projects.filter((p) => p && typeof p === 'object' && p.id)
+          : []
+        setProjects(safe)
+      })
       .catch(() => { setProjects([]) })
       .finally(() => setLoading(false))
   }, [])
@@ -95,22 +146,24 @@ export function ProjectsSection() {
   useEffect(() => {
     let cancelled = false
     Promise.resolve().then(() => {
-      if (!cancelled) {
-        setLoading(true)
-        fetch('/api/projects')
-          .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-          .then((d) => {
-            if (cancelled) return
-            setProjects(d?.projects || [])
-          })
-          .catch(() => {
-            if (cancelled) return
-            setProjects([])
-          })
-          .finally(() => {
-            if (!cancelled) setLoading(false)
-          })
-      }
+      if (cancelled) return
+      setLoading(true)
+      fetch('/api/projects')
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((d: { projects?: Project[] }) => {
+          if (cancelled) return
+          const safe = Array.isArray(d?.projects)
+            ? d.projects.filter((p) => p && typeof p === 'object' && p.id)
+            : []
+          setProjects(safe)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setProjects([])
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
     })
     return () => {
       cancelled = true
@@ -121,8 +174,8 @@ export function ProjectsSection() {
     (p) =>
       (filterStatus === 'all' || p.status === filterStatus) &&
       (search === '' ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.code.toLowerCase().includes(search.toLowerCase()) ||
+        (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (p.code || '').toLowerCase().includes(search.toLowerCase()) ||
         (p.nameAr || '').includes(search) ||
         (p.inverterSerial || '').toLowerCase().includes(search.toLowerCase()) ||
         (p.sponsorName || '').toLowerCase().includes(search.toLowerCase())),
@@ -198,149 +251,166 @@ export function ProjectsSection() {
 
       {/* Project cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((p) => (
-          <Card key={p.id} className="overflow-hidden hover:shadow-lg transition-shadow group">
-            <CardHeader className="pb-3 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
-                    <FolderKanban className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <CardTitle className="text-base truncate">{p.nameAr || p.name}</CardTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">{p.code}</p>
-                  </div>
-                </div>
-                {canCreateProject && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEdit(p)}>
-                        <Pencil className="h-3.5 w-3.5 ml-2" />
-                        تعديل
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleDeleteClick(p)}
-                        className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 ml-2" />
-                        حذف
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-              <div className="mt-2">
-                <StatusBadge status={p.status} />
-              </div>
-            </CardHeader>
-            <CardContent className="pt-3 space-y-3">
-              {/* Location */}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <MapPin className="h-3.5 w-3.5" />
-                <span>{p.city || '—'}, {p.country || '—'}</span>
-              </div>
+        {filtered.map((p) => {
+          // استخلاص الأعداد بشكل آمن من شكل API الحقيقي.
+          const sitesCount = Array.isArray(p.sites) ? p.sites.length : 0
+          const assetsCount = Array.isArray(p.assets) ? p.assets.length : 0
+          const devicesCount = Array.isArray(p.devices) ? p.devices.length : 0
+          const readingsCount = p?._count?.readings ?? 0
+          const casesCount = p?._count?.cases ?? 0
+          const attestationsCount = p?._count?.attestations ?? 0
 
-              {/* Coordinates */}
-              {p.latitude !== undefined && p.longitude !== undefined && (
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
-                  <span className="tabular-nums">{p.latitude.toFixed(4)}°, {p.longitude.toFixed(4)}°</span>
-                </div>
-              )}
-
-              {/* Capacity + Tariff */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-2 rounded-lg bg-muted/40">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
-                    <Zap className="h-3 w-3" />
-                    القدرة
-                  </div>
-                  <p className="text-sm font-bold tabular-nums">
-                    {p.capacityKwp?.toLocaleString() || '—'} <span className="text-xs font-normal text-muted-foreground">kWp</span>
-                  </p>
-                </div>
-                <div className="p-2 rounded-lg bg-muted/40">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
-                    <DollarSign className="h-3 w-3" />
-                    التعرفة
-                  </div>
-                  <p className="text-sm font-bold tabular-nums">
-                    {p.tariffRetail || '—'} <span className="text-xs font-normal text-muted-foreground">{p.currency}/kWh</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Inverter serial */}
-              {p.inverterSerial && (
-                <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
-                  <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-muted-foreground">إنفرتر:</span>
-                  <code className="font-mono text-[11px] truncate">{p.inverterSerial}</code>
-                </div>
-              )}
-
-              {/* Sponsor */}
-              {(p.sponsorName || p.sponsorPhone) && (
-                <div className="p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
-                  <div className="flex items-center gap-1.5 text-[10px] text-violet-700 dark:text-violet-400 mb-1">
-                    <User className="h-3 w-3" />
-                    <span className="font-medium">المراقب / الممول</span>
-                  </div>
-                  {p.sponsorName && (
-                    <p className="text-xs font-medium truncate">{p.sponsorName}</p>
-                  )}
-                  {p.sponsorPhone && (
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                      <Phone className="h-2.5 w-2.5" />
-                      <span className="font-mono" dir="ltr">{p.sponsorPhone}</span>
+          return (
+            <Card key={p.id} className="overflow-hidden hover:shadow-lg transition-shadow group">
+              <CardHeader className="pb-3 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+                      <FolderKanban className="h-5 w-5" />
                     </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base truncate">{p.nameAr || p.name}</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5">{p.code}</p>
+                    </div>
+                  </div>
+                  {canCreateProject && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit(p)}>
+                          <Pencil className="h-3.5 w-3.5 ml-2" />
+                          تعديل
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteClick(p)}
+                          className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 ml-2" />
+                          حذف
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
-              )}
+                <div className="mt-2">
+                  <StatusBadge status={p.status} />
+                </div>
+              </CardHeader>
+              <CardContent className="pt-3 space-y-3">
+                {/* Location */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span>{p.city || '—'}, {p.country || '—'}</span>
+                </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t">
-                <div>
-                  <p className="text-base font-bold tabular-nums">{p.sitesCount}</p>
-                  <p className="text-[10px] text-muted-foreground">مواقع</p>
-                </div>
-                <div>
-                  <p className="text-base font-bold tabular-nums">{p.devicesCount}</p>
-                  <p className="text-[10px] text-muted-foreground">أجهزة</p>
-                </div>
-                <div>
-                  <p className="text-base font-bold tabular-nums">{p.readingsCount.toLocaleString()}</p>
-                  <p className="text-[10px] text-muted-foreground">قراءة</p>
-                </div>
-              </div>
+                {/* Coordinates */}
+                {p.latitude !== undefined && p.longitude !== undefined &&
+                 p.latitude !== null && p.longitude !== null && (
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                    <span className="tabular-nums">
+                      {Number(p.latitude).toFixed(4)}°, {Number(p.longitude).toFixed(4)}°
+                    </span>
+                  </div>
+                )}
 
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-2 border-t">
-                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  <Calendar className="h-3 w-3" />
-                  {p.commissionedAt
-                    ? `تشغيل: ${new Date(p.commissionedAt).toLocaleDateString('ar-SA')}`
-                    : 'غير مُشغّل بعد'}
+                {/* Capacity + Tariff */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded-lg bg-muted/40">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
+                      <Zap className="h-3 w-3" />
+                      القدرة
+                    </div>
+                    <p className="text-sm font-bold tabular-nums">
+                      {p.capacityKwp != null ? fmtNum(p.capacityKwp) : '—'}{' '}
+                      <span className="text-xs font-normal text-muted-foreground">kWp</span>
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/40">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
+                      <DollarSign className="h-3 w-3" />
+                      التعرفة
+                    </div>
+                    <p className="text-sm font-bold tabular-nums">
+                      {p.tariffRetail ?? '—'}{' '}
+                      <span className="text-xs font-normal text-muted-foreground">{p.currency || 'SAR'}/kWh</span>
+                    </p>
+                  </div>
                 </div>
-                {p.casesCount > 0 && (
-                  <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
-                    {p.casesCount} حالة
-                  </Badge>
+
+                {/* Inverter serial */}
+                {p.inverterSerial && (
+                  <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
+                    <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">إنفرتر:</span>
+                    <code className="font-mono text-[11px] truncate">{p.inverterSerial}</code>
+                  </div>
                 )}
-                {p.attestationsCount > 0 && (
-                  <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300">
-                    {p.attestationsCount} توثيق
-                  </Badge>
+
+                {/* Sponsor */}
+                {(p.sponsorName || p.sponsorPhone) && (
+                  <div className="p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
+                    <div className="flex items-center gap-1.5 text-[10px] text-violet-700 dark:text-violet-400 mb-1">
+                      <User className="h-3 w-3" />
+                      <span className="font-medium">المراقب / الممول</span>
+                    </div>
+                    {p.sponsorName && (
+                      <p className="text-xs font-medium truncate">{p.sponsorName}</p>
+                    )}
+                    {p.sponsorPhone && (
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                        <Phone className="h-2.5 w-2.5" />
+                        <span className="font-mono" dir="ltr">{p.sponsorPhone}</span>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+
+                {/* Stats — قراءة آمنة من شكل API الحقيقي */}
+                <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t">
+                  <div>
+                    <p className="text-base font-bold tabular-nums">{fmtNum(sitesCount)}</p>
+                    <p className="text-[10px] text-muted-foreground">مواقع</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-bold tabular-nums">{fmtNum(devicesCount)}</p>
+                    <p className="text-[10px] text-muted-foreground">أجهزة</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-bold tabular-nums">{fmtNum(readingsCount)}</p>
+                    <p className="text-[10px] text-muted-foreground">قراءة</p>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    {p.commissionedAt
+                      ? `تشغيل: ${new Date(p.commissionedAt).toLocaleDateString('ar-SA')}`
+                      : 'غير مُشغّل بعد'}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {casesCount > 0 && (
+                      <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                        {fmtNum(casesCount)} حالة
+                      </Badge>
+                    )}
+                    {attestationsCount > 0 && (
+                      <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300">
+                        {fmtNum(attestationsCount)} توثيق
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       {filtered.length === 0 && (
