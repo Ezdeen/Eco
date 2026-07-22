@@ -154,7 +154,7 @@ export function DevicesSection() {
                       : 'لم يتصل بعد'}
                   </div>
                   <Badge variant="outline" className="text-xs tabular-nums">
-                    {d.readingsCount.toLocaleString()} قراءة
+                    {(d.readingsCount ?? 0).toLocaleString()} قراءة
                   </Badge>
                 </div>
 
