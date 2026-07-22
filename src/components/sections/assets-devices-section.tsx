@@ -171,7 +171,7 @@ export function AssetsDevicesSection() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
             <Zap className="h-3.5 w-3.5" /> القدرة الكلية
           </div>
-          <p className="text-xl font-bold tabular-nums">{totalCapacityKwp.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">kWp</span></p>
+          <p className="text-xl font-bold tabular-nums">{(totalCapacityKwp ?? 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">kWp</span></p>
         </Card>
       </div>
 
@@ -263,7 +263,7 @@ export function AssetsDevicesSection() {
                           <Badge variant="secondary" className="text-xs">{a.devices?.length || 0}</Badge>
                         </TableCell>
                         <TableCell>
-                          <p className="text-xs tabular-nums">{a.readingsCount.toLocaleString()}</p>
+                          <p className="text-xs tabular-nums">{(a.readingsCount ?? 0).toLocaleString()}</p>
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={a.status} />
@@ -353,7 +353,7 @@ export function AssetsDevicesSection() {
                             <p className="text-xs font-mono">{d.firmwareVersion || '—'}</p>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-xs tabular-nums">{d.readingsCount.toLocaleString()}</Badge>
+                            <Badge variant="outline" className="text-xs tabular-nums">{(d.readingsCount ?? 0).toLocaleString()}</Badge>
                           </TableCell>
                           <TableCell>
                             <StatusBadge status={d.status} />
@@ -396,13 +396,13 @@ export function AssetsDevicesSection() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
               <Zap className="h-3 w-3" /> إجمالي القدرة
             </div>
-            <p className="text-xl font-bold tabular-nums">{totalCapacityKwp.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">kWp</span></p>
+            <p className="text-xl font-bold tabular-nums">{(totalCapacityKwp ?? 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">kWp</span></p>
           </div>
           <div className="p-3 rounded-lg bg-muted/40">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
               <Activity className="h-3 w-3" /> إجمالي القراءات
             </div>
-            <p className="text-xl font-bold tabular-nums">{totalReadings.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums">{(totalReadings ?? 0).toLocaleString()}</p>
           </div>
         </CardContent>
       </Card>
