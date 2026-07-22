@@ -66,9 +66,9 @@ interface Reading {
   receivedAt: string
   intervalStart: string
   intervalEnd?: string
-  value: number
+  value: number | null | undefined
   unit: string
-  cumulativeValue?: number
+  cumulativeValue?: number | null
   qualityStatus: string
   validationStatus: string
   canonicalPayloadHash?: string
@@ -205,27 +205,27 @@ export function DataCenterSection() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <Card className="p-3">
             <p className="text-xs text-muted-foreground">إجمالي القراءات</p>
-            <p className="text-xl font-bold tabular-nums">{quality.total.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums">{(quality.total ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
             <div className="flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3 w-3" /> متحقّق</div>
-            <p className="text-xl font-bold tabular-nums text-emerald-600">{quality.validated.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums text-emerald-600">{(quality.validated ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
             <div className="flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3" /> مشبوه</div>
-            <p className="text-xl font-bold tabular-nums text-amber-600">{quality.suspect.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums text-amber-600">{(quality.suspect ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-3 bg-red-50 dark:bg-red-950/30 border-red-200">
             <div className="flex items-center gap-1 text-xs text-red-700"><XCircle className="h-3 w-3" /> مرفوض</div>
-            <p className="text-xl font-bold tabular-nums text-red-600">{quality.rejected.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums text-red-600">{(quality.rejected ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-3 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
             <div className="flex items-center gap-1 text-xs text-blue-700"><RefreshCw className="h-3 w-3" /> مصحّح</div>
-            <p className="text-xl font-bold tabular-nums text-blue-600">{quality.corrected.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums text-blue-600">{(quality.corrected ?? 0).toLocaleString()}</p>
           </Card>
           <Card className="p-3">
             <p className="text-xs text-muted-foreground">معتمد</p>
-            <p className="text-xl font-bold tabular-nums">{quality.approved.toLocaleString()}</p>
+            <p className="text-xl font-bold tabular-nums">{(quality.approved ?? 0).toLocaleString()}</p>
           </Card>
         </div>
       )}
@@ -333,7 +333,7 @@ export function DataCenterSection() {
                       </TableCell>
                       <TableCell>
                         <p className={`text-sm font-semibold tabular-nums ${isSuspectOrRejected ? 'text-amber-700 dark:text-amber-400' : ''}`}>
-                          {r.value.toLocaleString()}
+                          {r.value != null ? r.value.toLocaleString() : '—'}
                         </p>
                         <p className="text-[10px] text-muted-foreground">{r.unit}</p>
                       </TableCell>
