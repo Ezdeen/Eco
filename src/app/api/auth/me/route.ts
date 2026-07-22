@@ -7,12 +7,12 @@ export async function GET() {
   try {
     const token = await getSessionToken()
     if (!token) {
-      return NextResponse.json({ user: null }, { status: 401 })
+      return NextResponse.json({ user: null }, { status: 200 })
     }
 
     const session = await verifyToken(token)
     if (!session) {
-      return NextResponse.json({ user: null }, { status: 401 })
+      return NextResponse.json({ user: null }, { status: 200 })
     }
 
     // جلب أحدث بيانات المستخدم من قاعدة البيانات (مو من التوكن فقط)
@@ -28,7 +28,7 @@ export async function GET() {
     })
 
     if (!user) {
-      return NextResponse.json({ user: null }, { status: 401 })
+      return NextResponse.json({ user: null }, { status: 200 })
     }
 
     const membership = user.memberships[0]
@@ -62,6 +62,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Me route error:', error)
-    return NextResponse.json({ user: null }, { status: 401 })
+    return NextResponse.json({ user: null }, { status: 200 })
   }
 }
