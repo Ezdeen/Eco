@@ -1,163 +1,374 @@
+import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+
 import { requireProjectAccess } from '@/lib/authorization'
+import { db } from '@/lib/db'
 import { updateProjectSchema } from '@/lib/validation'
 
-interface Params {
-  params: Promise<{ id: string }>
+interface RouteContext {
+  params: Promise&lt;{ id: string }&gt;
 }
 
-// GET single project with full details
-export async function GET(request: NextRequest, { params }: Params) {
+const PROJECT_STATUSES = [
+  'draft',
+  'under_review',
+  'approved',
+  'active',
+  'suspended',
+  'decommissioned',
+] as const
+
+type ProjectStatus = (typeof PROJECT_STATUSES)[number]
+type UpdateProjectInput = ReturnType&lt;typeof updateProjectSchema.parse&gt;
+type ProjectUpdateData = Prisma.ProjectUncheckedUpdateInput
+
+const DATE_FIELDS = new Set&lt;keyof UpdateProjectInput&gt;([
+  'plantingDate',
+  'commissionedAt',
+])
+
+const PROJECT_UPDATE_FIELDS = [
+  'name',
+  'nameAr',
+  'code',
+  'projectType',
+  'country',
+  'city',
+  'timezone',
+  'currency',
+  'sponsorName',
+  'sponsorPhone',
+  'managerId',
+  'inverterSerial',
+  'inverterType',
+  'treeSpecies',
+  'treeCount',
+  'plantedAreaM2',
+  'plantingDate',
+  'survivalRateTarget',
+  'iotSensorType',
+  'iotSensorModel',
+  'iotSensorSerial',
+  'iotGatewayId',
+  'iotProtocol',
+  'iotDataFrequency',
+  'capacityKwp',
+  'tariffRetail',
+  'tariffFeedIn',
+  'latitude',
+  'longitude',
+  'status',
+  'commissionedAt',
+] as const satisfies ReadonlyArray&lt;keyof UpdateProjectInput&gt;
+
+const SITE_FIELDS = [
+  'country',
+  'city',
+  'latitude',
+  'longitude',
+  'timezone',
+] as const
+
+function errorResponse(message: string, status: number, extra = {}) {
+  return NextResponse.json({ error: message, ...extra }, { status })
+}
+
+function isProjectStatus(value: unknown): value is ProjectStatus {
+  return (
+    typeof value === 'string' &amp;&amp;
+    PROJECT_STATUSES.includes(value as ProjectStatus)
+  )
+}
+
+function isPrismaError(
+  error: unknown,
+  code: string,
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &amp;&amp;
+    error.code === code
+  )
+}
+
+async function readJson(request: NextRequest): Promise&lt;
+  | { ok: true; value: unknown }
+  | { ok: false; response: NextResponse }
+&gt; {
+  try {
+    return { ok: true, value: await request.json() }
+  } catch {
+    return {
+      ok: false,
+      response: errorResponse('صيغة JSON غير صالحة', 400),
+    }
+  }
+}
+
+function buildProjectUpdateData(
+  body: Record&lt;string, unknown&gt;,
+  data: UpdateProjectInput,
+): ProjectUpdateData {
+  const updateData: ProjectUpdateData = {}
+
+  for (const field of PROJECT_UPDATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) {
+      continue
+    }
+
+    const value = data[field]
+
+    if (DATE_FIELDS.has(field)) {
+      updateData[field] = value
+        ? new Date(value as string)
+        : null
+      continue
+    }
+
+    updateData[field] = value ?? null
+  }
+
+  return updateData
+}
+
+export async function GET(
+  _request: NextRequest,
+  { params }: RouteContext,
+) {
   try {
     const { id } = await params
     const auth = await requireProjectAccess(id, 'project:read')
-    if (!auth.authorized) return auth.response
+
+    if (!auth.authorized) {
+      return auth.response
+    }
 
     const project = await db.project.findUnique({
       where: { id },
       include: {
-        organization: { select: { name: true, nameAr: true, code: true } },
+        organization: {
+          select: {
+            name: true,
+            nameAr: true,
+            code: true,
+          },
+        },
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            email: true,
+          },
+        },
         sites: true,
-        assets: { include: { solarProfile: true } },
+        assets: {
+          include: {
+            solarProfile: true,
+          },
+        },
         devices: true,
-        _count: { select: { readings: true, cases: true, attestations: true, reports: true } },
+        _count: {
+          select: {
+            readings: true,
+            cases: true,
+            attestations: true,
+            reports: true,
+          },
+        },
       },
     })
 
     if (!project) {
-      return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
+      return errorResponse('المشروع غير موجود', 404)
     }
 
     return NextResponse.json({ project })
   } catch (error) {
-    console.error('Get project error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Failed to get project:', error)
+    return errorResponse('حدث خطأ أثناء جلب المشروع', 500)
   }
 }
 
-/**
- * PATCH - تحديث بيانات المشروع
- * يدعم تحديث كل الحقول القابلة للتعديل بما فيها status و commissionedAt.
- */
-export async function PATCH(request: NextRequest, { params }: Params) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: RouteContext,
+) {
   try {
     const { id } = await params
     const auth = await requireProjectAccess(id, 'project:update')
-    if (!auth.authorized) return auth.response
-    const { user } = auth
 
-    const existing = await db.project.findUnique({
+    if (!auth.authorized) {
+      return auth.response
+    }
+
+    const existingProject = await db.project.findUnique({
       where: { id },
-      select: { id: true, organizationId: true, code: true, status: true },
+      select: {
+        id: true,
+        organizationId: true,
+        code: true,
+        status: true,
+        commissionedAt: true,
+      },
     })
-    if (!existing) {
-      return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
+
+    if (!existingProject) {
+      return errorResponse('المشروع غير موجود', 404)
     }
 
-    const body = await request.json()
-    const parsed = updateProjectSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'بيانات التحديث غير صحيحة', details: parsed.error.flatten() },
-        { status: 400 },
-      )
+    const json = await readJson(request)
+
+    if (!json.ok) {
+      return json.response
     }
+
+    if (
+      typeof json.value !== 'object' ||
+      json.value === null ||
+      Array.isArray(json.value)
+    ) {
+      return errorResponse('يجب أن يكون جسم الطلب كائن JSON', 400)
+    }
+
+    const body = json.value as Record&lt;string, unknown&gt;
+    const parsed = updateProjectSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return errorResponse('بيانات التحديث غير صحيحة', 400, {
+        details: parsed.error.flatten(),
+      })
+    }
+
     const data = parsed.data
 
-    if (data.code && data.code !== existing.code) {
-      const duplicate = await db.project.findUnique({
-        where: { organizationId_code: { organizationId: existing.organizationId, code: data.code } },
+    if (data.status !== undefined &amp;&amp; !isProjectStatus(data.status)) {
+      return errorResponse('حالة المشروع غير صالحة', 400, {
+        field: 'status',
+      })
+    }
+
+    if (data.code &amp;&amp; data.code !== existingProject.code) {
+      const duplicateProject = await db.project.findUnique({
+        where: {
+          organizationId_code: {
+            organizationId: existingProject.organizationId,
+            code: data.code,
+          },
+        },
         select: { id: true },
       })
-      if (duplicate && duplicate.id !== id) {
-        return NextResponse.json({ error: 'رمز المشروع مستخدم مسبقًا', field: 'code' }, { status: 400 })
+
+      if (duplicateProject) {
+        return errorResponse('رمز المشروع مستخدم مسبقًا', 409, {
+          field: 'code',
+        })
       }
     }
 
     if (data.managerId) {
       const managerMembership = await db.userMembership.findFirst({
-        where: { userId: data.managerId, organizationId: existing.organizationId, status: 'active' },
+        where: {
+          userId: data.managerId,
+          organizationId: existingProject.organizationId,
+          status: 'active',
+        },
         select: { id: true },
       })
+
       if (!managerMembership) {
-        return NextResponse.json({ error: 'مدير المشروع غير موجود', field: 'managerId' }, { status: 400 })
+        return errorResponse(
+          'مدير المشروع غير موجود داخل المؤسسة أو أن عضويته غير نشطة',
+          400,
+          { field: 'managerId' },
+        )
       }
     }
 
-    const updateData: Record<string, unknown> = {}
-    const directFields: Array<keyof typeof data> = [
-      'name', 'nameAr', 'code', 'projectType',
-      'country', 'city', 'timezone', 'currency',
-      'sponsorName', 'sponsorPhone', 'managerId',
-      'inverterSerial', 'inverterType',
-      'treeSpecies', 'treeCount', 'plantedAreaM2', 'plantingDate',
-      'survivalRateTarget',
-      'iotSensorType', 'iotSensorModel', 'iotSensorSerial',
-      'iotGatewayId', 'iotProtocol', 'iotDataFrequency',
-      'capacityKwp', 'tariffRetail', 'tariffFeedIn',
-      'latitude', 'longitude',
-      'status', 'commissionedAt',
-    ]
+    const updateData = buildProjectUpdateData(body, data)
 
-    for (const field of directFields) {
-      if (field in (body ?? {})) {
-        const value = data[field]
-        if (field === 'plantingDate' || field === 'commissionedAt') {
-          updateData[field] = value ? new Date(value as string) : null
-          continue
-        }
-        updateData[field] = value ?? null
+    if (Object.keys(updateData).length === 0) {
+      return errorResponse('لم يتم تقديم أي حقول قابلة للتحديث', 400)
+    }
+
+    const nextStatus =
+      typeof updateData.status === 'string'
+        ? updateData.status
+        : existingProject.status
+
+    const explicitlyClearsCommissioningDate =
+      Object.prototype.hasOwnProperty.call(updateData, 'commissionedAt') &amp;&amp;
+      updateData.commissionedAt === null
+
+    if (nextStatus === 'active') {
+      if (explicitlyClearsCommissioningDate) {
+        return errorResponse(
+          'لا يمكن إزالة تاريخ التشغيل من مشروع نشط',
+          400,
+          { field: 'commissionedAt' },
+        )
       }
-    }
-
-    const VALID_STATUSES = ['draft', 'under_review', 'approved', 'active', 'suspended', 'decommissioned']
-    if (typeof updateData.status === 'string' && !VALID_STATUSES.includes(updateData.status)) {
-      return NextResponse.json({ error: `حالة غير صالحة: ${updateData.status}`, field: 'status' }, { status: 400 })
-    }
-
-    if (updateData.status === 'active' && existing.status !== 'active') {
-      if (!updateData.commissionedAt) updateData.commissionedAt = new Date()
-    }
-
-    if (updateData.status === 'active' && updateData.commissionedAt === null) {
-      return NextResponse.json({ error: 'لا يمكن تفعيل مشروع بدون تاريخ تشغيل', field: 'commissionedAt' }, { status: 400 })
-    }
-
-    const updated = await db.$transaction(async (tx) => {
-      const project = await tx.project.update({ where: { id }, data: updateData })
 
       if (
-        updateData.country !== undefined || updateData.city !== undefined ||
-        updateData.latitude !== undefined || updateData.longitude !== undefined ||
-        updateData.timezone !== undefined
+        !existingProject.commissionedAt &amp;&amp;
+        updateData.commissionedAt === undefined
       ) {
+        updateData.commissionedAt = new Date()
+      }
+    }
+
+    const changedFields = Object.keys(updateData)
+
+    const updatedProject = await db.$transaction(async (tx) =&gt; {
+      const project = await tx.project.update({
+        where: { id },
+        data: updateData,
+      })
+
+      const shouldSynchronizeSites = SITE_FIELDS.some(
+        (field) =&gt; updateData[field] !== undefined,
+      )
+
+      if (shouldSynchronizeSites) {
         await tx.site.updateMany({
           where: { projectId: id },
           data: {
-            ...(updateData.country !== undefined ? { country: updateData.country as string | null } : {}),
-            ...(updateData.city !== undefined ? { city: updateData.city as string | null } : {}),
-            ...(updateData.latitude !== undefined ? { latitude: updateData.latitude as number | null } : {}),
-            ...(updateData.longitude !== undefined ? { longitude: updateData.longitude as number | null } : {}),
-            ...(updateData.timezone !== undefined ? { timezone: updateData.timezone as string | null } : {}),
+            ...(updateData.country !== undefined
+              ? { country: updateData.country as string | null }
+              : {}),
+            ...(updateData.city !== undefined
+              ? { city: updateData.city as string | null }
+              : {}),
+            ...(updateData.latitude !== undefined
+              ? { latitude: updateData.latitude as number | null }
+              : {}),
+            ...(updateData.longitude !== undefined
+              ? { longitude: updateData.longitude as number | null }
+              : {}),
+            ...(updateData.timezone !== undefined
+              ? { timezone: updateData.timezone as string }
+              : {}),
           },
         })
       }
 
-      const changedFields = Object.keys(updateData)
       await tx.auditEvent.create({
         data: {
-          organizationId: existing.organizationId,
+          organizationId: existingProject.organizationId,
           projectId: id,
-          userId: user.userId,
-          actor: user.email,
+          userId: auth.user.userId,
+          actor: auth.user.email,
           action: 'project.update',
           resource: 'project',
           resourceId: id,
           result: 'success',
           metadata: JSON.stringify({
             changedFields,
-            ...(updateData.status ? { newStatus: updateData.status, previousStatus: existing.status } : {}),
+            ...(updateData.status !== undefined
+              ? {
+                  previousStatus: existingProject.status,
+                  newStatus: updateData.status,
+                }
+              : {}),
           }),
         },
       })
@@ -165,72 +376,107 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return project
     })
 
-    return NextResponse.json({ success: true, project: updated })
+    return NextResponse.json({
+      success: true,
+      project: updatedProject,
+    })
   } catch (error) {
-    console.error('Update project error:', error)
-    if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2025') {
-      return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
+    console.error('Failed to update project:', error)
+
+    if (isPrismaError(error, 'P2025')) {
+      return errorResponse('المشروع غير موجود', 404)
     }
-    if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
-      return NextResponse.json({ error: 'قيمة مكررة', field: 'code' }, { status: 400 })
+
+    if (isPrismaError(error, 'P2002')) {
+      return errorResponse('رمز المشروع مستخدم مسبقًا', 409, {
+        field: 'code',
+      })
     }
-    return NextResponse.json({ error: 'حدث خطأ أثناء تحديث المشروع', details: String(error) }, { status: 500 })
+
+    return errorResponse('حدث خطأ أثناء تحديث المشروع', 500)
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(
+  _request: NextRequest,
+  { params }: RouteContext,
+) {
   try {
     const { id } = await params
     const auth = await requireProjectAccess(id, 'project:delete')
-    if (!auth.authorized) return auth.response
-    const { user } = auth
 
-    const existing = await db.project.findUnique({
+    if (!auth.authorized) {
+      return auth.response
+    }
+
+    const existingProject = await db.project.findUnique({
       where: { id },
       select: {
-        id: true, organizationId: true, code: true,
-        _count: { select: { attestations: true, impactUnits: true } },
+        id: true,
+        organizationId: true,
+        code: true,
+        _count: {
+          select: {
+            attestations: true,
+            impactUnits: true,
+          },
+        },
       },
     })
 
-    if (!existing) return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
+    if (!existingProject) {
+      return errorResponse('المشروع غير موجود', 404)
+    }
 
-    if (existing._count.attestations > 0 || existing._count.impactUnits > 0) {
-      return NextResponse.json(
-        { error: 'لا يمكن حذف مشروع له توثيقات أو وحدات أثر. استخدم "تقاعد" بدلاً من الحذف.' },
-        { status: 400 },
+    const hasProtectedRecords =
+      existingProject._count.attestations &gt; 0 ||
+      existingProject._count.impactUnits &gt; 0
+
+    if (hasProtectedRecords) {
+      return errorResponse(
+        'لا يمكن حذف مشروع يحتوي على توثيقات أو وحدات أثر. استخدم إيقاف المشروع بدلًا من الحذف.',
+        409,
       )
     }
 
-    await db.$transaction(async (tx) => {
-      await tx.energyReading.deleteMany({ where: { projectId: id } })
-      await tx.case.deleteMany({ where: { projectId: id } })
-      await tx.report.deleteMany({ where: { projectId: id } })
-      await tx.auditEvent.deleteMany({ where: { projectId: id } })
-      await tx.notification.deleteMany({ where: { projectId: id } })
-      await tx.ingestionBatch.deleteMany({ where: { projectId: id } })
-      await tx.device.deleteMany({ where: { projectId: id } })
-      await tx.asset.deleteMany({ where: { projectId: id } })
-      await tx.site.deleteMany({ where: { projectId: id } })
-      await tx.project.delete({ where: { id } })
+    await db.$transaction(async (tx) =&gt; {
+      /*
+       * نحذف سجلّات التدقيق المرتبطة بالمشروع أولًا لأن علاقة AuditEvent
+       * لا تحتوي على onDelete: Cascade في مخطط Prisma.
+       * بقية العلاقات يفترض أن تُحذف عبر Cascade حسب المخطط.
+       */
+      await tx.auditEvent.deleteMany({
+        where: { projectId: id },
+      })
+
+      await tx.project.delete({
+        where: { id },
+      })
 
       await tx.auditEvent.create({
         data: {
-          organizationId: existing.organizationId,
-          userId: user.userId,
-          actor: user.email,
+          organizationId: existingProject.organizationId,
+          userId: auth.user.userId,
+          actor: auth.user.email,
           action: 'project.delete',
           resource: 'project',
           resourceId: id,
           result: 'success',
-          metadata: JSON.stringify({ code: existing.code }),
+          metadata: JSON.stringify({
+            code: existingProject.code,
+          }),
         },
       })
     })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Delete project error:', error)
-    return NextResponse.json({ error: 'حدث خطأ أثناء حذف المشروع', details: String(error) }, { status: 500 })
+    console.error('Failed to delete project:', error)
+
+    if (isPrismaError(error, 'P2025')) {
+      return errorResponse('المشروع غير موجود', 404)
+    }
+
+    return errorResponse('حدث خطأ أثناء حذف المشروع', 500)
   }
 }
