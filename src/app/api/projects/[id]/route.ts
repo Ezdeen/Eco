@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { updateProjectSchema } from '@/lib/validation'
 
 interface RouteContext {
-  params: Promise&lt;{ id: string }&gt;
+  params: Promise<{ id: string }>
 }
 
 const PROJECT_STATUSES = [
@@ -19,10 +19,12 @@ const PROJECT_STATUSES = [
 ] as const
 
 type ProjectStatus = (typeof PROJECT_STATUSES)[number]
-type UpdateProjectInput = ReturnType&lt;typeof updateProjectSchema.parse&gt;
-type ProjectUpdateData = Prisma.ProjectUncheckedUpdateInput
+type UpdateProjectInput = ReturnType<typeof updateProjectSchema.parse>
+type ProjectUpdateData = Partial<
+  Record<(typeof PROJECT_UPDATE_FIELDS)[number], string | number | Date | null>
+>
 
-const DATE_FIELDS = new Set&lt;keyof UpdateProjectInput&gt;([
+const DATE_FIELDS = new Set<keyof UpdateProjectInput>([
   'plantingDate',
   'commissionedAt',
 ])
@@ -59,7 +61,7 @@ const PROJECT_UPDATE_FIELDS = [
   'longitude',
   'status',
   'commissionedAt',
-] as const satisfies ReadonlyArray&lt;keyof UpdateProjectInput&gt;
+] as const satisfies ReadonlyArray<keyof UpdateProjectInput>
 
 const SITE_FIELDS = [
   'country',
@@ -75,7 +77,7 @@ function errorResponse(message: string, status: number, extra = {}) {
 
 function isProjectStatus(value: unknown): value is ProjectStatus {
   return (
-    typeof value === 'string' &amp;&amp;
+    typeof value === 'string' &&
     PROJECT_STATUSES.includes(value as ProjectStatus)
   )
 }
@@ -85,15 +87,15 @@ function isPrismaError(
   code: string,
 ): error is Prisma.PrismaClientKnownRequestError {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError &amp;&amp;
+    error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === code
   )
 }
 
-async function readJson(request: NextRequest): Promise&lt;
+async function readJson(request: NextRequest): Promise<
   | { ok: true; value: unknown }
   | { ok: false; response: NextResponse }
-&gt; {
+> {
   try {
     return { ok: true, value: await request.json() }
   } catch {
@@ -105,7 +107,7 @@ async function readJson(request: NextRequest): Promise&lt;
 }
 
 function buildProjectUpdateData(
-  body: Record&lt;string, unknown&gt;,
+  body: Record<string, unknown>,
   data: UpdateProjectInput,
 ): ProjectUpdateData {
   const updateData: ProjectUpdateData = {}
@@ -230,7 +232,7 @@ export async function PATCH(
       return errorResponse('يجب أن يكون جسم الطلب كائن JSON', 400)
     }
 
-    const body = json.value as Record&lt;string, unknown&gt;
+    const body = json.value as Record<string, unknown>
     const parsed = updateProjectSchema.safeParse(body)
 
     if (!parsed.success) {
@@ -241,13 +243,13 @@ export async function PATCH(
 
     const data = parsed.data
 
-    if (data.status !== undefined &amp;&amp; !isProjectStatus(data.status)) {
+    if (data.status !== undefined && !isProjectStatus(data.status)) {
       return errorResponse('حالة المشروع غير صالحة', 400, {
         field: 'status',
       })
     }
 
-    if (data.code &amp;&amp; data.code !== existingProject.code) {
+    if (data.code && data.code !== existingProject.code) {
       const duplicateProject = await db.project.findUnique({
         where: {
           organizationId_code: {
@@ -296,7 +298,7 @@ export async function PATCH(
         : existingProject.status
 
     const explicitlyClearsCommissioningDate =
-      Object.prototype.hasOwnProperty.call(updateData, 'commissionedAt') &amp;&amp;
+      Object.prototype.hasOwnProperty.call(updateData, 'commissionedAt') &&
       updateData.commissionedAt === null
 
     if (nextStatus === 'active') {
@@ -309,7 +311,7 @@ export async function PATCH(
       }
 
       if (
-        !existingProject.commissionedAt &amp;&amp;
+        !existingProject.commissionedAt &&
         updateData.commissionedAt === undefined
       ) {
         updateData.commissionedAt = new Date()
@@ -318,14 +320,14 @@ export async function PATCH(
 
     const changedFields = Object.keys(updateData)
 
-    const updatedProject = await db.$transaction(async (tx) =&gt; {
+    const updatedProject = await db.$transaction(async (tx) => {
       const project = await tx.project.update({
         where: { id },
-        data: updateData,
+        data: updateData as Prisma.ProjectUncheckedUpdateInput,
       })
 
       const shouldSynchronizeSites = SITE_FIELDS.some(
-        (field) =&gt; updateData[field] !== undefined,
+        (field) => updateData[field] !== undefined,
       )
 
       if (shouldSynchronizeSites) {
@@ -429,8 +431,8 @@ export async function DELETE(
     }
 
     const hasProtectedRecords =
-      existingProject._count.attestations &gt; 0 ||
-      existingProject._count.impactUnits &gt; 0
+      existingProject._count.attestations > 0 ||
+      existingProject._count.impactUnits > 0
 
     if (hasProtectedRecords) {
       return errorResponse(
@@ -439,7 +441,7 @@ export async function DELETE(
       )
     }
 
-    await db.$transaction(async (tx) =&gt; {
+    await db.$transaction(async (tx) => {
       /*
        * نحذف سجلّات التدقيق المرتبطة بالمشروع أولًا لأن علاقة AuditEvent
        * لا تحتوي على onDelete: Cascade في مخطط Prisma.

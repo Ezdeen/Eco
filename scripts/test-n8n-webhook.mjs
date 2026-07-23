@@ -68,4 +68,38 @@ async function main() {
         deviceId: 'TEST-DEVICE-001',
         siteId: undefined,
         assetId: undefined,
-main()
+        metricType: 'energy_export_kwh',
+        measuredAt,
+        intervalStart: measuredAt,
+        value: 12.5,
+        unit: 'kWh',
+      },
+    ],
+  }
+
+  const rawPayload = JSON.stringify(payload)
+  const response = await fetch(`${baseUrl}/api/webhooks/n8n`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-n8n-signature': signPayload(rawPayload, secret),
+      'x-n8n-timestamp': String(now),
+      'x-n8n-event-id': eventId,
+      'x-source-id': 'TEST-DEVICE-001',
+    },
+    body: rawPayload,
+  })
+
+  const responseBody = await response.text()
+  console.log(`Status: ${response.status}`)
+  console.log(responseBody)
+
+  if (!response.ok) {
+    process.exitCode = 1
+  }
+}
+
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

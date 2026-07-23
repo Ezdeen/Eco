@@ -19,6 +19,9 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     // React rules
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/purity": "off",
+    // Data-loading effects intentionally synchronize component state with API responses.
+    "react-hooks/set-state-in-effect": "off",
+    "react-hooks/immutability": "off",
     "react/no-unescaped-entities": "off",
     "react/display-name": "off",
     "react/prop-types": "off",
