@@ -127,8 +127,8 @@ export function AssetsDevicesSection() {
   const totalAssets = assets.length
   const totalDevices = devices.length
   const connectedDevices = devices.filter((d) => d.status === 'connected').length
-  const offlineDevices = devices.filter((d) => d.status === 'offline' || d.status === 'registered').length
   const staleDevices = devices.filter((d) => d.status === 'stale').length
+  const offlineDevices = devices.filter((d) => d.status === 'offline').length
   const activeAssets = assets.filter((a) => a.status === 'active').length
   const totalCapacityKwp = assets.reduce((s, a) => s + (a.capacityKwp || 0), 0)
   const totalReadings = assets.reduce((s, a) => s + (a.readingsCount || 0), 0)
@@ -307,7 +307,7 @@ export function AssetsDevicesSection() {
                   <TableBody>
                     {devices.map((d) => {
                       const isStale = d.status === 'stale'
-                      const isOffline = d.status === 'offline' || d.status === 'registered'
+                      const isOffline = d.status === 'offline'
                       return (
                         <TableRow key={d.id}>
                           <TableCell>

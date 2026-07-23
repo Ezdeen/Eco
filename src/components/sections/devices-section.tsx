@@ -54,7 +54,7 @@ export function DevicesSection() {
 
   const connected = devices.filter((d) => d.status === 'connected').length
   const stale = devices.filter((d) => d.status === 'stale').length
-  const offline = devices.filter((d) => d.status === 'offline' || d.status === 'registered').length
+  const offline = devices.filter((d) => d.status === 'offline').length
 
   return (
     <div className="space-y-4">
@@ -90,7 +90,7 @@ export function DevicesSection() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {devices.map((d) => {
           const isStale = d.status === 'stale'
-          const isOffline = d.status === 'offline' || d.status === 'registered'
+          const isOffline = d.status === 'offline'
           return (
             <Card key={d.id} className="overflow-hidden hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">

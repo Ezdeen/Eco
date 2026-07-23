@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
+import { getDeviceConnectivityState } from '@/lib/device-status'
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,12 +27,10 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    // Health check: a device is "offline" if lastSeenAt > 6 hours ago
     const now = Date.now()
     const result = devices.map((d) => {
+      const connectivityState = getDeviceConnectivityState(d.status, d.lastSeenAt, now)
       const lastSeenMs = d.lastSeenAt ? d.lastSeenAt.getTime() : 0
-      const isStale = now - lastSeenMs > 6 * 60 * 60 * 1000
-      const effectiveStatus = d.status === 'connected' && isStale ? 'stale' : d.status
       return {
         id: d.id,
         name: d.name,
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
         model: d.model,
         serialNumber: d.serialNumber,
         protocol: d.protocol,
-        status: effectiveStatus,
+        status: connectivityState,
         lastSeenAt: d.lastSeenAt,
         firmwareVersion: d.firmwareVersion,
         project: d.project,
