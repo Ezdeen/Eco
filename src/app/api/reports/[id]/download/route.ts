@@ -42,6 +42,8 @@ async function generateReportData(reportId: string) {
     orderBy: { measuredAt: 'asc' },
   })
 
+  console.info('generateReportData:', { reportId, readings: readings.length, periodStart: report.periodStart, periodEnd: report.periodEnd })
+
   // Get calculations
   const calcRuns = await db.calculationRun.findMany({
     where: {

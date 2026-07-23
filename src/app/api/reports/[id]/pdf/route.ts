@@ -315,10 +315,26 @@ export async function GET(request: NextRequest, { params }: Params) {
     }
 
     const reportName = `${data.project.code}-report-${data.report.periodStart.toISOString().slice(0, 10)}`
+
+    console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
+
+    // If no readings, return friendly HTML explaining empty data
+    if (!data.dailyData || data.dailyData.length === 0 || (data.summary && data.summary.totalReadings === 0)) {
+      const msgHtml = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${reportName}</title></head><body><div style="font-family:Arial,Helvetica,sans-serif;padding:30px;text-align:center;"><h2>لا توجد بيانات للتقرير في الفترة المحددة</h2><p>لا توجد قراءات للطاقة ضمن الفترة ${new Date(data.report.periodStart).toLocaleDateString('ar-SA')} إلى ${new Date(data.report.periodEnd).toLocaleDateString('ar-SA')}.</p></div></body></html>`
+      return new NextResponse(msgHtml, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${reportName}.html"`,
+        },
+      })
+    }
+
     const html = generateHTMLReport(data, reportName)
 
+    console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
+
     // Save HTML to temp file
-    const tmpDir = '/tmp/report-pdfs'
+    const tmpDir = path.join(process.cwd(), 'tmp', 'report-pdfs')
     if (!existsSync(tmpDir)) {
       await mkdir(tmpDir, { recursive: true })
     }
@@ -326,8 +342,8 @@ export async function GET(request: NextRequest, { params }: Params) {
     pdfPath = htmlPath.replace('.html', '.pdf')
     await writeFile(htmlPath, html, 'utf-8')
 
-    // Use absolute path to the script
-    const scriptPath = '/home/z/my-project/scripts/html-to-pdf.js'
+    // Use project-local script path so it works on developers' machines
+    const scriptPath = path.join(process.cwd(), 'scripts', 'html-to-pdf.js')
 
     if (!existsSync(scriptPath)) {
       console.error('PDF script not found at:', scriptPath)
@@ -343,16 +359,17 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Run Playwright conversion with timeout
     const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        proc.kill('SIGKILL')
+        try {
+          proc.kill('SIGKILL')
+        } catch (e) {}
         reject(new Error('PDF generation timeout after 30 seconds'))
       }, 30000)
 
       const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        cwd: '/home/z/my-project',
+        cwd: process.cwd(),
         env: {
           ...process.env,
-          HOME: '/home/z',
         },
       })
 
