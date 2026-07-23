@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/platform/status-badge'
-import { Activity, AlertTriangle, AlertCircle, CheckCircle2, Clock, TrendingDown } from 'lucide-react'
+import { Activity, AlertTriangle, AlertCircle, CheckCircle2, Clock, BellRing, ShieldCheck } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 
 interface Case {
@@ -17,6 +17,28 @@ interface Case {
   slaDeadline?: string
   createdAt: string
   project: { name: string; nameAr?: string; code: string }
+}
+
+interface NotificationItem {
+  id: string
+  title: string
+  body: string
+  severity: string
+  isRead: boolean
+  createdAt: string
+  project?: { name: string; nameAr?: string; code: string }
+}
+
+interface DashboardSummary {
+  kpis?: {
+    dataQualityRate?: number
+    attestationRate?: number
+    connectedDevices?: number
+    totalDevices?: number
+    unreadNotifications?: number
+    openCases?: number
+    criticalCases?: number
+  }
 }
 
 const CASE_TYPE_LABELS: Record<string, string> = {
@@ -34,32 +56,75 @@ const PRIORITY_CONFIG = {
   low: { label: 'منخفض', color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' },
 }
 
+const SEVERITY_CONFIG: Record<string, { label: string; color: string }> = {
+  error: { label: 'خطأ', color: 'text-red-600' },
+  warning: { label: 'تنبيه', color: 'text-amber-600' },
+  success: { label: 'نجاح', color: 'text-emerald-600' },
+  info: { label: 'معلومة', color: 'text-blue-600' },
+}
+
 export function MonitoringSection() {
   const [cases, setCases] = useState<Case[]>([])
   const [stats, setStats] = useState<any>(null)
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/cases')
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then((d) => {
-        setCases(d?.cases || [])
-        setStats(d?.stats || null)
-      })
-      .catch(() => {
-        setCases([])
-        setStats(null)
-      })
-      .finally(() => setLoading(false))
+    let cancelled = false
+
+    async function loadData() {
+      setLoading(true)
+      try {
+        const [casesRes, dashboardRes, notificationsRes] = await Promise.all([
+          fetch('/api/cases'),
+          fetch('/api/dashboard'),
+          fetch('/api/notifications?unreadOnly=true&limit=5'),
+        ])
+
+        if (cancelled) return
+
+        const casesData = casesRes.ok ? await casesRes.json() : { cases: [], stats: null }
+        const dashboardData = dashboardRes.ok ? await dashboardRes.json() : null
+        const notificationsData = notificationsRes.ok ? await notificationsRes.json() : { notifications: [] }
+
+        setCases(casesData?.cases || [])
+        setStats(casesData?.stats || null)
+        setDashboard(dashboardData)
+        setNotifications(notificationsData?.notifications || [])
+      } catch {
+        if (!cancelled) {
+          setCases([])
+          setStats(null)
+          setDashboard(null)
+          setNotifications([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadData()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (loading) {
     return <Card className="h-96 animate-pulse bg-muted/40" />
   }
 
+  const dataQualityRate = dashboard?.kpis?.dataQualityRate ?? 0
+  const attestationRate = dashboard?.kpis?.attestationRate ?? 0
+  const connectedDevices = dashboard?.kpis?.connectedDevices ?? 0
+  const totalDevices = dashboard?.kpis?.totalDevices ?? 0
+  const connectedRatio = totalDevices > 0 ? (connectedDevices / totalDevices) * 100 : 0
+  const unreadNotifications = notifications.length
+  const openCasesCount = stats?.open || 0
+  const criticalCasesCount = stats?.critical || 0
+
   return (
     <div className="space-y-4">
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-4">
           <div className="flex items-center justify-between">
@@ -74,7 +139,7 @@ export function MonitoringSection() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-amber-700 dark:text-amber-400">مفتوحة</p>
-              <p className="text-2xl font-bold tabular-nums text-amber-600">{stats?.open || 0}</p>
+              <p className="text-2xl font-bold tabular-nums text-amber-600">{openCasesCount}</p>
             </div>
             <AlertCircle className="h-8 w-8 text-amber-300" />
           </div>
@@ -82,29 +147,64 @@ export function MonitoringSection() {
         <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-blue-700 dark:text-blue-400">قيد المعالجة</p>
-              <p className="text-2xl font-bold tabular-nums text-blue-600">{stats?.inProgress || 0}</p>
+              <p className="text-xs text-blue-700 dark:text-blue-400">تنبيهات غير مقروءة</p>
+              <p className="text-2xl font-bold tabular-nums text-blue-600">{unreadNotifications}</p>
             </div>
-            <Clock className="h-8 w-8 text-blue-300" />
+            <BellRing className="h-8 w-8 text-blue-300" />
           </div>
         </Card>
         <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-red-700 dark:text-red-400">حرجة</p>
-              <p className="text-2xl font-bold tabular-nums text-red-600">{stats?.critical || 0}</p>
+              <p className="text-2xl font-bold tabular-nums text-red-600">{criticalCasesCount}</p>
             </div>
             <AlertTriangle className="h-8 w-8 text-red-300" />
           </div>
         </Card>
       </div>
 
-      {/* Cases list */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">آخر التحديثات</CardTitle>
+          <CardDescription className="text-xs">
+            متصل مباشرة بالتنبيهات والحالات الجديدة من النظام
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {notifications.length > 0 ? (
+            notifications.map((notification) => {
+              const config = SEVERITY_CONFIG[notification.severity] || SEVERITY_CONFIG.info
+              return (
+                <div key={notification.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{notification.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{notification.body}</p>
+                    </div>
+                    <Badge variant="outline" className={`text-[10px] ${config.color} border-current`}>
+                      {config.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    {notification.project && <span>{notification.project.nameAr || notification.project.name}</span>}
+                    <span>•</span>
+                    <span className="tabular-nums">{new Date(notification.createdAt).toLocaleString('ar-SA', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <p className="text-sm text-muted-foreground">لا توجد تحديثات جديدة حالياً.</p>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">الحوادث والتنبيهات</CardTitle>
           <CardDescription className="text-xs">
-            لا تعتمد على اللون فقط؛ كل تنبيه يعرض نصاً وسببًا قابلًا للتفسير
+            كل عنصر يعرض السبب والحالة الحالية مباشرة من سجلات النظام
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -127,7 +227,7 @@ export function MonitoringSection() {
                 <div className="flex items-start gap-3">
                   <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
                     {isResolved ? (
-                      <CheckCircle2 className={`h-5 w-5 text-emerald-600`} />
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                     ) : c.priority === 'critical' ? (
                       <AlertTriangle className="h-5 w-5 text-red-600" />
                     ) : (
@@ -177,7 +277,6 @@ export function MonitoringSection() {
         </CardContent>
       </Card>
 
-      {/* Health overview */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">صحة النظام</CardTitle>
@@ -186,37 +285,34 @@ export function MonitoringSection() {
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm">جودة البيانات</span>
-              <span className="text-sm font-semibold text-emerald-600">96.2%</span>
+              <span className="text-sm font-semibold text-emerald-600">{dataQualityRate.toFixed(1)}%</span>
             </div>
-            <Progress value={96.2} className="h-2" />
+            <Progress value={dataQualityRate} className="h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm">توصّل الأجهزة</span>
-              <span className="text-sm font-semibold text-emerald-600">93.5%</span>
+              <span className="text-sm font-semibold text-emerald-600">{connectedRatio.toFixed(1)}%</span>
             </div>
-            <Progress value={93.5} className="h-2" />
+            <Progress value={connectedRatio} className="h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm">نسبة التوثيق</span>
-              <span className="text-sm font-semibold text-blue-600">87.4%</span>
+              <span className="text-sm font-semibold text-blue-600">{attestationRate.toFixed(1)}%</span>
             </div>
-            <Progress value={87.4} className="h-2" />
+            <Progress value={attestationRate} className="h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm">Performance Ratio</span>
-              <span className="text-sm font-semibold text-emerald-600">82.1%</span>
+              <span className="text-sm">الحالات الحرجة</span>
+              <span className="text-sm font-semibold text-red-600">{criticalCasesCount}</span>
             </div>
-            <Progress value={82.1} className="h-2" />
+            <Progress value={Math.min(100, criticalCasesCount * 20)} className="h-2" />
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm">التوافر</span>
-              <span className="text-sm font-semibold text-emerald-600">98.5%</span>
-            </div>
-            <Progress value={98.5} className="h-2" />
+          <div className="flex items-center gap-2 rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            آخر تحديث تلقائي من لوحة القيادة والتنبيهات
           </div>
         </CardContent>
       </Card>
