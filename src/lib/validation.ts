@@ -57,7 +57,7 @@ export const createProjectSchema = z.object({
   // a project that reporting/filtering logic (e.g. `projectType: { not: 'afforestation' }`)
   // could not correctly classify.
   projectType: z.enum(['grid_tied', 'hybrid', 'off_grid', 'afforestation'], {
-    errorMap: () => ({ message: 'نوع المشروع غير صالح' }),
+    error: 'نوع المشروع غير صالح',
   }).default('grid_tied'),
 
   country: nullableString,
