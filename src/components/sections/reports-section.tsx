@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/platform/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,9 @@ export function ReportsSection() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [cleanupMode, setCleanupMode] = useState<'archive' | 'delete'>('archive')
+  const [retentionDays, setRetentionDays] = useState('90')
+  const [cleaningUp, setCleaningUp] = useState(false)
 
   const fetchReports = useCallback(() => {
     setLoading(true)
@@ -213,6 +217,33 @@ export function ReportsSection() {
     }
   }
 
+  const handleCleanupReports = async () => {
+    const parsedDays = Number(retentionDays)
+    if (!Number.isFinite(parsedDays) || parsedDays < 1) {
+      toast.error('يرجى إدخال عدد أيام صالح')
+      return
+    }
+
+    setCleaningUp(true)
+    try {
+      const response = await fetch('/api/reports/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: cleanupMode, retentionDays: parsedDays, dryRun: false }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'تعذر تنظيف التقارير')
+
+      toast.success(data.message || 'تمت عملية التنظيف بنجاح')
+      fetchReports()
+    } catch (error: any) {
+      toast.error(error.message || 'تعذر تنظيف التقارير')
+    } finally {
+      setCleaningUp(false)
+    }
+  }
+
   const handleCreateReport = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -321,6 +352,10 @@ export function ReportsSection() {
           <p className="text-xs text-muted-foreground">مسودة</p>
           <p className="text-2xl font-bold tabular-nums">{reports.filter((r) => r.status === 'draft').length}</p>
         </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground">مؤرشف</p>
+          <p className="text-2xl font-bold tabular-nums">{reports.filter((r) => r.status === 'archived').length}</p>
+        </Card>
       </div>
 
       {/* Actions */}
@@ -329,10 +364,32 @@ export function ReportsSection() {
           <p className="text-sm text-muted-foreground">
             تقارير شاملة مع رسوم بيانية وألوان ومعلومات تفصيلية - يمكن تحميلها بصيغ متعددة
           </p>
-          <Button onClick={openCreateDialog}>
-            <FilePlus className="h-4 w-4 ml-1" />
-            تقرير جديد
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1">
+              <Label htmlFor="cleanup-mode" className="text-xs">الإجراء</Label>
+              <Select value={cleanupMode} onValueChange={(value) => setCleanupMode(value as 'archive' | 'delete')}>
+                <SelectTrigger id="cleanup-mode" className="h-8 w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="archive">أرشفة</SelectItem>
+                  <SelectItem value="delete">حذف</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1">
+              <Label htmlFor="retention-days" className="text-xs">أيام</Label>
+              <Input id="retention-days" type="number" min="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} className="h-8 w-20" />
+            </div>
+            <Button variant="outline" onClick={handleCleanupReports} disabled={cleaningUp}>
+              {cleaningUp ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              تنظيف تلقائي
+            </Button>
+            <Button onClick={openCreateDialog}>
+              <FilePlus className="h-4 w-4 ml-1" />
+              تقرير جديد
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

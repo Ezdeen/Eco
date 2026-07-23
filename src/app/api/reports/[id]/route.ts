@@ -17,13 +17,21 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       select: {
         id: true,
         projectId: true,
-        organizationId: true,
         status: true,
+        project: {
+          select: {
+            organizationId: true,
+          },
+        },
       },
     })
 
     if (!existingReport) {
       return NextResponse.json({ error: 'التقرير غير موجود' }, { status: 404 })
+    }
+
+    if (existingReport.project.organizationId !== auth.user.organizationId) {
+      return NextResponse.json({ error: 'لا يمكنك حذف هذا التقرير' }, { status: 403 })
     }
 
     await db.report.delete({ where: { id } })

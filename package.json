@@ -17,7 +17,8 @@
     "seed:dev": "NODE_ENV=development bun run scripts/seed.ts",
     "predeploy": "bun run lint && bun run typecheck && bun run db:generate && bun run db:migrate:deploy && bun run build",
     "deploy": "bun run predeploy && bun run start",
-    "smoke-test": "bun run scripts/smoke-test.ts"
+    "smoke-test": "bun run scripts/smoke-test.ts",
+    "reports:cleanup": "tsx scripts/cleanup-reports.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
