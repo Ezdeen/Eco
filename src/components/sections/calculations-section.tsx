@@ -313,13 +313,20 @@ export function CalculationsSection() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">الوفر</p>
-                  <p className="font-bold tabular-nums">{fmt(result.details.totalSavings)} SAR</p>
+                  <p className="font-bold tabular-nums">
+                    {fmt(result.details.totalSavings)} {result.details.savingsCurrency || 'SAR'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Performance Ratio</p>
                   <p className="font-bold tabular-nums">{(result.details.performanceRatio * 100).toFixed(1)}%</p>
                 </div>
               </div>
+              {result.details.currencyMismatchWarning && (
+                <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+                  ⚠️ تعرفة الدولة المرجعية بعملة مختلفة عن عملة المشروع؛ تم استخدام تعرفة المشروع الاحتياطية بدلاً منها.
+                </p>
+              )}
             </div>
           )}
         </CardContent>
@@ -366,20 +373,53 @@ export function CalculationsSection() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-3 space-y-2">
-                        {cat.kpis.map((kpi) => (
-                          <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
+                        {cat.kpis.map((kpi) => {
+                          const rawValue = categoryData[kpi.key]
+                          // Economy KPIs can be null when projects use different currencies
+                          // (see kpiCatalog.economy in the API) — show the per-currency
+                          // breakdown instead of a misleading 0.
+                          if (cat.key === 'economy' && rawValue === null && categoryData.costSavingsByCurrency) {
+                            const byCurrencyMap = kpi.key === 'greenInvestment'
+                              ? categoryData.greenInvestmentByCurrency
+                              : categoryData.costSavingsByCurrency
+                            const entries = Object.entries(byCurrencyMap || {})
+                            return (
+                              <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
+                                  <p className="text-[10px] text-muted-foreground truncate">{kpi.label} (عملات متعددة)</p>
+                                </div>
+                                <div className="text-left shrink-0 space-y-0.5">
+                                  {entries.length > 0 ? entries.map(([currency, amount]) => (
+                                    <p key={currency} className={`text-xs font-bold tabular-nums ${colors.text}`}>
+                                      {fmtCompact(amount as number)} {currency}
+                                    </p>
+                                  )) : (
+                                    <p className="text-[10px] text-muted-foreground">—</p>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          }
+                          return (
+                            <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
+                                <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
+                              </div>
+                              <div className="text-left shrink-0">
+                                <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
+                                  {fmtCompact(rawValue || 0)}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {cat.key === 'economy' && categoryData.currency
+                                    ? kpi.unit.replace('SAR', categoryData.currency)
+                                    : kpi.unit}
+                                </p>
+                              </div>
                             </div>
-                            <div className="text-left shrink-0">
-                              <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
-                                {fmtCompact(categoryData[kpi.key] || 0)}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </CardContent>
                     </Card>
                   )
@@ -481,7 +521,19 @@ export function CalculationsSection() {
                           <p className="text-[10px] text-muted-foreground">{kpi.labelEn}</p>
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <p className="text-lg font-bold tabular-nums text-primary">{fmtCompact(kpi.value)}</p>
+                          {kpi.value !== null ? (
+                            <p className="text-lg font-bold tabular-nums text-primary">{fmtCompact(kpi.value)}</p>
+                          ) : kpi.byCurrency ? (
+                            <div className="text-left">
+                              {Object.entries(kpi.byCurrency).map(([currency, amount]) => (
+                                <p key={currency} className="text-sm font-bold tabular-nums text-primary">
+                                  {fmtCompact(amount as number)} {currency}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-lg font-bold tabular-nums text-primary">—</p>
+                          )}
                           <p className="text-[10px] text-muted-foreground">{kpi.unit}</p>
                           {kpi.classification && (
                             <Badge variant="outline" className={`text-[9px] ${
