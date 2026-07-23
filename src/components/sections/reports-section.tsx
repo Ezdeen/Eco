@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/platform/status-badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +19,18 @@ import { toast } from 'sonner'
 
 export function ReportsSection() {
   const [reports, setReports] = useState<any[]>([])
+  const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newReport, setNewReport] = useState({
+    projectId: '',
+    title: '',
+    reportType: 'comprehensive',
+    periodStart: '',
+    periodEnd: '',
+    summary: '',
+  })
   const [previewReport, setPreviewReport] = useState<any | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -161,6 +174,71 @@ export function ReportsSection() {
     }
   }
 
+  const openCreateDialog = async () => {
+    setCreateOpen(true)
+
+    if (projects.length > 0) return
+
+    try {
+      const response = await fetch('/api/projects')
+      if (!response.ok) throw new Error()
+      const data = await response.json()
+      setProjects(data?.projects || [])
+    } catch {
+      toast.error('تعذر تحميل قائمة المشاريع')
+    }
+  }
+
+  const handleCreateReport = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!newReport.projectId || !newReport.title.trim() || !newReport.periodStart || !newReport.periodEnd) {
+      toast.error('يرجى إدخال المشروع والعنوان والفترة')
+      return
+    }
+
+    if (newReport.periodStart > newReport.periodEnd) {
+      toast.error('تاريخ البداية يجب أن يسبق تاريخ النهاية')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newReport,
+          title: newReport.title.trim(),
+          summary: newReport.summary.trim() || undefined,
+          periodStart: `${newReport.periodStart}T00:00:00.000Z`,
+          periodEnd: `${newReport.periodEnd}T23:59:59.999Z`,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || 'تعذر إنشاء التقرير')
+      }
+
+      setNewReport({
+        projectId: '',
+        title: '',
+        reportType: 'comprehensive',
+        periodStart: '',
+        periodEnd: '',
+        summary: '',
+      })
+      setCreateOpen(false)
+      fetchReports()
+      toast.success('تم إنشاء التقرير كمسودة')
+    } catch (error: any) {
+      toast.error(error.message || 'تعذر إنشاء التقرير')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   // Print report - opens print dialog with formatted HTML
   const handlePrint = async (report: any) => {
     try {
@@ -227,12 +305,86 @@ export function ReportsSection() {
           <p className="text-sm text-muted-foreground">
             تقارير شاملة مع رسوم بيانية وألوان ومعلومات تفصيلية - يمكن تحميلها بصيغ متعددة
           </p>
-          <Button>
+          <Button onClick={openCreateDialog}>
             <FilePlus className="h-4 w-4 ml-1" />
             تقرير جديد
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>إنشاء تقرير جديد</DialogTitle>
+            <DialogDescription>سيُنشأ التقرير كمسودة ويمكن تنزيله بعد ذلك.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleCreateReport}>
+            <div className="space-y-2">
+              <Label htmlFor="report-project">المشروع</Label>
+              <select
+                id="report-project"
+                className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={newReport.projectId}
+                onChange={(event) => setNewReport((current) => ({ ...current, projectId: event.target.value }))}
+                required
+              >
+                <option value="">اختر مشروعًا</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.nameAr || project.name} ({project.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-title">عنوان التقرير</Label>
+              <Input
+                id="report-title"
+                value={newReport.title}
+                onChange={(event) => setNewReport((current) => ({ ...current, title: event.target.value }))}
+                placeholder="مثال: التقرير الشهري للطاقة"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-type">نوع التقرير</Label>
+              <select
+                id="report-type"
+                className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={newReport.reportType}
+                onChange={(event) => setNewReport((current) => ({ ...current, reportType: event.target.value }))}
+              >
+                <option value="comprehensive">شامل</option>
+                <option value="energy">الطاقة</option>
+                <option value="carbon">الكربون</option>
+                <option value="performance">الأداء</option>
+                <option value="quality">جودة البيانات</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="report-period-start">بداية الفترة</Label>
+                <Input id="report-period-start" type="date" value={newReport.periodStart} onChange={(event) => setNewReport((current) => ({ ...current, periodStart: event.target.value }))} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="report-period-end">نهاية الفترة</Label>
+                <Input id="report-period-end" type="date" value={newReport.periodEnd} onChange={(event) => setNewReport((current) => ({ ...current, periodEnd: event.target.value }))} required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-summary">ملاحظات مختصرة (اختياري)</Label>
+              <textarea id="report-summary" className="border-input min-h-20 w-full rounded-md border bg-transparent px-3 py-2 text-sm" value={newReport.summary} onChange={(event) => setNewReport((current) => ({ ...current, summary: event.target.value }))} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>إلغاء</Button>
+              <Button type="submit" disabled={creating}>
+                {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                إنشاء التقرير
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Reports list */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

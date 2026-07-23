@@ -33,18 +33,50 @@ export async function POST(request: NextRequest) {
     const auth = await requirePermission('report:create')
     if (!auth.authorized) return auth.response
 
-    const body = await request.json()
+    const body = await request.json().catch(() => null)
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'بيانات التقرير غير صالحة' }, { status: 400 })
+    }
+
     const { projectId, title, reportType, periodStart, periodEnd, summary } = body
+
+    if (
+      typeof projectId !== 'string' ||
+      typeof title !== 'string' ||
+      !title.trim() ||
+      typeof periodStart !== 'string' ||
+      typeof periodEnd !== 'string'
+    ) {
+      return NextResponse.json({ error: 'المشروع والعنوان والفترة مطلوبة' }, { status: 400 })
+    }
+
+    const start = new Date(periodStart)
+    const end = new Date(periodEnd)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+      return NextResponse.json({ error: 'الفترة الزمنية غير صالحة' }, { status: 400 })
+    }
+
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      select: { organizationId: true },
+    })
+
+    if (!project) {
+      return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
+    }
+    if (project.organizationId !== auth.user.organizationId) {
+      return NextResponse.json({ error: 'لا يمكنك إنشاء تقرير لهذا المشروع' }, { status: 403 })
+    }
 
     const report = await db.report.create({
       data: {
         projectId,
-        title,
+        title: title.trim(),
         reportType: reportType || 'comprehensive',
         status: 'draft',
-        periodStart: new Date(periodStart),
-        periodEnd: new Date(periodEnd),
-        summary,
+        periodStart: start,
+        periodEnd: end,
+        summary: typeof summary === 'string' && summary.trim() ? summary.trim() : null,
         version: 1,
       },
       include: { project: { select: { name: true, nameAr: true, code: true } } },
