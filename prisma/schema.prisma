@@ -80,7 +80,7 @@ model Project {
   // Actual values used across the app: grid_tied, hybrid, off_grid, afforestation
   // (see PROJECT_TYPES in src/components/projects/project-form-modal.tsx and the enum
   // in src/lib/validation.ts). NOTE: the DB default below ("solar_pv") does not match
-  // any of these and predates the current type set — a migration to default to
+  // any of these and predates the current type set - a migration to default to
   // "grid_tied" (and to backfill any existing "solar_pv" rows) is recommended.
   projectType    String   @default("solar_pv")
   country        String?
