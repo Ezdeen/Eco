@@ -44,6 +44,7 @@ const DEVICE_STATUS_LABELS: Record<string, string> = {
 const ALERT_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
   performance_drop: { icon: TrendingUp, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30 border-red-200' },
   missing_data: { icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200' },
+  device_warning: { icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200' },
   device_stopped: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30 border-red-200' },
   anomalous_reading: { icon: AlertCircle, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200' },
 }

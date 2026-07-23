@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
           measuredAt: { gte: periodStart },
           qualityStatus: { in: ['validated', 'approved', 'corrected'] },
         },
-        select: { value: true, measuredAt: true, qualityStatus: true },
+        select: { value: true, measuredAt: true, qualityStatus: true, deviceId: true },
         orderBy: { measuredAt: 'asc' },
       })
 
@@ -126,7 +126,37 @@ export async function GET(request: NextRequest) {
       const specificYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
 
       // Availability
-      const connectedDevices = devices.filter((d) => d.status === 'connected')
+      const latestReadingByDevice = new Map<string, Date>()
+      for (const reading of readings) {
+        if (!reading.deviceId) continue
+        const current = latestReadingByDevice.get(reading.deviceId)
+        if (!current || reading.measuredAt > current) {
+          latestReadingByDevice.set(reading.deviceId, reading.measuredAt)
+        }
+      }
+
+      const deviceHealth = devices.map((device) => {
+        const latestReadingAt = latestReadingByDevice.get(device.id)
+        const referenceSignalAt = latestReadingAt || device.lastSeenAt || null
+        const hoursSinceLastSignal = referenceSignalAt
+          ? (now.getTime() - referenceSignalAt.getTime()) / (1000 * 60 * 60)
+          : Number.POSITIVE_INFINITY
+
+        if (!referenceSignalAt) {
+          return { ...device, connectivity: 'stopped' as const, hoursSinceLastSignal: Number.POSITIVE_INFINITY }
+        }
+
+        if (hoursSinceLastSignal <= 8) {
+          return { ...device, connectivity: 'connected' as const, hoursSinceLastSignal }
+        }
+        if (hoursSinceLastSignal <= 16) {
+          return { ...device, connectivity: 'warning' as const, hoursSinceLastSignal }
+        }
+
+        return { ...device, connectivity: 'stopped' as const, hoursSinceLastSignal }
+      })
+
+      const connectedDevices = deviceHealth.filter((d) => d.connectivity === 'connected')
       const isDeviceConnected = connectedDevices.length > 0
       const deviceUptimeHours = operationalDays * 24 * 0.98
       const technicalAvailability = isDeviceConnected
@@ -210,14 +240,26 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // 3. Device stopped: any device not connected
-      const stoppedDevices = devices.filter((d) => d.status !== 'connected')
+      // 3. Device stopped/warning: based on last reading or last seen time
+      const warningDevices = deviceHealth.filter((d) => d.connectivity === 'warning')
+      if (warningDevices.length > 0) {
+        projectAlerts.push({
+          type: 'device_warning',
+          severity: 'high',
+          title: 'تأخر استقبال البيانات',
+          message: `${warningDevices.length} جهاز لم يستقبل قراءة جديدة خلال 8-16 ساعة: ${warningDevices.map((d) => d.name).join(', ')}`,
+          projectId: project.id,
+          projectCode: project.code,
+        })
+      }
+
+      const stoppedDevices = deviceHealth.filter((d) => d.connectivity === 'stopped')
       if (stoppedDevices.length > 0) {
         projectAlerts.push({
           type: 'device_stopped',
           severity: 'critical',
           title: 'جهاز متوقف',
-          message: `${stoppedDevices.length} جهاز غير متصل: ${stoppedDevices.map((d) => d.name).join(', ')}`,
+          message: `${stoppedDevices.length} جهاز لم يستقبل قراءة جديدة خلال 24 ساعة أو لم توجد له قراءة حديثة: ${stoppedDevices.map((d) => d.name).join(', ')}`,
           projectId: project.id,
           projectCode: project.code,
         })
