@@ -15,6 +15,69 @@ export interface WeatherData {
   precipitationMm: number
 }
 
+export interface LiveWeatherData {
+  observedAt: string // ISO timestamp reported by Open-Meteo for this reading
+  temperatureC: number | null
+  humidityPct: number | null
+  windSpeedMs: number | null
+  cloudCoverPct: number | null
+  irradianceWm2: number | null // shortwave solar radiation, instantaneous, in W/m²
+  isDay: boolean | null
+  weatherCode: number | null
+  source: 'Open-Meteo'
+}
+
+// Fetch current (live) weather + solar irradiance for a project's coordinates.
+// Uses Open-Meteo's `current=` parameter (instantaneous values), which is a
+// different endpoint shape than the daily historical fetch below used for
+// expected-yield calculations. No API key is required — Open-Meteo's free tier
+// is unauthenticated for non-commercial use.
+export async function fetchLiveWeather(
+  latitude: number,
+  longitude: number,
+): Promise<LiveWeatherData | null> {
+  try {
+    const params = new URLSearchParams({
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      current: 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,shortwave_radiation,is_day,weather_code',
+      timezone: 'auto',
+    })
+
+    const url = `${OPEN_METEO_URL}?${params}`
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      // Live weather changes constantly; avoid any accidental caching layer serving stale data.
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      console.error('Open-Meteo current weather API error:', response.status)
+      return null
+    }
+
+    const data = await response.json()
+    const current = data.current
+
+    if (!current) return null
+
+    return {
+      observedAt: current.time,
+      temperatureC: current.temperature_2m ?? null,
+      humidityPct: current.relative_humidity_2m ?? null,
+      windSpeedMs: current.wind_speed_10m ?? null,
+      cloudCoverPct: current.cloud_cover ?? null,
+      irradianceWm2: current.shortwave_radiation ?? null,
+      isDay: current.is_day === 1,
+      weatherCode: current.weather_code ?? null,
+      source: 'Open-Meteo',
+    }
+  } catch (error) {
+    console.error('Live weather fetch error:', error)
+    return null
+  }
+}
+
 // Fetch weather data from Open-Meteo for a specific location and date
 export async function fetchWeatherData(
   latitude: number,
