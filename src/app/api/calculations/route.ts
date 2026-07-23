@@ -114,13 +114,29 @@ export async function GET(request: NextRequest) {
     ).size
 
     // Economy KPIs
-    const costSavings = allProjects.reduce((s, p) => {
+    // IMPORTANT: projects can have different currencies (Project.currency). Summing
+    // costSavings/greenInvestment across all projects into one number - as before -
+    // silently mixes currencies (e.g. adds SAR amounts to AED amounts) and the result
+    // was then labeled "SAR" regardless. We instead group by each project's own
+    // currency so the totals are only ever combined with amounts in the same currency.
+    const costSavingsByCurrency: Record<string, number> = {}
+    const greenInvestmentByCurrency: Record<string, number> = {}
+
+    for (const p of allProjects) {
       const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((sum, r) => sum + r.value, 0)
-      return s + projectEnergy * (p.tariffRetail || 0.18)
-    }, 0)
-    const greenInvestment = allProjects.reduce((s, p) => s + (p.capacityKwp || 0) * 3000, 0) // ~3000 SAR/kWp CAPEX
-    const costPerTCo2e = totalCo2Avoided > 0 ? greenInvestment / (totalCo2Avoided / 1000) : 0
-    const costPerKwh = totalEnergy > 0 ? greenInvestment / totalEnergy : 0
+      const currency = p.currency || 'SAR'
+      costSavingsByCurrency[currency] = (costSavingsByCurrency[currency] || 0) + projectEnergy * (p.tariffRetail || 0.18)
+      greenInvestmentByCurrency[currency] = (greenInvestmentByCurrency[currency] || 0) + (p.capacityKwp || 0) * 3000 // ~3000 per kWp CAPEX, in the project's own currency
+    }
+
+    const currenciesInUse = Object.keys(costSavingsByCurrency)
+    const singleCurrency = currenciesInUse.length <= 1 ? (currenciesInUse[0] || 'SAR') : null
+    // Only populated as a single number when every project shares one currency;
+    // otherwise callers must read costSavingsByCurrency/greenInvestmentByCurrency instead.
+    const costSavings = singleCurrency ? costSavingsByCurrency[singleCurrency] : null
+    const greenInvestment = singleCurrency ? greenInvestmentByCurrency[singleCurrency] : null
+    const costPerTCo2e = singleCurrency && totalCo2Avoided > 0 ? (greenInvestmentByCurrency[singleCurrency] / (totalCo2Avoided / 1000)) : null
+    const costPerKwh = singleCurrency && totalEnergy > 0 ? (greenInvestmentByCurrency[singleCurrency] / totalEnergy) : null
 
     // Data Quality KPIs
     const totalReadingsCount = allReadings.length
@@ -177,10 +193,21 @@ export async function GET(request: NextRequest) {
         speciesCount,
       },
       economy: {
-        costSavings: Math.round(costSavings),
-        greenInvestment: Math.round(greenInvestment),
-        costPerTCo2e: Math.round(costPerTCo2e),
-        costPerKwh: Math.round(costPerKwh * 100) / 100,
+        // costSavings/greenInvestment/costPerTCo2e/costPerKwh are only a plain number
+        // when every project shares the same currency; otherwise they are null and
+        // the caller must render costSavingsByCurrency / greenInvestmentByCurrency
+        // (one figure per currency) instead of a misleadingly combined total.
+        costSavings: costSavings !== null ? Math.round(costSavings) : null,
+        greenInvestment: greenInvestment !== null ? Math.round(greenInvestment) : null,
+        costPerTCo2e: costPerTCo2e !== null ? Math.round(costPerTCo2e) : null,
+        costPerKwh: costPerKwh !== null ? Math.round(costPerKwh * 100) / 100 : null,
+        currency: singleCurrency, // null when projects use mixed currencies
+        costSavingsByCurrency: Object.fromEntries(
+          Object.entries(costSavingsByCurrency).map(([c, v]) => [c, Math.round(v)]),
+        ),
+        greenInvestmentByCurrency: Object.fromEntries(
+          Object.entries(greenInvestmentByCurrency).map(([c, v]) => [c, Math.round(v)]),
+        ),
       },
       dataQuality: {
         completeness: Math.round(completeness * 10) / 10,
@@ -247,13 +274,32 @@ export async function POST(request: NextRequest) {
     const totalCo2AvoidedKg = totalEnergyKwh * emissionFactor.factor
 
     // === PRIORITY 1: Use reference tables for tariffs ===
-    const retailTariff = await getTariff(countryCode, 'retail', periodDate)
-    const feedInTariff = await getTariff(countryCode, 'feed_in', periodDate)
+    // IMPORTANT: reference tariffs are keyed by country and can be denominated in a
+    // different currency than the project's own currency (e.g. project.currency = "SAR"
+    // while project.country = "AE", whose reference tariff is in "AED"). Previously the
+    // rate was used regardless of currency, so totalSavings could be a correct-looking
+    // number silently computed in the wrong currency. We now require the reference
+    // tariff's currency to match the project's currency before using it; otherwise we
+    // fall back to the project's own tariff fields (assumed to already be in
+    // project.currency) and flag the mismatch so it's visible instead of hidden.
+    const projectCurrency = project.currency || 'SAR'
+    const retailTariffRaw = await getTariff(countryCode, 'retail', periodDate)
+    const feedInTariffRaw = await getTariff(countryCode, 'feed_in', periodDate)
+
+    const retailCurrencyMismatch = !!retailTariffRaw && retailTariffRaw.currency !== projectCurrency
+    const feedInCurrencyMismatch = !!feedInTariffRaw && feedInTariffRaw.currency !== projectCurrency
+
+    const retailTariff = retailCurrencyMismatch ? null : retailTariffRaw
+    const feedInTariff = feedInCurrencyMismatch ? null : feedInTariffRaw
+
     const tariffRetail = retailTariff?.rate ?? project.tariffRetail ?? 0.18
     const tariffFeedIn = feedInTariff?.rate ?? project.tariffFeedIn ?? 0.10
     const tariffSource = retailTariff?.fromDb ? retailTariff.source : 'project fallback'
+    const currencyMismatchWarning = retailCurrencyMismatch || feedInCurrencyMismatch
+      ? `Reference tariff currency (${retailTariffRaw?.currency || feedInTariffRaw?.currency}) does not match project currency (${projectCurrency}); used project fallback tariff instead of the reference-table rate.`
+      : null
 
-    // Financial savings
+    // Financial savings — always denominated in the project's own currency (projectCurrency)
     const selfConsumptionRate = 0.7
     const selfConsumedKwh = totalEnergyKwh * selfConsumptionRate
     const exportedKwh = totalEnergyKwh * (1 - selfConsumptionRate)
@@ -288,9 +334,9 @@ export async function POST(request: NextRequest) {
         periodEnd,
         methodologyVersion: methodVersion,
         emissionFactor: { factor: emissionFactor.factor, source: emissionFactor.source, version: emissionFactor.version, fromDb: emissionFactor.fromDb },
-        tariffRetail: { rate: tariffRetail, source: tariffSource },
-        tariffFeedIn: { rate: tariffFeedIn },
-        treeFactor: { value: treeFactorData.value, version: treeFactorData.version },
+        tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency },
+        tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency },
+        currencyMismatchWarning,
         carFactor: { value: carFactorData.value, version: carFactorData.version },
       }))
       .digest('hex')
@@ -306,8 +352,10 @@ export async function POST(request: NextRequest) {
         parametersHash,
         result: JSON.stringify({
           emissionFactor: { ...emissionFactor },
-          tariffRetail: { rate: tariffRetail, source: tariffSource, fromDb: retailTariff?.fromDb ?? false },
-          tariffFeedIn: { rate: tariffFeedIn, fromDb: feedInTariff?.fromDb ?? false },
+          tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency, fromDb: retailTariff?.fromDb ?? false },
+          tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency, fromDb: feedInTariff?.fromDb ?? false },
+          savingsCurrency: projectCurrency,
+          currencyMismatchWarning,
           selfConsumptionRate,
           treeFactor: { ...treeFactorData },
           carFactor: { ...carFactorData },
@@ -330,17 +378,19 @@ export async function POST(request: NextRequest) {
         totalEnergyKwh,
         totalCo2AvoidedKg,
         totalSavings,
+        savingsCurrency: projectCurrency, // totalSavings is always in the project's own currency, never the reference-tariff country's currency
         specificYield,
         performanceRatio,
         availability,
         treeEquivalent: Math.round(treeEquivalent),
         carKmAvoided: Math.round(carKmAvoided),
         emissionFactor,
-        tariffRetail: { rate: tariffRetail, source: tariffSource },
-        tariffFeedIn: { rate: tariffFeedIn },
+        tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency },
+        tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency },
         selfConsumedKwh,
         exportedKwh,
         readingsCount: readings.length,
+        currencyMismatchWarning, // non-null when the reference-table tariff currency didn't match the project's currency and a fallback tariff was used instead
         referenceDataProvenance: {
           emissionFactorFromDb: emissionFactor.fromDb,
           tariffFromDb: retailTariff?.fromDb ?? false,
