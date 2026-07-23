@@ -279,6 +279,19 @@ export async function GET() {
     const emissionFactor = 0.432
     const totalCo2Avoided = totalEnergy * emissionFactor
 
+    // Cost savings grouped by each project's own currency (Project.currency).
+    // Previously this summed tariffs across all projects into one number regardless
+    // of currency, then labeled it "SAR" unconditionally — mixing e.g. SAR and AED
+    // amounts together and mislabeling the result.
+    const costSavingsByCurrency: Record<string, number> = {}
+    for (const p of allProjects) {
+      const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((sum, r) => sum + r.value, 0)
+      const currency = p.currency || 'SAR'
+      costSavingsByCurrency[currency] = (costSavingsByCurrency[currency] || 0) + projectEnergy * (p.tariffRetail || 0.18)
+    }
+    const costSavingsCurrencies = Object.keys(costSavingsByCurrency)
+    const costSavingsSingleCurrency = costSavingsCurrencies.length <= 1 ? (costSavingsCurrencies[0] || 'SAR') : null
+
     // Build traceable KPIs with full metadata + classification
     const traceableKPIs = [
       {
@@ -356,11 +369,13 @@ export async function GET() {
         category: 'economy',
         labelAr: 'وفر تكاليف',
         labelEn: 'Cost Savings',
-        value: Math.round(allProjects.reduce((s, p) => {
-          const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((sum, r) => sum + r.value, 0)
-          return s + projectEnergy * (p.tariffRetail || 0.18)
-        }, 0)),
-        unit: 'SAR',
+        // Only a single rounded number when all projects share one currency; otherwise
+        // null with byCurrency populated so the UI doesn't render a mixed-currency total.
+        value: costSavingsSingleCurrency ? Math.round(costSavingsByCurrency[costSavingsSingleCurrency]) : null,
+        unit: costSavingsSingleCurrency || 'مختلط (انظر byCurrency)',
+        byCurrency: Object.fromEntries(
+          Object.entries(costSavingsByCurrency).map(([c, v]) => [c, Math.round(v)]),
+        ),
         classification: 'محسوب',
         ...KPI_TRACEABILITY.costSavings,
         frameworks: ESG_FRAMEWORKS
