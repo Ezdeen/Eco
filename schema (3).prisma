@@ -1,0 +1,741 @@
+// ESG Solar Platform - Prisma Schema
+// Multi-tenant SaaS platform for solar energy ESG monitoring
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// IMPORTANT: This schema is designed for PostgreSQL.
+// For local development with SQLite, change provider to "sqlite".
+// For production, use provider = "postgresql" with a proper DATABASE_URL.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== الهوية والمؤسسات ==============
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String?
+  code        String   @unique
+  country     String?
+  currency    String   @default("SAR")
+  timezone    String   @default("Asia/Riyadh")
+  language    String   @default("ar")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     UserMembership[]
+  projects    Project[]
+  impactAccounts ImpactAccount[]
+  auditEvents AuditEvent[]
+  subscriptions  Subscription[]
+  apiKeys        ApiKey[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  nameAr       String?
+  passwordHash String?
+  role         String   @default("data_entry") // org_admin, project_manager, data_entry
+  mfaEnabled   Boolean  @default(false)
+  preferredLang String  @default("ar")
+  preferredTz  String   @default("Asia/Riyadh")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships  UserMembership[]
+  auditEvents  AuditEvent[]
+  notifications Notification[]
+  managedProjects Project[] @relation("ProjectManager")
+}
+
+model UserMembership {
+  id              String   @id @default(cuid())
+  userId          String
+  organizationId  String
+  role            String   @default("data_entry") // org_admin, project_manager, data_entry
+  status          String   @default("active") // active, invited, suspended
+  createdAt       DateTime @default(now())
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+// ============== المشاريع والأصول ==============
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  nameAr         String?
+  code           String
+  status         String   @default("draft") // draft, under_review, approved, active, suspended, decommissioned
+  // Actual values used across the app: grid_tied, hybrid, off_grid, afforestation
+  // (see PROJECT_TYPES in src/components/projects/project-form-modal.tsx and the enum
+  // in src/lib/validation.ts). NOTE: the DB default below ("solar_pv") does not match
+  // any of these and predates the current type set — a migration to default to
+  // "grid_tied" (and to backfill any existing "solar_pv" rows) is recommended.
+  projectType    String   @default("solar_pv")
+  country        String?
+  city           String?
+  latitude       Float?
+  longitude      Float?
+  timezone       String   @default("Asia/Riyadh")
+  commissionedAt DateTime?
+  capacityKwp    Float?   // installed capacity in kWp
+  currency       String   @default("SAR")
+  tariffRetail   Float?   // retail tariff per kWh
+  tariffFeedIn   Float?   // feed-in tariff per kWh
+  methodology    String   @default("ghg_protocol_scope2")
+  // Sponsor/Observer (funder) details - الممول/المراقب على المشروع
+  sponsorName    String?  // اسم المراقب/الممول (بنك أو جهة إقراض)
+  sponsorPhone   String?  // رقم المراقب/الممول
+  managerId      String?  // معرّف مدير المشروع (User) — يحدد عزل البيانات لدور project_manager
+  // Inverter details entered at project creation
+  inverterSerial String?  // سيريال نمبر الإنفرتر الرئيسي للمشروع
+  inverterType   String?  // نوع الإنفرتر: string, central, micro, hybrid, battery
+  hederaTopicId  String?  // Topic ID مستقل لهذا المشروع على شبكة Hedera (يُنشأ تلقائياً عند أول استخدام)
+  // Afforestation project fields (مشروع تشجير) - used when projectType = 'afforestation'
+  treeSpecies       String?  // نوع الأشجار المزروعة
+  treeCount         Int?     // عدد الأشجار
+  plantedAreaM2     Float?   // المساحة المزروعة بالمتر المربع
+  plantingDate      DateTime? // تاريخ الزراعة
+  survivalRateTarget Float?  // النسبة المستهدفة لمعدل البقاء (0-1)
+  // IoT sensors for afforestation projects
+  iotSensorType     String?  // نوع مستشعر IoT (soil_moisture, temperature, humidity, co2, growth)
+  iotSensorModel    String?  // موديل المستشعر
+  iotSensorSerial   String?  // سيريال نمبر المستشعر
+  iotGatewayId      String?  // معرّف بوابة IoT
+  iotProtocol       String?  // بروتوكول الاتصال (lora, wifi, gsm, nb-iot)
+  iotDataFrequency  String?  // تردد إرسال البيانات (hourly, daily, weekly)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manager        User?        @relation("ProjectManager", fields: [managerId], references: [id])
+  sites          Site[]
+  assets         Asset[]
+  devices        Device[]
+  readings       EnergyReading[]
+  calculations   CalculationRun[]
+  attestations   AttestationBatch[]
+  impactUnits    ImpactUnit[]
+  reports        Report[]
+  cases          Case[]
+  notifications  Notification[]
+  auditEvents    AuditEvent[]
+  ingestionBatches IngestionBatch[]
+  weatherObservations WeatherObservation[]
+  expectedYieldModels ExpectedYieldModel[]
+  reconciliationRuns  ReconciliationRun[]
+
+  @@unique([organizationId, code])
+}
+
+model Site {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  nameAr      String?
+  country     String?
+  city        String?
+  latitude    Float?
+  longitude   Float?
+  timezone    String   @default("Asia/Riyadh")
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assets      Asset[]
+  devices     Device[]
+  readings    EnergyReading[]
+}
+
+model Asset {
+  id          String   @id @default(cuid())
+  projectId   String
+  siteId      String?
+  name        String
+  assetType   String   @default("solar_array") // solar_array, inverter, meter, bess
+  status      String   @default("active") // active, offline, maintenance, decommissioned
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site          Site?             @relation(fields: [siteId], references: [id])
+  solarProfile  SolarAssetProfile?
+  devices       Device[]
+  readings      EnergyReading[]
+}
+
+model SolarAssetProfile {
+  id              String   @id @default(cuid())
+  assetId         String   @unique
+  capacityKwp     Float
+  panelAreaM2     Float?
+  tiltDegrees     Float?
+  azimuthDegrees  Float?
+  technology      String   @default("mono_si") // mono_si, poly_si, thin_film, bifacial
+  moduleEfficiency Float?  // 0-1
+  systemLosses    Float?   // 0-1, e.g. 0.14 for 14% losses
+  inverterEfficiency Float? // 0-1
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  asset           Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Device {
+  id              String   @id @default(cuid())
+  projectId       String
+  siteId          String?
+  assetId         String?
+  name            String
+  manufacturer    String?
+  model           String?
+  serialNumber    String   @unique
+  protocol        String   @default("modbus_tcp") // modbus_tcp, mqtt, http_api, sunspec
+  status          String   @default("registered") // registered, connected, offline, disabled
+  lastSeenAt      DateTime?
+  firmwareVersion String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site            Site?    @relation(fields: [siteId], references: [id])
+  asset           Asset?   @relation(fields: [assetId], references: [id])
+  readings        EnergyReading[]
+}
+
+model ApiKey {
+  id              String    @id @default(cuid())
+  organizationId  String
+  name            String    // e.g. "n8n Inverter Ingestion"
+  keyPrefix       String    // first 8 chars shown in UI for identification, e.g. "esg_a1b2"
+  keyHash         String    @unique // SHA-256 hash of the full key (never store plaintext)
+  scopes          String    @default("ingestion:write") // comma-separated: ingestion:write, attestation:read
+  isActive        Boolean   @default(true)
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  revokedAt       DateTime?
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// ============== الاستيعاب والقياسات ==============
+
+model EnergyReading {
+  id                  String   @id @default(cuid())
+  projectId           String
+  siteId              String?
+  assetId             String?
+  deviceId            String?
+  metricType          String   // energy_export_kwh, energy_import_kwh, power_kw, irradiance_wm2, temperature_c
+  measuredAt          DateTime
+  receivedAt          DateTime @default(now())
+  intervalStart       DateTime
+  intervalEnd         DateTime?
+  value               Float
+  unit                String   // kWh, kW, W/m2, C
+  cumulativeValue     Float?
+  sourceEventId       String?
+  qualityStatus       String   @default("received") // received, validated, suspect, rejected, corrected, approved
+  validationStatus    String   @default("pending")  // pending, valid, invalid, reviewed
+  canonicalPayloadHash String?  // الهاش الذي أعادت المنصة حسابه من البيانات الواضحة (Check_Hash)
+  n8nProvidedHash      String?  // الهاش الذي أرسله n8n مع الحزمة (Hash_08) — للمقارنة الفورية
+  hashMatchStatus      String?  // match, mismatch, pending — نتيجة المطابقة الفورية وقت الاستقبال
+  hederaTransactionId  String?  // رقم المعاملة على شبكة Hedera (وثّقه n8n مباشرة)
+  hederaConsensusAt    String?  // الطابع الزمني للإجماع من Hedera (كما أرسله n8n)
+  // Audit fields for suspect/rejected readings
+  suspectReason       String?  // سبب الاشتباه أو الرفض
+  suspectRuleCode     String?  // رمز القاعدة التي أطلقت التنبيه
+  suspectSeverity     String?  // low, medium, high, critical
+  suspectDetails      String?  // JSON تفاصيل إضافية
+  auditedAt           DateTime? // وقت التدقيق
+  auditedBy           String?  // من قام بالتدقيق
+  auditAction         String?  // approved, corrected, rejected, escalated
+  auditNote           String?  // ملاحظات المراجع
+  createdAt           DateTime @default(now())
+
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site                Site?    @relation(fields: [siteId], references: [id])
+  asset               Asset?   @relation(fields: [assetId], references: [id])
+  device              Device?  @relation(fields: [deviceId], references: [id])
+
+  @@index([projectId, measuredAt])
+  @@index([projectId, metricType, measuredAt])
+  @@unique([deviceId, metricType, intervalStart])
+}
+
+// ============== الحسابات والتحقق ==============
+
+model CalculationRun {
+  id              String   @id @default(cuid())
+  projectId       String
+  runType         String   // energy, carbon_avoided, financial_savings, performance, attestation
+  status          String   @default("pending") // pending, running, completed, failed
+  periodStart     DateTime
+  periodEnd       DateTime
+  methodologyVersion String?
+  parametersHash  String?
+  result          String?  // JSON string of results
+  totalEnergyKwh  Float?
+  totalCo2AvoidedKg Float?
+  totalSavings     Float?
+  performanceRatio Float?
+  availability    Float?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ============== التوثيق على Hedera ==============
+
+model AttestationBatch {
+  id                  String   @id @default(cuid())
+  projectId           String
+  batchHash           String   @unique // SHA-256 of canonical payload
+  merkleRoot          String?
+  status              String   @default("pending") // pending, submitted, confirmed, mismatch, failed, superseded
+  hederaTransactionId String?
+  consensusTimestamp  String?
+  payloadSummary      String?  // JSON
+  itemCount           Int      @default(0)
+  createdAt           DateTime @default(now())
+  submittedAt         DateTime?
+  confirmedAt         DateTime?
+
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ============== وحدات الأثر ==============
+
+model ImpactAccount {
+  id              String   @id @default(cuid())
+  organizationId  String
+  name            String
+  accountType     String   @default("carbon_avoided") // carbon_avoided, energy_offset
+  balance         Float    @default(0)
+  unit            String   @default("kgCO2e")
+  createdAt       DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  impactUnits     ImpactUnit[]
+}
+
+model ImpactUnit {
+  id              String   @id @default(cuid())
+  projectId       String
+  accountId       String
+  amount          Float
+  unit            String   @default("kgCO2e")
+  status          String   @default("estimated") // estimated, verified, issued, transferred, retired, cancelled
+  periodStart     DateTime
+  periodEnd       DateTime
+  methodologyVersion String?
+  createdAt       DateTime @default(now())
+  retiredAt       DateTime?
+
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account         ImpactAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// ============== التقارير ==============
+
+model Report {
+  id              String   @id @default(cuid())
+  projectId       String
+  title           String
+  reportType      String   // energy, carbon, performance, quality, availability, incidents, attestation, comprehensive
+  status          String   @default("draft") // draft, under_review, approved, published, revoked
+  periodStart     DateTime
+  periodEnd       DateTime
+  summary         String?
+  data            String?  // JSON
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ============== الحالات والتنبيهات ==============
+
+model Case {
+  id              String   @id @default(cuid())
+  projectId       String
+  title           String
+  caseType        String   // anomaly, device_offline, data_gap, attestation_failure, performance_drop
+  priority        String   @default("medium") // low, medium, high, critical
+  status          String   @default("open") // open, in_progress, resolved, closed
+  description     String?
+  slaDeadline     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String?
+  projectId       String?
+  title           String
+  body            String
+  category        String   @default("system") // system, alert, attestation, report, case
+  severity        String   @default("info") // info, warning, error, success
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ============== التدقيق ==============
+
+model AuditEvent {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  projectId       String?
+  userId          String?
+  actor           String
+  action          String
+  resource        String
+  resourceId      String?
+  result          String   @default("success") // success, failure, denied
+  ipAddress       String?
+  userAgent       String?
+  correlationId   String?
+  metadata        String?  // JSON
+  createdAt       DateTime @default(now())
+
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  project         Project?       @relation(fields: [projectId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id])
+}
+
+// ============== الجداول المرجعية بإصدار ومصدر وتاريخ سريان ==============
+
+model GridEmissionFactor {
+  id              String   @id @default(cuid())
+  countryCode     String   // SA, AE, QA, etc.
+  countryName     String
+  factor          Float    // kgCO2e per kWh
+  source          String   // Saudi Electricity Company, IEA, etc.
+  version         String   // v1.2-2024
+  type            String   @default("location-based") // location-based, market-based
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved") // draft, reviewed, approved
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryCode, validFrom])
+}
+
+model Tariff {
+  id              String   @id @default(cuid())
+  countryCode     String
+  tariffType      String   // retail, feed_in
+  rate            Float    // currency per kWh
+  currency        String   // SAR, AED, etc.
+  source          String   // Electricity Regulatory Authority
+  version         String   // v2024-1
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+
+  @@index([countryCode, tariffType, validFrom])
+}
+
+model ConversionFactor {
+  id              String   @id @default(cuid())
+  factorType      String   // diesel_per_kwh, gas_per_kwh, tree_co2, car_co2_per_km
+  value           Float
+  unit            String   // L/kWh, m3/kWh, kgCO2/tree/year
+  source          String   // EPA, IEA, IPCC
+  version         String
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+
+  @@index([factorType, validFrom])
+}
+
+model Methodology {
+  id              String   @id @default(cuid())
+  code            String   @unique // ghg_protocol_scope2, iso_14064_2
+  name            String
+  nameAr          String?
+  description     String?
+  version         String
+  frameworkRef    String?  // GHG Protocol, ISO, etc.
+  validFrom       DateTime
+  validTo         DateTime?
+  approvalStatus  String   @default("approved")
+  createdAt       DateTime @default(now())
+}
+
+// ============== Ingestion Pipeline ==============
+
+model IngestionBatch {
+  id              String   @id @default(cuid())
+  projectId       String
+  deviceId        String?
+  source          String   // http_api, mqtt, csv, manual
+  sourceEventId   String?  // unique event ID for idempotency
+  status          String   @default("received") // received, processing, completed, failed, partial
+  rawPayloadCount Int      @default(0)
+  processedCount  Int      @default(0)
+  failedCount     Int      @default(0)
+  duplicateCount  Int      @default(0)  // deduplication counter
+  idempotencyKey  String?  @unique // prevents reprocessing same batch
+  errorMessage    String?
+  metadata        String?  // JSON
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rawPayloads     RawPayload[]
+}
+
+model RawPayload {
+  id              String   @id @default(cuid())
+  ingestionBatchId String
+  deviceId        String?
+  payloadHash     String   @unique // SHA-256 of raw payload for deduplication
+  rawData         String   // JSON string of original payload
+  payloadSize     Int
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  status          String   @default("received") // received, processed, failed, duplicate
+  errorMessage    String?
+  readingId       String?  // link to created EnergyReading if processed
+
+  ingestionBatch  IngestionBatch @relation(fields: [ingestionBatchId], references: [id], onDelete: Cascade)
+}
+
+model ReadingAdjustment {
+  id              String   @id @default(cuid())
+  readingId       String
+  originalValue   Float
+  adjustedValue   Float
+  reason          String   // meter_reset, rollover, correction, recalibration
+  reasonCode      String   // METER_RESET, ROLLOVER, MANUAL_CORRECTION
+  adjustedBy      String   // user email
+  adjustedAt      DateTime @default(now())
+  approvedBy      String?
+  approvedAt      DateTime?
+  status          String   @default("pending") // pending, approved, rejected
+  note            String?
+
+  @@index([readingId])
+}
+
+model ValidationRule {
+  id              String   @id @default(cuid())
+  ruleCode        String   @unique // OUT_OF_RANGE, SPIKE_DETECTED, etc.
+  name            String
+  nameAr          String?
+  description     String
+  category        String   // deterministic, statistical, ml
+  severity        String   @default("medium") // low, medium, high, critical
+  isActive        Boolean  @default(true)
+  parameters      String?  // JSON of rule-specific params
+  createdAt       DateTime @default(now())
+}
+
+model ValidationResult {
+  id              String   @id @default(cuid())
+  readingId       String
+  ruleId          String?
+  ruleCode        String
+  status          String   // passed, failed, warning
+  severity        String   // low, medium, high, critical
+  details         String?  // JSON
+  validatedAt     DateTime @default(now())
+
+  @@index([readingId])
+  @@index([ruleCode])
+}
+
+// ============== Weather Integration ==============
+
+model WeatherSource {
+  id              String   @id @default(cuid())
+  name            String   // Open-Meteo, NASA POWER
+  apiUrl          String
+  apiKey          String?
+  isActive        Boolean  @default(true)
+  rateLimitPerDay Int?
+  lastSyncAt      DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model WeatherObservation {
+  id              String   @id @default(cuid())
+  projectId       String
+  sourceId        String
+  observedAt      DateTime
+  temperatureC    Float?
+  humidityPct     Float?
+  irradianceWm2   Float?
+  windSpeedMs     Float?
+  cloudCoverPct   Float?
+  precipitationMm Float?
+  dataSource      String   // Open-Meteo, NASA POWER
+  createdAt       DateTime @default(now())
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, observedAt])
+  @@unique([projectId, observedAt, sourceId])
+}
+
+model ExpectedYieldModel {
+  id              String   @id @default(cuid())
+  projectId       String
+  modelType       String   // p50, p90, deterministic
+  periodStart     DateTime
+  periodEnd       DateTime
+  expectedEnergyKwh Float
+  referenceYield  Float?
+  performanceRatio Float?
+  weatherSource   String?
+  calculationMethod String?
+  parameters      String?  // JSON
+  createdAt       DateTime @default(now())
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, periodStart])
+}
+
+// ============== Hedera Outbox & Reconciliation ==============
+
+model OutboxEvent {
+  id              String   @id @default(cuid())
+  eventType       String   // attestation_submit, attestation_retry
+  payload         String   // JSON of event data
+  status          String   @default("pending") // pending, processing, sent, confirmed, failed
+  retryCount      Int      @default(0)
+  maxRetries      Int      @default(5)
+  nextRetryAt     DateTime?
+  lastError       String?
+  hederaTransactionId String?
+  consensusTimestamp  String?
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+
+  @@index([status, nextRetryAt])
+}
+
+model ReconciliationRun {
+  id              String   @id @default(cuid())
+  projectId       String?
+  batchId         String?
+  status          String   @default("pending") // pending, running, completed, mismatch, failed
+  expectedCount   Int      @default(0)
+  actualCount     Int      @default(0)
+  mismatchCount   Int      @default(0)
+  details         String?  // JSON
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  project         Project? @relation(fields: [projectId], references: [id])
+}
+
+// ============== SaaS: Integration Config & Secrets ==============
+
+model IntegrationConfig {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  name            String   @unique // hedera, open-meteo, n8n, stripe, etc.
+  displayName     String
+  description     String?
+  category        String   @default("integration") // integration, payment, notification
+  isActive        Boolean  @default(false)
+  // Encrypted secrets stored as base64 strings (never returned in API)
+  config          String?  // JSON of non-secret config (e.g., network, apiUrl)
+  encryptedSecret String?  // AES-256-GCM encrypted secret blob
+  secretKey       String?  // Key identifier for rotation
+  lastTestedAt    DateTime?
+  lastTestResult  String?  // success, failed
+  lastTestError   String?
+  createdBy       String?  // user email
+  updatedBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId, name])
+}
+
+// ============== SaaS: Webhook Events (n8n etc.) ==============
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  source          String   @default("n8n") // n8n, custom, external
+  eventId         String?  @unique // x-n8n-event-id for idempotency
+  eventType       String?  // reading_ingest, alert, etc.
+  signature       String?  // HMAC signature from header
+  timestamp       DateTime? // from x-n8n-timestamp
+  sourceId        String?  // from x-source-id
+  payloadHash     String?  // SHA-256 of raw payload
+  status          String   @default("received") // received, processed, failed, duplicate
+  payload         String?  // JSON of decrypted payload
+  errorMessage    String?
+  ingestionBatchId String? // link to IngestionBatch if processed
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+
+  @@index([source, status])
+  @@index([eventId])
+}
+
+// ============== SaaS: Plans & Subscriptions ==============
+
+model Plan {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  nameAr          String?
+  description     String?
+  priceMonthly    Float    @default(0)
+  currency        String   @default("SAR")
+  maxProjects     Int      @default(10)
+  maxDevices      Int      @default(50)
+  maxUsers        Int      @default(10)
+  features        String?  // JSON array of feature flags
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id              String   @id @default(cuid())
+  organizationId  String   @unique
+  planId          String
+  status          String   @default("trial") // trial, active, suspended, cancelled
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan            Plan         @relation(fields: [planId], references: [id])
+}
