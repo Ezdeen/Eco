@@ -2,27 +2,8 @@
 
 /**
  * ProjectsSection — نسخة مُصحَّحة
- *
- * السبب الجذري للانهيار (TypeError: Cannot read properties of undefined (reading 'toLocaleString'))
- * كان في قراءة الحقول `p.readingsCount`, `p.sitesCount`, `p.devicesCount`, `p.casesCount`,
- * `p.attestationsCount`, `p.assetsCount` كحقول مُسطّحة على المشروع.
- *
- * لكن الـ API في `/api/projects/route.ts` يُرجع شكل Prisma الخام:
- *   - sites: array            (طوله = عدد المواقع)
- *   - assets: array           (طوله = عدد الأصول)
- *   - devices: array          (طوله = عدد الأجهزة)
- *   - _count.readings         (عدد القراءات)
- *   - _count.cases
- *   - _count.attestations
- *   - _count.reports
- *
- * إذًا `p.readingsCount` كان undefined دائمًا → undefined.toLocaleString() → انهيار.
- *
- * الإصلاح:
- *  1. تحديث واجهة Project لتطابق شكل API الحقيقي.
- *  2. إضافة دالة fmtNum مركزية لا تنهار على undefined/null/NaN.
- *  3. قراءة الأعداد من المسارات الصحيحة (p._count.readings, p.sites.length, ...).
- *  4. إضافة fallback صريح (|| 0) في كل مكان.
+ * - إصلاح toLocaleString crash (الحصول على counts من _count.* و sites.length إلخ)
+ * - إضافة أزرار دورة الحياة: تشغيل رسمي / تعليق / تقاعد / إرسال للمراجعة
  */
 
 import { useEffect, useState, useCallback } from 'react'
@@ -34,29 +15,15 @@ import { StatusBadge } from '@/components/platform/status-badge'
 import { ProjectFormModal } from '@/components/projects/project-form-modal'
 import { DeleteProjectDialog } from '@/components/projects/delete-project-dialog'
 import {
-  FolderKanban,
-  MapPin,
-  Calendar,
-  Zap,
-  DollarSign,
-  Search,
-  Plus,
-  Pencil,
-  Trash2,
-  Cpu,
-  User,
-  Phone,
-  MoreVertical,
+  FolderKanban, MapPin, Calendar, Zap, DollarSign, Search, Plus, Pencil, Trash2,
+  Cpu, User, Phone, MoreVertical,
+  PlayCircle, PauseCircle, Power, Send, Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-/** شكل المشروع كما يُرجِعه /api/projects/route.ts (Prisma findMany مع include). */
 interface Project {
   id: string
   name: string
@@ -79,22 +46,12 @@ interface Project {
   inverterSerial?: string | null
   inverterType?: string | null
   createdAt: string
-
-  // علاقات (arrays) من Prisma
   sites: unknown[]
   assets: unknown[]
   devices: unknown[]
-
-  // مجمّعات Prisma
-  _count: {
-    readings: number
-    cases: number
-    attestations: number
-    reports: number
-  }
+  _count: { readings: number; cases: number; attestations: number; reports: number }
 }
 
-/** تنسيق رقم آمن — لا ينهار على undefined/null/NaN. */
 function fmtNum(n: number | null | undefined, locale = 'en-US'): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return '0'
   return n.toLocaleString(locale)
@@ -110,6 +67,7 @@ export function ProjectsSection() {
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -123,9 +81,6 @@ export function ProjectsSection() {
     return () => controller.abort()
   }, [])
 
-  // project_manager has read-only access — creating/editing projects is reserved for
-  // org_admin. Hiding the button avoids the confusing "you don't have permission" error
-  // after already opening the form (the server still enforces this regardless).
   const canCreateProject = userRole === 'org_admin'
 
   const fetchProjects = useCallback(() => {
@@ -133,7 +88,6 @@ export function ProjectsSection() {
     fetch('/api/projects')
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d: { projects?: Project[] }) => {
-        // فلترة صارمة: تجاهل أي عنصر لا يحقق الشكل المتوقع.
         const safe = Array.isArray(d?.projects)
           ? d.projects.filter((p) => p && typeof p === 'object' && p.id)
           : []
@@ -157,17 +111,10 @@ export function ProjectsSection() {
             : []
           setProjects(safe)
         })
-        .catch(() => {
-          if (cancelled) return
-          setProjects([])
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
+        .catch(() => { if (cancelled) return; setProjects([]) })
+        .finally(() => { if (!cancelled) setLoading(false) })
     })
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
   const filtered = projects.filter(
@@ -181,20 +128,81 @@ export function ProjectsSection() {
         (p.sponsorName || '').toLowerCase().includes(search.toLowerCase())),
   )
 
-  const handleNew = () => {
-    setEditingProject(null)
-    setFormOpen(true)
-  }
+  const handleNew = () => { setEditingProject(null); setFormOpen(true) }
+  const handleEdit = (project: Project) => { setEditingProject(project); setFormOpen(true) }
+  const handleDeleteClick = (project: Project) => { setDeletingProject(project); setDeleteOpen(true) }
 
-  const handleEdit = (project: Project) => {
-    setEditingProject(project)
-    setFormOpen(true)
-  }
+  const changeStatus = useCallback(
+    async (project: Project, newStatus: 'active' | 'suspended' | 'decommissioned' | 'under_review' | 'approved' | 'draft', confirmLabel?: string) => {
+      if (confirmLabel && !window.confirm(confirmLabel)) return
+      setActionLoadingId(project.id)
+      try {
+        const res = await fetch(`/api/projects/${project.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) { toast.error(data?.error || 'فشل تغيير حالة المشروع'); return }
+        toast.success(data?.message || 'تم تحديث حالة المشروع')
+        fetchProjects()
+      } catch (err) {
+        console.error('changeStatus error:', err)
+        toast.error('حدث خطأ في الاتصال بالخادم')
+      } finally {
+        setActionLoadingId(null)
+      }
+    },
+    [fetchProjects],
+  )
 
-  const handleDeleteClick = (project: Project) => {
-    setDeletingProject(project)
-    setDeleteOpen(true)
-  }
+  const handleCommission = useCallback(
+    async (project: Project) => {
+      if (!window.confirm(`تشغيل المشروع "${project.nameAr || project.name}" رسميًا؟\nسيتم تعيين الحالة إلى "نشط" وتسجيل تاريخ التشغيل.`)) return
+      setActionLoadingId(project.id)
+      try {
+        const res = await fetch(`/api/projects/${project.id}/commission`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) { toast.error(data?.error || 'فشل تشغيل المشروع'); return }
+        toast.success(data?.message || 'تم تشغيل المشروع رسميًا')
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          toast.warning('تحذيرات:', {
+            description: (
+              <ul className="mt-1 space-y-0.5 text-xs">
+                {data.warnings.map((w: string, i: number) => (<li key={i}>• {w}</li>))}
+              </ul>
+            ),
+          })
+        }
+        fetchProjects()
+      } catch (err) {
+        console.error('commission error:', err)
+        toast.error('حدث خطأ في الاتصال بالخادم')
+      } finally {
+        setActionLoadingId(null)
+      }
+    },
+    [fetchProjects],
+  )
+
+  const handleSuspend = useCallback(
+    (project: Project) => changeStatus(project, 'suspended', `تعليق المشروع "${project.nameAr || project.name}"؟\nلن يستقبل بيانات جديدة حتى إعادة تفعيله.`),
+    [changeStatus],
+  )
+
+  const handleDecommission = useCallback(
+    (project: Project) => changeStatus(project, 'decommissioned', `تقاعد المشروع "${project.nameAr || project.name}" نهائيًا؟\nلا يمكن التراجع عن هذا الإجراء.`),
+    [changeStatus],
+  )
+
+  const handleSubmitForReview = useCallback(
+    (project: Project) => changeStatus(project, 'under_review', `إرسال المشروع "${project.nameAr || project.name}" للمراجعة؟`),
+    [changeStatus],
+  )
 
   if (loading) {
     return (
@@ -208,7 +216,6 @@ export function ProjectsSection() {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -249,10 +256,8 @@ export function ProjectsSection() {
         عرض {filtered.length} من {projects.length} مشروع
       </div>
 
-      {/* Project cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((p) => {
-          // استخلاص الأعداد بشكل آمن من شكل API الحقيقي.
           const sitesCount = Array.isArray(p.sites) ? p.sites.length : 0
           const assetsCount = Array.isArray(p.assets) ? p.assets.length : 0
           const devicesCount = Array.isArray(p.devices) ? p.devices.length : 0
@@ -276,8 +281,12 @@ export function ProjectsSection() {
                   {canCreateProject && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100">
-                          <MoreVertical className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-60 group-hover:opacity-100" disabled={actionLoadingId === p.id}>
+                          {actionLoadingId === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MoreVertical className="h-4 w-4" />
+                          )}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -285,11 +294,39 @@ export function ProjectsSection() {
                           <Pencil className="h-3.5 w-3.5 ml-2" />
                           تعديل
                         </DropdownMenuItem>
+
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteClick(p)}
-                          className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
-                        >
+
+                        {p.status !== 'active' && p.status !== 'decommissioned' && (
+                          <DropdownMenuItem onClick={() => handleCommission(p)} className="text-emerald-700 focus:text-emerald-800 focus:bg-emerald-50 dark:focus:bg-emerald-950/30">
+                            <PlayCircle className="h-3.5 w-3.5 ml-2" />
+                            تشغيل رسمي
+                          </DropdownMenuItem>
+                        )}
+
+                        {p.status === 'draft' && (
+                          <DropdownMenuItem onClick={() => handleSubmitForReview(p)}>
+                            <Send className="h-3.5 w-3.5 ml-2" />
+                            إرسال للمراجعة
+                          </DropdownMenuItem>
+                        )}
+
+                        {p.status === 'active' && (
+                          <DropdownMenuItem onClick={() => handleSuspend(p)} className="text-amber-700 focus:text-amber-800 focus:bg-amber-50 dark:focus:bg-amber-950/30">
+                            <PauseCircle className="h-3.5 w-3.5 ml-2" />
+                            تعليق
+                          </DropdownMenuItem>
+                        )}
+
+                        {(p.status === 'active' || p.status === 'suspended') && (
+                          <DropdownMenuItem onClick={() => handleDecommission(p)} className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950">
+                            <Power className="h-3.5 w-3.5 ml-2" />
+                            تقاعد نهائي
+                          </DropdownMenuItem>
+                        )}
+
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleDeleteClick(p)} className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950">
                           <Trash2 className="h-3.5 w-3.5 ml-2" />
                           حذف
                         </DropdownMenuItem>
@@ -302,13 +339,11 @@ export function ProjectsSection() {
                 </div>
               </CardHeader>
               <CardContent className="pt-3 space-y-3">
-                {/* Location */}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5" />
                   <span>{p.city || '—'}, {p.country || '—'}</span>
                 </div>
 
-                {/* Coordinates */}
                 {p.latitude !== undefined && p.longitude !== undefined &&
                  p.latitude !== null && p.longitude !== null && (
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
@@ -318,7 +353,6 @@ export function ProjectsSection() {
                   </div>
                 )}
 
-                {/* Capacity + Tariff */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/40">
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
@@ -342,7 +376,6 @@ export function ProjectsSection() {
                   </div>
                 </div>
 
-                {/* Inverter serial */}
                 {p.inverterSerial && (
                   <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
                     <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -351,16 +384,13 @@ export function ProjectsSection() {
                   </div>
                 )}
 
-                {/* Sponsor */}
                 {(p.sponsorName || p.sponsorPhone) && (
                   <div className="p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
                     <div className="flex items-center gap-1.5 text-[10px] text-violet-700 dark:text-violet-400 mb-1">
                       <User className="h-3 w-3" />
                       <span className="font-medium">المراقب / الممول</span>
                     </div>
-                    {p.sponsorName && (
-                      <p className="text-xs font-medium truncate">{p.sponsorName}</p>
-                    )}
+                    {p.sponsorName && <p className="text-xs font-medium truncate">{p.sponsorName}</p>}
                     {p.sponsorPhone && (
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
                         <Phone className="h-2.5 w-2.5" />
@@ -370,7 +400,6 @@ export function ProjectsSection() {
                   </div>
                 )}
 
-                {/* Stats — قراءة آمنة من شكل API الحقيقي */}
                 <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t">
                   <div>
                     <p className="text-base font-bold tabular-nums">{fmtNum(sitesCount)}</p>
@@ -386,13 +415,14 @@ export function ProjectsSection() {
                   </div>
                 </div>
 
-                {/* Footer */}
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                     <Calendar className="h-3 w-3" />
                     {p.commissionedAt
                       ? `تشغيل: ${new Date(p.commissionedAt).toLocaleDateString('ar-SA')}`
-                      : 'غير مُشغّل بعد'}
+                      : p.status === 'active'
+                        ? 'نشط بدون تاريخ تشغيل'
+                        : 'غير مُشغّل بعد'}
                   </div>
                   <div className="flex items-center gap-1">
                     {casesCount > 0 && (
@@ -407,6 +437,24 @@ export function ProjectsSection() {
                     )}
                   </div>
                 </div>
+
+                {canCreateProject && p.status !== 'active' && p.status !== 'decommissioned' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                    onClick={() => handleCommission(p)}
+                    disabled={actionLoadingId === p.id}
+                  >
+                    {actionLoadingId === p.id ? (
+                      <Loader2 className="h-3.5 w-3.5 ml-1 animate-spin" />
+                    ) : (
+                      <PlayCircle className="h-3.5 w-3.5 ml-1" />
+                    )}
+                    تشغيل رسمي
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )
@@ -428,7 +476,6 @@ export function ProjectsSection() {
         </Card>
       )}
 
-      {/* Modals */}
       <ProjectFormModal
         open={formOpen}
         onOpenChange={setFormOpen}
