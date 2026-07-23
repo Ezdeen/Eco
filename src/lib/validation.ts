@@ -51,7 +51,14 @@ export const createProjectSchema = z.object({
   name: z.string().trim().min(1, 'اسم المشروع مطلوب'),
   nameAr: nullableString,
   code: z.string().trim().min(1, 'رمز المشروع مطلوب'),
-  projectType: z.string().trim().default('grid_tied'),
+  // Restricted to the exact set of types the UI (PROJECT_TYPES in project-form-modal.tsx)
+  // and the energy-performance reporting logic actually understand. Previously this was a
+  // free-form string, so a typo or an unexpected value from the API would silently create
+  // a project that reporting/filtering logic (e.g. `projectType: { not: 'afforestation' }`)
+  // could not correctly classify.
+  projectType: z.enum(['grid_tied', 'hybrid', 'off_grid', 'afforestation'], {
+    errorMap: () => ({ message: 'نوع المشروع غير صالح' }),
+  }).default('grid_tied'),
 
   country: nullableString,
   city: nullableString,
