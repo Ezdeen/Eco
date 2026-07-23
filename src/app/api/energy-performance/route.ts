@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     const allAlerts: any[] = []
 
     for (const project of projects) {
-      // Fetch readings within the selected period
+      // Fetch export readings within the selected period
       const readings = await db.energyReading.findMany({
         where: {
           projectId: project.id,
@@ -74,6 +74,17 @@ export async function GET(request: NextRequest) {
         },
         select: { value: true, measuredAt: true, qualityStatus: true, deviceId: true },
         orderBy: { measuredAt: 'asc' },
+      })
+
+      // Fetch import/self-consumption readings within the selected period (real data, not a fixed ratio)
+      const importReadings = await db.energyReading.findMany({
+        where: {
+          projectId: project.id,
+          metricType: 'energy_import_kwh',
+          measuredAt: { gte: periodStart },
+          qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+        },
+        select: { value: true },
       })
 
       // Also fetch suspect/rejected readings for SLA
@@ -102,25 +113,52 @@ export async function GET(request: NextRequest) {
 
       // Energy aggregation
       const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
+      const totalImportEnergy = importReadings.reduce((s, r) => s + r.value, 0)
       const maxPower = readings.length > 0 ? Math.max(...readings.map((r) => r.value)) : 0
       const currentPower = readings.length > 0 ? readings[readings.length - 1].value : 0
 
-      // Expected energy
-      const PSH = 5.5
-      const systemLosses = 0.14
-      const inverterEfficiency = 0.97
       const operationalDays = project.commissionedAt
         ? Math.floor((now.getTime() - project.commissionedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 0
 
       const periodDays = Math.max(1, Math.ceil((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)))
+
+      // Expected energy: derive PSH (peak sun hours) from actual stored weather observations
+      // for this project/period instead of a fixed constant. Falls back to a documented
+      // regional default only when no weather data has been recorded yet.
+      const systemLosses = 0.14
+      const inverterEfficiency = 0.97
+
+      const weatherObservations = await db.weatherObservation.findMany({
+        where: {
+          projectId: project.id,
+          observedAt: { gte: periodStart, lte: now },
+          irradianceWm2: { not: null },
+        },
+        select: { irradianceWm2: true },
+      })
+
+      const FALLBACK_PSH = 5.5 // used only when no weather observations exist yet for this project
+      let psh = FALLBACK_PSH
+      let pshSource: 'weather_observed' | 'fallback_default' = 'fallback_default'
+
+      if (weatherObservations.length > 0) {
+        // irradianceWm2 is stored as MJ/m²/day (see src/lib/weather.ts); convert to kWh/m²/day (PSH equivalent)
+        const avgIrradianceMJ = weatherObservations.reduce((s, w) => s + (w.irradianceWm2 || 0), 0) / weatherObservations.length
+        const avgPsh = avgIrradianceMJ * 0.277778
+        if (avgPsh > 0) {
+          psh = avgPsh
+          pshSource = 'weather_observed'
+        }
+      }
+
       const expectedEnergyPeriod = project.capacityKwp
-        ? project.capacityKwp * PSH * periodDays * (1 - systemLosses) * inverterEfficiency
+        ? project.capacityKwp * psh * periodDays * (1 - systemLosses) * inverterEfficiency
         : 0
       const achievementRate = expectedEnergyPeriod > 0 ? (totalEnergy / expectedEnergyPeriod) * 100 : 0
 
       // Performance Ratio
-      const referenceYield = project.capacityKwp ? PSH * periodDays * (1 - systemLosses) : 0
+      const referenceYield = project.capacityKwp ? psh * periodDays * (1 - systemLosses) : 0
       const finalYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
       const performanceRatio = referenceYield > 0 ? (finalYield / referenceYield) * 100 : 0
       const specificYield = project.capacityKwp ? totalEnergy / project.capacityKwp : 0
@@ -157,11 +195,26 @@ export async function GET(request: NextRequest) {
       })
 
       const connectedDevices = deviceHealth.filter((d) => d.connectivity === 'connected')
-      const isDeviceConnected = connectedDevices.length > 0
-      const deviceUptimeHours = operationalDays * 24 * 0.98
-      const technicalAvailability = isDeviceConnected
-        ? Math.min(100, (deviceUptimeHours / Math.max(1, operationalDays * 24)) * 100)
+
+      // === SLA Indicators ===
+      // 1. Device downtime (minutes since last seen for offline devices) — computed first
+      // so technicalAvailability below can be derived from it instead of a fixed ratio.
+      let deviceDowntimeMinutes = 0
+      for (const device of devices) {
+        if (device.status !== 'connected' && device.lastSeenAt) {
+          const downtime = Math.floor((now.getTime() - device.lastSeenAt.getTime()) / (1000 * 60))
+          deviceDowntimeMinutes += downtime
+        }
+      }
+
+      // Technical availability = uptime / total possible time, based on actual recorded
+      // device downtime (deviceDowntimeMinutes) rather than an assumed fixed 98% ratio.
+      const periodMinutes = Math.max(1, periodDays * 24 * 60) * Math.max(1, devices.length)
+      const cappedDowntimeMinutes = Math.min(deviceDowntimeMinutes, periodMinutes)
+      const technicalAvailability = devices.length > 0
+        ? Math.max(0, Math.min(100, ((periodMinutes - cappedDowntimeMinutes) / periodMinutes) * 100))
         : 0
+      const deviceUptimeHours = (periodMinutes - cappedDowntimeMinutes) / 60
 
       const expectedReadingsCount = periodDays * 14
       const actualReadingsCount = readings.length
@@ -173,18 +226,9 @@ export async function GET(request: NextRequest) {
         ? (totalEnergy / (project.capacityKwp * 24 * periodDays)) * 100
         : 0
 
-      const operatingHours = periodDays * 14
-      const downtimeHours = Math.round(periodDays * 24 * 0.02)
-
-      // === SLA Indicators ===
-      // 1. Device downtime (minutes since last seen for offline devices)
-      let deviceDowntimeMinutes = 0
-      for (const device of devices) {
-        if (device.status !== 'connected' && device.lastSeenAt) {
-          const downtime = Math.floor((now.getTime() - device.lastSeenAt.getTime()) / (1000 * 60))
-          deviceDowntimeMinutes += downtime
-        }
-      }
+      // Operating/downtime hours derived from the same real per-device downtime figure
+      const operatingHours = Math.round(deviceUptimeHours)
+      const downtimeHours = Math.round(cappedDowntimeMinutes / 60)
 
       // 2. Case processing time (average time to resolve cases in this period)
       const cases = await db.case.findMany({
@@ -207,11 +251,16 @@ export async function GET(request: NextRequest) {
         ? Math.max(0, ((expectedReadingsCount - actualReadingsCount) / expectedReadingsCount) * 100)
         : 0
 
-      // Energy flow
-      const energyExported = totalEnergy * 0.3
-      const selfConsumed = totalEnergy * 0.7
-      const energyLostFaults = totalEnergy * 0.01
-      const energyLostWeather = totalEnergy * 0.05
+      // Energy flow — derived from actual readings, not a fixed ratio:
+      // - selfConsumed comes from real energy_import_kwh readings for the same project/period.
+      // - exportedToGrid is what's actually left after self-consumption (never negative).
+      // - lostDueToFaults is estimated from the actual value of suspect/rejected readings
+      //   in the period (a real, if partial, proxy for energy lost to fault conditions).
+      // - lostDueToWeather is not separately measured by any sensor in this system yet,
+      //   so it is reported as null/unavailable rather than a made-up constant.
+      const selfConsumed = Math.min(totalImportEnergy, totalEnergy)
+      const energyExported = Math.max(0, totalEnergy - selfConsumed)
+      const energyLostFaults = suspectReadings.reduce((s, r) => s + Math.abs(r.value), 0)
 
       // === Smart Alerts ===
       const projectAlerts: any[] = []
@@ -297,6 +346,8 @@ export async function GET(request: NextRequest) {
           maxPower: Math.round(maxPower),
           expected: Math.round(expectedEnergyPeriod),
           achievementRate: Math.round(achievementRate * 10) / 10,
+          pshUsed: Math.round(psh * 100) / 100,
+          pshSource, // 'weather_observed' when derived from real WeatherObservation rows, 'fallback_default' otherwise
         },
         performance: {
           performanceRatio: Math.round(performanceRatio * 10) / 10,
@@ -318,7 +369,10 @@ export async function GET(request: NextRequest) {
           exportedToGrid: Math.round(energyExported),
           selfConsumed: Math.round(selfConsumed),
           lostDueToFaults: Math.round(energyLostFaults),
-          lostDueToWeather: Math.round(energyLostWeather),
+          // No sensor in this system currently isolates weather-specific losses from
+          // export readings, so we report null (unavailable) instead of a fabricated number.
+          lostDueToWeather: null,
+          hasImportData: totalImportEnergy > 0, // lets the UI show a note when selfConsumed is 0 due to missing import readings, not zero real consumption
         },
         alerts: projectAlerts,
       })
