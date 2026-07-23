@@ -16,6 +16,7 @@ export type Permission =
   | 'report:create'
   | 'report:approve'
   | 'report:download'
+  | 'report:delete'
   | 'impact:manage'
   | 'audit:read'
   | 'user:manage'
@@ -27,7 +28,7 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   org_admin: [
     'project:read', 'project:create', 'project:update', 'project:delete',
     'reading:read', 'reading:audit', 'calculation:run', 'attestation:submit',
-    'report:create', 'report:approve', 'report:download', 'impact:manage',
+    'report:create', 'report:approve', 'report:download', 'report:delete', 'impact:manage',
     'audit:read', 'user:manage', 'settings:manage',
   ],
   // مدير المشروع: مراقبة فقط (قراءة)، محصور بمشاريعه المرتبط بها فقط (يُفرض بـ requireProjectAccess)

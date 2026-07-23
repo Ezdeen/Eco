@@ -34,6 +34,7 @@ export function ReportsSection() {
   const [previewReport, setPreviewReport] = useState<any | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const fetchReports = useCallback(() => {
     setLoading(true)
@@ -171,6 +172,29 @@ export function ReportsSection() {
     } catch {
       setPreviewReport({ ...report, loading: false, error: true })
       toast.error('فشل تحميل معاينة التقرير')
+    }
+  }
+
+  const handleDelete = async (report: any) => {
+    if (!window.confirm('هل تريد حذف هذا التقرير نهائيًا؟')) {
+      return
+    }
+
+    setDeletingId(report.id)
+    try {
+      const res = await fetch(`/api/reports/${report.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || 'فشل حذف التقرير')
+      }
+      setReports((current) => current.filter((item) => item.id !== report.id))
+      toast.success('تم حذف التقرير بنجاح')
+    } catch (e: any) {
+      toast.error(e.message || 'فشل حذف التقرير')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -487,6 +511,21 @@ export function ReportsSection() {
                 >
                   <Printer className="h-3 w-3" />
                   <span className="text-[10px]">طباعة</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs flex flex-col gap-0.5 border-red-200 text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  onClick={() => handleDelete(r)}
+                  disabled={deletingId === r.id}
+                  title="حذف التقرير"
+                >
+                  {deletingId === r.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-3 w-3" />
+                  )}
+                  <span className="text-[10px]">حذف</span>
                 </Button>
               </div>
             </CardContent>
