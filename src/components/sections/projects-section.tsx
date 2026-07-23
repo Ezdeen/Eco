@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { StatusBadge } from '@/components/platform/status-badge'
 import { ProjectFormModal } from '@/components/projects/project-form-modal'
 import { DeleteProjectDialog } from '@/components/projects/delete-project-dialog'
+import { ProjectWeatherWidget } from '@/components/projects/project-weather-widget'
 import {
   FolderKanban, MapPin, Calendar, Zap, DollarSign, Search, Plus, Pencil, Trash2,
   Cpu, User, Phone, MoreVertical,
@@ -352,6 +353,8 @@ export function ProjectsSection() {
                     </span>
                   </div>
                 )}
+
+                <ProjectWeatherWidget projectId={p.id} latitude={p.latitude} longitude={p.longitude} />
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/40">
