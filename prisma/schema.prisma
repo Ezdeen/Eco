@@ -291,7 +291,12 @@ model CalculationRun {
   result          String?  // JSON string of results
   totalEnergyKwh  Float?
   totalCo2AvoidedKg Float?
-  totalSavings     Float?
+  totalSavings     Float?   // NOTE: always denominated in the project's own currency (Project.currency).
+                             // This model has no dedicated currency column of its own; the currency
+                             // used for this value is recorded in `result` (savingsCurrency field) and
+                             // returned by the API as `details.savingsCurrency`. Consider adding a
+                             // `savingsCurrency String?` column here in a future migration so the
+                             // currency travels with the row itself rather than only inside the JSON blob.
   performanceRatio Float?
   availability    Float?
   createdAt       DateTime @default(now())
@@ -706,6 +711,7 @@ model WebhookEvent {
 }
 
 // ============== SaaS: Plans & Subscriptions ==============
+
 model Plan {
   id              String   @id @default(cuid())
   name            String   @unique
