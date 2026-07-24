@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, projectScopeFilter } from '@/lib/authorization'
 import { computeBatchHash, computeMerkleRoot, createOutboxEvent, submitAttestation } from '@/lib/hedera'
 import { attestationSchema } from '@/lib/validation'
+import { getEmissionFactor } from '@/lib/reference-data'
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,8 +49,20 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => (b.confirmedAt?.getTime() || 0) - (a.confirmedAt?.getTime() || 0))[0]?.consensusTimestamp
 
     // Count unattested readings (readings without attestation in their project)
-    const projectIds = [...new Set(attestations.map((a) => a.projectId))]
-    const totalReadings = await db.energyReading.count()
+    // IMPORTANT FIX: totalReadings previously had no filter at all, counting
+    // EnergyReading rows for every project across every organization on the
+    // platform. It's now scoped to this user's own projects (same scope used
+    // for `attestations` above), so unattestedReadings reflects only this
+    // organization's/project-manager's own data instead of a platform-wide
+    // number minus one organization's attested count.
+    const scopedProjectIds = (
+      await db.project.findMany({
+        where: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+        select: { id: true },
+      })
+    ).map((p) => p.id)
+
+    const totalReadings = await db.energyReading.count({ where: { projectId: { in: scopedProjectIds } } })
     const attestedReadingsCount = attestations
       .filter((a) => a.status === 'confirmed')
       .reduce((s, a) => s + a.itemCount, 0)
@@ -60,20 +73,33 @@ export async function GET(request: NextRequest) {
     const unattestedBatches = stats.pending + stats.failed
 
     // Count retries (estimated from audit events)
+    // IMPORTANT FIX: previously unscoped, counting retry events for every
+    // organization on the platform. Scoped to this organization only
+    // (AuditEvent.organizationId), since retries aren't tied to a single project.
     const retryCount = await db.auditEvent.count({
-      where: { action: { contains: 'retry' } },
+      where: { organizationId: user.organizationId!, action: { contains: 'retry' } },
     })
 
     // Count mismatches
     const mismatchCount = stats.mismatch
 
     // Count approved and under-review reports
-    const approvedReports = await db.report.count({ where: { status: 'published' } })
-    const underReviewReports = await db.report.count({ where: { status: 'under_review' } })
+    // IMPORTANT FIX: previously unscoped, counting Report rows for every
+    // project across every organization. Scoped to this user's own projects.
+    const approvedReports = await db.report.count({ where: { projectId: { in: scopedProjectIds }, status: 'published' } })
+    const underReviewReports = await db.report.count({ where: { projectId: { in: scopedProjectIds }, status: 'under_review' } })
 
     // Latest methodology and emission factor versions
+    // IMPORTANT FIX: previously hardcoded to a Saudi-specific string regardless
+    // of the organization's actual country, and not tied to the same reference
+    // table used elsewhere (getEmissionFactor). Now derived from the org's
+    // country and the real GridEmissionFactor reference row, matching what the
+    // dashboard/calculations endpoints actually use.
+    const org = await db.organization.findUnique({ where: { id: user.organizationId! }, select: { country: true } })
+    const orgCountryCode = (org?.country || 'SA').substring(0, 2).toUpperCase()
+    const emissionFactorData = await getEmissionFactor(orgCountryCode)
     const latestMethodology = 'ghg_protocol_scope2_v1.2'
-    const latestEmissionFactor = '0.432 kgCO₂e/kWh (Saudi Grid - 2024)'
+    const latestEmissionFactor = `${emissionFactorData.factor} kgCO₂e/kWh (${emissionFactorData.source}, ${emissionFactorData.version})`
 
     // Hedera network status
     const hederaStatus = confirmedAttestations.length > 0 ? 'connected' : 'disconnected'
