@@ -35,6 +35,9 @@ export async function GET() {
     const activeProjects = projects.filter((p) => p.status === 'active')
 
     // === PRIORITY 3: Filter readings by organization's projects only ===
+    // All-time readings (unchanged scope from before): used for the headline
+    // KPI totals (totalEnergyKwh, totalCo2AvoidedKg, totalSavingsSar, data
+    // quality rates), exactly as previously.
     const readings = await db.energyReading.findMany({
       where: {
         projectId: { in: activeProjects.map((p) => p.id) },
@@ -50,27 +53,82 @@ export async function GET() {
     const emissionFactorData = await getEmissionFactor(countryCode)
     const totalCo2AvoidedKg = totalEnergyKwh * emissionFactorData.factor
 
-    const totalSavingsSar =
+    // Per-project tariff map, reused below for totalSavingsSar, the daily chart,
+    // and the average-tariff KPI, so all of these stay consistent with each other.
+    const tariffByProject: Record<string, number> = {}
+    for (const p of activeProjects) tariffByProject[p.id] = p.tariffRetail || 0.18
+
+    const computeSavings = (rows: typeof readings) =>
       activeProjects.reduce((sum, p) => {
-        const projectReadings = readings.filter((r) => r.projectId === p.id)
-        const projectEnergy = projectReadings.reduce((s, r) => s + r.value, 0)
-        return sum + projectEnergy * (p.tariffRetail || 0.18)
+        const projectEnergy = rows.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
+        return sum + projectEnergy * tariffByProject[p.id]
       }, 0)
 
-    // Readings by day for the last 30 days
+    const totalSavingsSar = computeSavings(readings)
+
+    // Weighted average retail tariff across active projects, weighted by each
+    // project's actual all-time energy - replaces the previously hardcoded
+    // "0.18 SAR/kWh" label shown under the savings KPI regardless of real tariffs.
+    const avgTariffRetail = totalEnergyKwh > 0
+      ? activeProjects.reduce((sum, p) => {
+          const projectEnergy = readings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
+          return sum + projectEnergy * tariffByProject[p.id]
+        }, 0) / totalEnergyKwh
+      : (activeProjects.reduce((s, p) => s + tariffByProject[p.id], 0) / Math.max(1, activeProjects.length))
+
+    // --- 30-day windows, used only for the daily chart and the period-over-period
+    // trend percentages below. These are a separate, narrower slice of `readings`
+    // and do NOT change the all-time headline KPIs above. ---
     const now = new Date()
+    const period1Start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    period1Start.setHours(0, 0, 0, 0)
+    const period2Start = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+    period2Start.setHours(0, 0, 0, 0)
+
+    const readings30d = readings.filter((r) => r.measuredAt >= period1Start)
+    const priorReadings30d = readings.filter((r) => r.measuredAt >= period2Start && r.measuredAt < period1Start)
+
+    const energy30d = readings30d.reduce((sum, r) => sum + r.value, 0)
+    const priorEnergy30d = priorReadings30d.reduce((sum, r) => sum + r.value, 0)
+    const co2_30d = energy30d * emissionFactorData.factor
+    const priorCo2_30d = priorEnergy30d * emissionFactorData.factor
+    const savings30d = computeSavings(readings30d)
+    const priorSavings30d = computeSavings(priorReadings30d)
+
+    // Real trend percentages (last 30 days vs. the 30 days before that),
+    // replacing the previously hardcoded +12.4% / +11.8% / +9.2% shown in the UI.
+    // null when there's no prior-period data to compare against (avoids a
+    // misleading +/-100% or divide-by-zero artifact for brand-new projects).
+    const pctChange = (current: number, prior: number): number | null => {
+      if (prior <= 0) return current > 0 ? null : 0
+      return ((current - prior) / prior) * 100
+    }
+    const periodTrends = {
+      energy: pctChange(energy30d, priorEnergy30d),
+      co2: pctChange(co2_30d, priorCo2_30d),
+      savings: pctChange(savings30d, priorSavings30d),
+    }
+
+    // Readings by day for the last 30 days (chart).
+    // co2/savings per day now use each project's own real tariff and the org's
+    // real emission factor (same values as the headline KPIs above), instead of
+    // the previously hardcoded 0.432 kgCO2/kWh and 0.18 SAR/kWh constants -
+    // which could silently disagree with the headline totals whenever a
+    // project's tariff or the country's emission factor differed from those
+    // fixed numbers.
     const daysData: { date: string; energy: number; co2: number; savings: number }[] = []
     for (let day = 29; day >= 0; day--) {
       const dayStart = new Date(now.getTime() - day * 24 * 60 * 60 * 1000)
       dayStart.setHours(0, 0, 0, 0)
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
-      const dayReadings = readings.filter((r) => r.measuredAt >= dayStart && r.measuredAt < dayEnd)
+      const dayReadings = readings30d.filter((r) => r.measuredAt >= dayStart && r.measuredAt < dayEnd)
       const dayEnergy = dayReadings.reduce((s, r) => s + r.value, 0)
+      const daySavings = computeSavings(dayReadings)
       daysData.push({
         date: dayStart.toISOString().slice(0, 10),
         energy: Math.round(dayEnergy),
-        co2: Math.round(dayEnergy * 0.432),
-        savings: Math.round(dayEnergy * 0.18),
+        co2: Math.round(dayEnergy * emissionFactorData.factor),
+        savings: Math.round(daySavings),
       })
     }
 
@@ -147,7 +205,12 @@ export async function GET() {
         unreadNotifications,
         treeEquivalent: Math.round(totalCo2AvoidedKg / 21), // kg CO2 per tree per year
         carKmAvoided: Math.round(totalCo2AvoidedKg / 0.12), // kg CO2 per km
+        avgTariffRetail: Math.round(avgTariffRetail * 1000) / 1000, // real energy-weighted average across active projects, replaces the previously hardcoded "0.18" label
       },
+      // Real percentage change vs. the prior 30-day period, replacing the
+      // previously hardcoded +12.4% / +11.8% / +9.2% trend values in the UI.
+      // Each value is null when there's no prior-period data to compare against.
+      periodTrends,
       trends: daysData,
       projectRanking,
       dataQuality: {
