@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/authorization'
+import { requirePermission, projectScopeFilter } from '@/lib/authorization'
 import { runReconciliation } from '@/lib/hedera'
 import { db } from '@/lib/db'
 
@@ -8,8 +8,24 @@ export async function GET() {
   try {
     const auth = await requirePermission('attestation:submit')
     if (!auth.authorized) return auth.response
+    const { user } = auth
+
+    // IMPORTANT FIX: previously unscoped, returning ReconciliationRun rows for
+    // every project across every organization. ReconciliationRun.projectId is
+    // optional (some runs may be org-wide rather than tied to one project), so
+    // we include both: runs for this user's own projects, and runs with no
+    // project at all are excluded here since we cannot attribute them to this
+    // organization without a schema linkage - if org-wide reconciliation runs
+    // are needed, ReconciliationRun should gain an organizationId column.
+    const scopedProjectIds = (
+      await db.project.findMany({
+        where: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+        select: { id: true },
+      })
+    ).map((p) => p.id)
 
     const runs = await db.reconciliationRun.findMany({
+      where: { projectId: { in: scopedProjectIds } },
       take: 20,
       orderBy: { createdAt: 'desc' },
     })
