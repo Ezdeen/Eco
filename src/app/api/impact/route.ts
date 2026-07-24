@@ -1,26 +1,18 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/authorization'
+import { requireAuth, projectScopeFilter } from '@/lib/authorization'
+import { getEmissionFactor, getConversionFactor } from '@/lib/reference-data'
 
-// Grid emission factors by country (kg CO2e per kWh) - location-based
-const GRID_EMISSION_FACTORS: Record<string, { factor: number; source: string; version: string; type: string }> = {
-  SA: { factor: 0.432, source: 'Saudi Electricity Company - 2024', version: 'v1.2-2024', type: 'location-based' },
-  AE: { factor: 0.401, source: 'UAE Ministry of Energy - 2024', version: 'v1.1-2024', type: 'location-based' },
-  QA: { factor: 0.410, source: 'Qatar General Electricity - 2024', version: 'v1.0-2024', type: 'location-based' },
-  KW: { factor: 0.520, source: 'Kuwait Ministry of Electricity - 2024', version: 'v1.0-2024', type: 'location-based' },
-  BH: { factor: 0.470, source: 'Bahrain Electricity Authority - 2024', version: 'v1.0-2024', type: 'location-based' },
-  OM: { factor: 0.480, source: 'Oman Authority for Electricity - 2024', version: 'v1.0-2024', type: 'location-based' },
-  EG: { factor: 0.450, source: 'Egyptian Electricity Holding - 2024', version: 'v1.0-2024', type: 'location-based' },
-  JO: { factor: 0.480, source: 'Jordan Ministry of Energy - 2024', version: 'v1.0-2024', type: 'location-based' },
-  PS: { factor: 0.450, source: 'Palestinian Energy Authority - 2024', version: 'v1.0-2024', type: 'location-based' },
-  default: { factor: 0.432, source: 'Default Saudi Grid - 2024', version: 'v1.2-2024', type: 'location-based' },
-}
-
-// Fossil fuel equivalents per kWh
-const DIESEL_LITER_PER_KWH = 0.083 // 1 kWh ≈ 0.083 liter diesel
-const NATURAL_GAS_M3_PER_KWH = 0.095 // 1 kWh ≈ 0.095 m³ natural gas
-
-// Tree absorption factors (kg CO2 per tree per year)
+// Tree absorption factors (kg CO2 per tree per year), by species.
+// IMPORTANT: unlike the grid emission factor above, there is currently no
+// per-species reference table in the database (ConversionFactor only stores
+// one generic 'tree_co2' value - see getConversionFactor in reference-data.ts).
+// These per-species numbers are therefore hardcoded estimates, not values
+// backed by an approved reference row, and are labelled as such
+// (`fromApprovedReference: false`) everywhere they're used below. The generic
+// 'default' fallback here is replaced with the real getConversionFactor
+// ('tree_co2') value at request time so at least the fallback case matches
+// the rest of the system.
 const TREE_ABSORPTION_FACTORS: Record<string, number> = {
   'السدر (Ziziphus spina-christi)': 22,
   'الغاف (Prosopis cineraria)': 18,
@@ -30,15 +22,24 @@ const TREE_ABSORPTION_FACTORS: Record<string, number> = {
   'الزيتون (Olea europaea)': 25,
   'النخيل (Phoenix dactylifera)': 30,
   'اللوز (Prunus dulcis)': 20,
-  default: 21, // EPA average
 }
 
 export async function GET() {
   try {
     const auth = await requireAuth()
     if (!auth.authorized) return auth.response
+    const { user } = auth
+
+    // IMPORTANT FIX: this entire endpoint previously had no organization/project
+    // scoping at all - impactAccount, project, and energyReading were all
+    // fetched with no `where` filter, so every user on the platform saw every
+    // organization's impact ledger, projects, and readings combined. Scoped
+    // below to this user's own organization (and, for project_manager users,
+    // to only their assigned projects via projectScopeFilter).
+    const scope = projectScopeFilter(user)
 
     const accounts = await db.impactAccount.findMany({
+      where: { organizationId: user.organizationId! },
       include: {
         organization: { select: { name: true, nameAr: true, code: true } },
         impactUnits: {
@@ -48,8 +49,9 @@ export async function GET() {
       },
     })
 
-    // Fetch all projects with their details for calculations
+    // Fetch this organization's (scoped) projects with their details for calculations
     const allProjects = await db.project.findMany({
+      where: { organizationId: user.organizationId!, ...scope },
       select: {
         id: true,
         name: true,
@@ -74,9 +76,13 @@ export async function GET() {
       },
     })
 
-    // Fetch all readings for carbon calculations
+    // Fetch readings only for this organization's own (scoped) projects
     const allReadings = await db.energyReading.findMany({
-      where: { metricType: 'energy_export_kwh', qualityStatus: { in: ['validated', 'approved', 'corrected'] } },
+      where: {
+        projectId: { in: allProjects.map((p) => p.id) },
+        metricType: 'energy_export_kwh',
+        qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+      },
       select: {
         value: true,
         measuredAt: true,
@@ -84,6 +90,27 @@ export async function GET() {
       },
       orderBy: { measuredAt: 'asc' },
     })
+
+    // Real reference-table conversion factors, fetched once (not per-project),
+    // replacing the previously hardcoded DIESEL_LITER_PER_KWH / NATURAL_GAS_M3_PER_KWH
+    // constants and matching what src/app/api/calculations/route.ts already uses.
+    const dieselFactorData = await getConversionFactor('diesel_per_kwh')
+    const gasFactorData = await getConversionFactor('gas_per_kwh')
+    const genericTreeFactorData = await getConversionFactor('tree_co2') // fallback for species not in TREE_ABSORPTION_FACTORS
+
+    // Real per-country emission factors, fetched once per distinct country
+    // present in this organization's projects (not per-project, to avoid
+    // redundant DB round-trips), replacing the hardcoded GRID_EMISSION_FACTORS map.
+    const distinctCountryCodes: string[] = []
+    for (const p of allProjects) {
+      const code: string = (p.country || 'SA').substring(0, 2).toUpperCase()
+      if (!distinctCountryCodes.includes(code)) distinctCountryCodes.push(code)
+    }
+    const emissionFactorByCountry = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
+    for (const code of distinctCountryCodes) {
+      const factor: Awaited<ReturnType<typeof getEmissionFactor>> = await getEmissionFactor(code)
+      emissionFactorByCountry.set(code, factor)
+    }
 
     // Calculate carbon avoided per project
     const projectCarbonMap = new Map<string, any>()
@@ -93,9 +120,11 @@ export async function GET() {
       const projectReadings = allReadings.filter((r) => r.projectId === project.id)
       const totalEnergy = projectReadings.reduce((s, r) => s + r.value, 0)
 
-      // Determine country code (project.country may be full name)
+      // Determine country code (project.country may be full name) and use the
+      // real reference-table emission factor for that country (same source as
+      // the dashboard/calculations endpoints), instead of the hardcoded map.
       const countryCode = (project.country || 'SA').substring(0, 2).toUpperCase()
-      const emissionFactor = GRID_EMISSION_FACTORS[countryCode] || GRID_EMISSION_FACTORS.default
+      const emissionFactor = emissionFactorByCountry.get(countryCode)!
 
       // Carbon avoided (kg CO2e)
       const totalCo2AvoidedKg = totalEnergy * emissionFactor.factor
@@ -119,11 +148,17 @@ export async function GET() {
         : 0
 
       // Fossil fuel equivalents
-      const dieselReplaced = totalEnergy * DIESEL_LITER_PER_KWH
-      const gasReplaced = totalEnergy * NATURAL_GAS_M3_PER_KWH
+      const dieselReplaced = totalEnergy * dieselFactorData.value
+      const gasReplaced = totalEnergy * gasFactorData.value
 
       // Renewable energy percentage (vs grid)
-      const renewablePercentage = totalEnergy > 0 ? 100 : 0 // simplified
+      // Simplified: assumes 100% renewable whenever the project has any solar
+      // export energy at all, even for 'hybrid' projects that may also draw
+      // from a non-renewable source. A precise figure would require actual
+      // import/grid-draw readings (see the real import-vs-export split added
+      // in src/app/api/energy-performance/route.ts) broken down by source,
+      // which this endpoint does not currently have for hybrid projects.
+      const renewablePercentage = totalEnergy > 0 ? 100 : 0
 
       // Carbon intensity (kg CO2e per kWh)
       const carbonIntensity = totalEnergy > 0 ? totalCo2AvoidedKg / totalEnergy : 0
@@ -135,7 +170,19 @@ export async function GET() {
       // Afforestation-specific metrics
       let afforestationMetrics: any = null
       if (project.projectType === 'afforestation' && project.treeCount) {
-        const treeFactor = TREE_ABSORPTION_FACTORS[project.treeSpecies || ''] || TREE_ABSORPTION_FACTORS.default
+        // treeFactor: per-species value from the hardcoded TREE_ABSORPTION_FACTORS
+        // map when the species is recognized, otherwise the generic
+        // getConversionFactor('tree_co2') reference value. NEITHER of these is
+        // backed by an approved, species-specific reference row in the database
+        // today - see the comment on TREE_ABSORPTION_FACTORS above. This is
+        // surfaced explicitly via treeFactorSource/fromApprovedReference below
+        // rather than presented as a measured figure.
+        const knownSpeciesFactor = TREE_ABSORPTION_FACTORS[project.treeSpecies || '']
+        const treeFactor = knownSpeciesFactor ?? genericTreeFactorData.value
+        const treeFactorSource = knownSpeciesFactor !== undefined
+          ? `estimate for species "${project.treeSpecies}" (not from an approved reference table)`
+          : `${genericTreeFactorData.source} (generic fallback, species not recognized)`
+
         const plantedTrees = project.treeCount
         const survivalRate = project.survivalRateTarget || 0.85
         const aliveTrees = Math.round(plantedTrees * survivalRate)
@@ -159,23 +206,33 @@ export async function GET() {
         // Tree density (trees per hectare)
         const treeDensity = plantedAreaHa > 0 ? plantedTrees / plantedAreaHa : 0
 
-        // Average tree age (years)
+        // Average tree age (years) - derived from the real plantingDate, not estimated
         const averageTreeAge = yearsSincePlanting
 
-        // Estimated biomass (kg) - rough estimate: 50 kg per tree per year
+        // --- Everything below this line is a rough, undisclosed-until-now
+        // estimate with no real sensor or field-record backing it, despite
+        // the project having real IoT sensor fields (iotSensorType/Serial)
+        // that go unused here. Each is now explicitly flagged as estimated
+        // in the response instead of being presented as measured data. ---
+
+        // Estimated biomass (kg): rough industry rule-of-thumb of ~50 kg/tree/year,
+        // not species-specific and not derived from any biomass measurement.
         const biomassPerTree = 50 * Math.max(yearsSincePlanting, 0)
         const totalBiomass = aliveTrees * biomassPerTree
 
-        // Growth rate (cm/year) - estimated
-        const growthRate = 25 // cm per year average for young trees
+        // Growth rate (cm/year): a single fixed industry average for young
+        // trees, identical for every species - not measured per project.
+        const growthRate = 25
 
-        // Irrigation count (estimated based on age)
-        const irrigationCount = Math.floor(yearsSincePlanting * 52) // weekly irrigation
+        // Irrigation count: purely derived from tree age assuming weekly
+        // irrigation (age_years * 52) - not from any real irrigation log.
+        const irrigationCount = Math.floor(yearsSincePlanting * 52)
 
-        // Site visits (estimated)
-        const siteVisits = Math.floor(yearsSincePlanting * 12) // monthly visits
+        // Site visits: purely derived from tree age assuming monthly visits
+        // (age_years * 12) - not from any real visit log.
+        const siteVisits = Math.floor(yearsSincePlanting * 12)
 
-        // Health score (0-100) - based on survival rate
+        // Health score (0-100) - based on survival rate (a real project field)
         const healthScore = Math.round(survivalRate * 100)
 
         afforestationMetrics = {
@@ -186,21 +243,27 @@ export async function GET() {
           plantedAreaHa: Math.round(plantedAreaHa * 100) / 100,
           treeDensity: Math.round(treeDensity),
           averageTreeAge: Math.round(yearsSincePlanting * 10) / 10,
-          growthRate,
-          estimatedBiomass: Math.round(totalBiomass),
           carbonStored: Math.round(totalCarbonStored),
           annualCarbonAbsorbed: Math.round(annualCarbonAbsorbed),
           totalCarbonAbsorbed: Math.round(totalCarbonStored + annualCarbonAbsorbed * Math.max(yearsSincePlanting, 0)),
           absorptionPerHectare: Math.round(absorptionPerHectare),
           absorptionPerTree,
-          irrigationCount,
-          siteVisits,
+          treeFactorSource,
           healthScore,
           treeSpecies: project.treeSpecies,
           iotSensor: project.iotSensorType ? {
             type: project.iotSensorType,
             serial: project.iotSensorSerial,
           } : null,
+          // Explicitly-flagged rough estimates (see comments above) - not
+          // measured, not from sensor data, not from field logs.
+          estimated: {
+            growthRateCmPerYear: growthRate,
+            estimatedBiomassKg: Math.round(totalBiomass),
+            irrigationCount,
+            siteVisits,
+            note: 'هذه القيم تقديرية (معدلات عامة تقريبية) وليست مقاسة من حساسات أو سجلات ميدانية فعلية',
+          },
         }
       }
 
@@ -273,8 +336,17 @@ export async function GET() {
     const afforestationProjects = allProjects.filter((p) => p.projectType === 'afforestation')
 
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
-    const defaultFactor = GRID_EMISSION_FACTORS.default
-    const totalCo2Avoided = totalEnergy * defaultFactor.factor
+    // IMPORTANT FIX: previously this multiplied total energy across ALL
+    // projects by a single hardcoded "default" emission factor, ignoring the
+    // fact that each project may be in a different country with a different
+    // real emission factor (as correctly computed per-project in the loop
+    // above). Summing each project's own already-correct lifetime CO2 avoids
+    // silently misrepresenting the portfolio total whenever projects span
+    // more than one country.
+    const totalCo2Avoided = Array.from(projectCarbonMap.values()).reduce(
+      (s, p) => s + p.carbonAvoided.lifetime.kgCO2e,
+      0,
+    )
 
     // Aggregate afforestation stats
     const totalPlantedTrees = afforestationProjects.reduce((s, p) => s + (p.treeCount || 0), 0)
@@ -282,14 +354,14 @@ export async function GET() {
     const totalPlantedAreaHa = afforestationProjects.reduce((s, p) => s + (p.plantedAreaM2 || 0) / 10000, 0)
 
     const totalCarbonAbsorbed = afforestationProjects.reduce((s, p) => {
-      const treeFactor = TREE_ABSORPTION_FACTORS[p.treeSpecies || ''] || TREE_ABSORPTION_FACTORS.default
+      const treeFactor = TREE_ABSORPTION_FACTORS[p.treeSpecies || ''] ?? genericTreeFactorData.value
       const alive = Math.round((p.treeCount || 0) * (p.survivalRateTarget || 0.85))
       const years = p.plantingDate ? (now.getTime() - p.plantingDate.getTime()) / (1000 * 60 * 60 * 24 * 365) : 0
       return s + alive * treeFactor * Math.max(years, 0)
     }, 0)
 
     const annualCarbonAbsorbed = afforestationProjects.reduce((s, p) => {
-      const treeFactor = TREE_ABSORPTION_FACTORS[p.treeSpecies || ''] || TREE_ABSORPTION_FACTORS.default
+      const treeFactor = TREE_ABSORPTION_FACTORS[p.treeSpecies || ''] ?? genericTreeFactorData.value
       const alive = Math.round((p.treeCount || 0) * (p.survivalRateTarget || 0.85))
       return s + alive * treeFactor
     }, 0)
@@ -305,8 +377,8 @@ export async function GET() {
       totalCancelled: accounts.reduce((s, a) => s + (a.impactUnits || []).filter((u) => u.status === 'cancelled').reduce((sum, u) => sum + u.amount, 0), 0),
       totalEstimated: accounts.reduce((s, a) => s + (a.impactUnits || []).filter((u) => u.status === 'estimated').reduce((sum, u) => sum + u.amount, 0), 0),
       // Fossil fuel replaced
-      totalDieselReplaced: Math.round(totalEnergy * DIESEL_LITER_PER_KWH),
-      totalGasReplaced: Math.round(totalEnergy * NATURAL_GAS_M3_PER_KWH),
+      totalDieselReplaced: Math.round(totalEnergy * dieselFactorData.value),
+      totalGasReplaced: Math.round(totalEnergy * gasFactorData.value),
       // Afforestation stats
       afforestation: {
         totalProjects: afforestationProjects.length,
@@ -360,7 +432,10 @@ export async function GET() {
       }),
       projectCarbon: Array.from(projectCarbonMap.values()),
       stats,
-      emissionFactors: GRID_EMISSION_FACTORS,
+      // Real per-country emission factors actually used above (one entry per
+      // country present in this organization's projects), replacing the
+      // previously hardcoded GRID_EMISSION_FACTORS map.
+      emissionFactors: Object.fromEntries(emissionFactorByCountry),
     })
   } catch (error) {
     console.error('Impact API error:', error)
