@@ -489,9 +489,9 @@ export function ImpactSection() {
                       </div>
                       <div className="p-3 rounded-lg bg-muted/30">
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                          <TrendingUp className="h-3 w-3" /> معدل النمو
+                          <TrendingUp className="h-3 w-3" /> معدل النمو <span className="text-amber-600">(تقديري)</span>
                         </div>
-                        <p className="text-lg font-bold tabular-nums">{p.afforestation.growthRate} <span className="text-xs font-normal">cm/سنة</span></p>
+                        <p className="text-lg font-bold tabular-nums">{p.afforestation.estimated.growthRateCmPerYear} <span className="text-xs font-normal">cm/سنة</span></p>
                       </div>
                     </div>
 
@@ -499,9 +499,9 @@ export function ImpactSection() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
-                          <Leaf className="h-3 w-3" /> الكتلة الحيوية
+                          <Leaf className="h-3 w-3" /> الكتلة الحيوية <span className="text-amber-600">(تقديري)</span>
                         </div>
-                        <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(p.afforestation.estimatedBiomass)} <span className="text-xs font-normal">kg</span></p>
+                        <p className="text-lg font-bold tabular-nums text-emerald-600">{fmt(p.afforestation.estimated.estimatedBiomassKg)} <span className="text-xs font-normal">kg</span></p>
                       </div>
                       <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
@@ -520,6 +520,9 @@ export function ImpactSection() {
                           <Gauge className="h-3 w-3" /> امتصاص/شجرة
                         </div>
                         <p className="text-lg font-bold tabular-nums text-violet-600">{p.afforestation.absorptionPerTree} <span className="text-xs font-normal">kgCO₂e/سنة</span></p>
+                        {p.afforestation.treeFactorSource && (
+                          <p className="text-[10px] text-muted-foreground mt-1">{p.afforestation.treeFactorSource}</p>
+                        )}
                       </div>
                     </div>
 
@@ -528,15 +531,15 @@ export function ImpactSection() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
                         <div className="flex items-center gap-1.5 text-xs text-blue-700 mb-1">
-                          <Droplet className="h-3 w-3" /> عمليات الري
+                          <Droplet className="h-3 w-3" /> عمليات الري <span className="text-amber-600">(تقديري)</span>
                         </div>
-                        <p className="text-lg font-bold tabular-nums text-blue-600">{fmt(p.afforestation.irrigationCount)}</p>
+                        <p className="text-lg font-bold tabular-nums text-blue-600">{fmt(p.afforestation.estimated.irrigationCount)}</p>
                       </div>
                       <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
                         <div className="flex items-center gap-1.5 text-xs text-amber-700 mb-1">
-                          <Users className="h-3 w-3" /> زيارات ميدانية
+                          <Users className="h-3 w-3" /> زيارات ميدانية <span className="text-amber-600">(تقديري)</span>
                         </div>
-                        <p className="text-lg font-bold tabular-nums text-amber-600">{fmt(p.afforestation.siteVisits)}</p>
+                        <p className="text-lg font-bold tabular-nums text-amber-600">{fmt(p.afforestation.estimated.siteVisits)}</p>
                       </div>
                       <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 mb-1">
