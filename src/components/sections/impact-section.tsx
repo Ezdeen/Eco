@@ -13,12 +13,13 @@ import {
 import {
   Coins, Leaf, TrendingUp, TrendingDown, Ban, CheckCircle2, TreePine,
   Droplet, Fuel, Zap, Activity, Gauge, Calendar, MapPin, Database,
-  Sprout, Heart, Ruler, Beaker, Clock, Users, AlertCircle,
+  Sprout, Heart, Ruler, Beaker, Clock, Users, AlertCircle, ArrowUpDown,
 } from 'lucide-react'
 
 export function ImpactSection() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [projectSortOrder, setProjectSortOrder] = useState<'asc' | 'desc'>('asc')
 
   useEffect(() => {
     let cancelled = false
@@ -60,18 +61,33 @@ export function ImpactSection() {
   const { stats, projectCarbon, accounts, emissionFactors } = data
 
   // Separate solar vs afforestation projects
-  const solarProjects = (projectCarbon || []).filter((p: any) => p.projectType !== 'afforestation')
+  const solarProjectsUnsorted = (projectCarbon || []).filter((p: any) => p.projectType !== 'afforestation')
   const afforestationProjects = (projectCarbon || []).filter((p: any) => p.projectType === 'afforestation')
+
+  // Sort solar projects by name (toggle asc/desc), applied consistently to
+  // both the chart and the detailed table below so their order always matches.
+  const sortedSolarProjects = [...solarProjectsUnsorted].sort((a: any, b: any) => {
+    const cmp = (a.projectName || '').localeCompare(b.projectName || '', 'ar')
+    return projectSortOrder === 'asc' ? cmp : -cmp
+  })
+  const solarProjects = sortedSolarProjects
 
   // Chart colors
   const CHART_COLORS = ['#16a34a', '#0891b2', '#ca8a04', '#2563eb', '#dc2626', '#7c3aed']
 
-  // Prepare carbon trend data (aggregate by project)
-  const carbonByProject = (projectCarbon || []).map((p: any, i: number) => ({
-    name: p.projectCode,
+  // Prepare carbon-by-project chart data.
+  // IMPORTANT: previously this filtered out any project with kgCO2e === 0,
+  // which silently hid projects with no energy readings yet (e.g. newly
+  // commissioned or not-yet-producing projects) instead of showing them at
+  // zero - making it look like only one project existed when there were
+  // actually several. All solar projects are now shown; a note below the
+  // chart flags how many are at zero if any are.
+  const carbonByProject = sortedSolarProjects.map((p: any, i: number) => ({
+    name: p.projectName || p.projectCode,
     kgCO2e: p.carbonAvoided.lifetime.kgCO2e,
     color: CHART_COLORS[i % CHART_COLORS.length],
   }))
+  const zeroCarbonProjectsCount = carbonByProject.filter((p) => p.kgCO2e === 0).length
 
   return (
     <div className="space-y-5">
@@ -258,26 +274,50 @@ export function ImpactSection() {
           {/* Carbon by Project Chart */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">الكربون المتجنب حسب المشروع</CardTitle>
-              <CardDescription className="text-xs">إجمالي kgCO₂e لكل مشروع شمسي</CardDescription>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">الكربون المتجنب حسب المشروع</CardTitle>
+                  <CardDescription className="text-xs">إجمالي kgCO₂e لكل مشروع شمسي</CardDescription>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProjectSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border rounded-md px-2 py-1 shrink-0"
+                  title="فرز حسب اسم المشروع"
+                >
+                  <ArrowUpDown className="h-3 w-3" />
+                  {projectSortOrder === 'asc' ? 'أ ← ي' : 'ي ← أ'}
+                </button>
+              </div>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={carbonByProject.filter((p: any) => p.kgCO2e > 0)} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => fmtCompact(v)} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} width={70} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    formatter={(v: number) => [`${fmt(v)} kgCO₂e`, 'الكربون المتجنب']}
-                  />
-                  <Bar dataKey="kgCO2e" radius={[0, 4, 4, 0]}>
-                    {carbonByProject.map((p: any, i: number) => (
-                      <Cell key={i} fill={p.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {solarProjects.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">لا توجد مشاريع شمسية بعد</p>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={Math.max(150, carbonByProject.length * 45)}>
+                    <BarChart data={carbonByProject} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => fmtCompact(v)} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} width={110} />
+                      <Tooltip
+                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                        formatter={(v: number) => [`${fmt(v)} kgCO₂e`, 'الكربون المتجنب']}
+                      />
+                      <Bar dataKey="kgCO2e" radius={[0, 4, 4, 0]}>
+                        {carbonByProject.map((p: any, i: number) => (
+                          <Cell key={i} fill={p.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  {zeroCarbonProjectsCount > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      {zeroCarbonProjectsCount} من أصل {carbonByProject.length} مشاريع بلا قراءات طاقة مسجَّلة بعد (تظهر بقيمة صفر)
+                    </p>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
