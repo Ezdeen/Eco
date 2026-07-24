@@ -57,7 +57,11 @@ interface DashboardData {
     unreadNotifications: number
     treeEquivalent: number
     carKmAvoided: number
+    avgTariffRetail: number
   }
+  // Real percentage change vs. the prior 30-day period; each field is null
+  // when there's no prior-period data to compare against.
+  periodTrends: { energy: number | null; co2: number | null; savings: number | null }
   trends: { date: string; energy: number; co2: number; savings: number }[]
   projectRanking: {
     id: string
@@ -120,7 +124,7 @@ export function DashboardSection() {
     )
   }
 
-  const { kpis, trends, projectRanking, dataQuality, organization } = data
+  const { kpis, periodTrends, trends, projectRanking, dataQuality, organization } = data
 
   // Format numbers
   const fmt = (n: number) => n.toLocaleString('en-US')
@@ -140,7 +144,7 @@ export function DashboardSection() {
           unit="kWh"
           icon={Zap}
           variant="success"
-          trend={12.4}
+          trend={periodTrends.energy ?? undefined}
           trendLabel="آخر 30 يوم"
           sublabel={`القدرة المنصوبة: ${fmt(kpis.totalCapacityKwp)} kWp`}
         />
@@ -150,7 +154,7 @@ export function DashboardSection() {
           unit="kgCO₂e"
           icon={Leaf}
           variant="success"
-          trend={11.8}
+          trend={periodTrends.co2 ?? undefined}
           trendLabel="آخر 30 يوم"
           sublabel={`≈ ${fmt(kpis.totalCo2AvoidedTons)} طن CO₂e`}
         />
@@ -160,9 +164,9 @@ export function DashboardSection() {
           unit={organization.currency}
           icon={DollarSign}
           variant="info"
-          trend={9.2}
+          trend={periodTrends.savings ?? undefined}
           trendLabel="آخر 30 يوم"
-          sublabel={`بمعدّل تعرفة متوسط 0.18 SAR/kWh`}
+          sublabel={`بمعدّل تعرفة متوسط ${kpis.avgTariffRetail.toFixed(3)} ${organization.currency}/kWh`}
         />
         <KpiCard
           label="المشاريع النشطة"
