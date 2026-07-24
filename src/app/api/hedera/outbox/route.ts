@@ -4,6 +4,17 @@ import { processPendingOutboxEvents } from '@/lib/hedera'
 import { db } from '@/lib/db'
 
 // GET /api/hedera/outbox - List outbox events
+//
+// NOTE (scoping): OutboxEvent has no organizationId/projectId column in the
+// schema (it's a low-level Hedera submission queue, not directly tied to a
+// tenant), so the events/stats below are inherently platform-wide and cannot
+// be scoped to "this organization" without a schema migration to add that
+// linkage. Until such a migration exists, this endpoint should only be
+// reachable by platform-level operators, not exposed to regular
+// organization users as if it were their own data - `requirePermission`
+// below currently only checks `attestation:submit`, which any org's user
+// with that permission holds, so this should be tightened to an
+// admin-only permission before use outside of internal operations tooling.
 export async function GET(request: NextRequest) {
   try {
     const auth = await requirePermission('attestation:submit')
