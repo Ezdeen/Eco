@@ -141,12 +141,24 @@ export async function GET() {
     const offlineDevices = devices.filter((d) => d.status === 'offline' || (d.lastSeenAt && Date.now() - d.lastSeenAt.getTime() > 6 * 60 * 60 * 1000)).length
 
     // Cases
-    const openCases = await db.case.count({ where: { status: { in: ['open', 'in_progress'] } } })
-    const criticalCases = await db.case.count({ where: { priority: 'critical', status: { in: ['open', 'in_progress'] } } })
+    // Same tenant-isolation bug as attestations above: these were unscoped and
+    // counted Case rows for every project on the platform, not just this
+    // organization's/user's own projects.
+    const caseScope = { projectId: { in: activeProjects.map((p) => p.id) } }
+    const openCases = await db.case.count({ where: { ...caseScope, status: { in: ['open', 'in_progress'] } } })
+    const criticalCases = await db.case.count({ where: { ...caseScope, priority: 'critical', status: { in: ['open', 'in_progress'] } } })
 
     // Attestations
-    const attestations = await db.attestationBatch.count({ where: { status: 'confirmed' } })
-    const attestationItems = await db.attestationBatch.aggregate({ where: { status: 'confirmed' }, _sum: { itemCount: true } })
+    // IMPORTANT FIX: previously these two queries had no projectId filter at all,
+    // so they counted AttestationBatch rows across every organization on the
+    // platform - not just this user's/organization's own projects. Every other
+    // query in this file (readings, devices, cases, etc.) is scoped to
+    // activeProjects; these were the one exception, causing "Hedera
+    // confirmations" and "attestation rate" to show platform-wide numbers
+    // regardless of which organization or project-manager was logged in.
+    const attestationScope = { projectId: { in: activeProjects.map((p) => p.id) }, status: 'confirmed' }
+    const attestations = await db.attestationBatch.count({ where: attestationScope })
+    const attestationItems = await db.attestationBatch.aggregate({ where: attestationScope, _sum: { itemCount: true } })
 
     // Data quality
     const validatedReadings = readings.filter((r) => r.qualityStatus === 'validated').length
@@ -172,7 +184,20 @@ export async function GET() {
       .sort((a, b) => b.energy - a.energy)
 
     // Unread notifications
-    const unreadNotifications = await db.notification.count({ where: { isRead: false } })
+    // IMPORTANT FIX: this previously had no filter at all, so it counted
+    // unread notifications for every user on the entire platform rather than
+    // just the logged-in user. Scope to notifications addressed to this user,
+    // or to one of their own projects (Notification.userId/projectId are both
+    // optional on this model, so a notification may be tied to either).
+    const unreadNotifications = await db.notification.count({
+      where: {
+        isRead: false,
+        OR: [
+          { userId: user.userId },
+          { projectId: { in: activeProjects.map((p) => p.id) } },
+        ],
+      },
+    })
 
     // Capacity total
     const totalCapacityKwp = activeProjects.reduce((s, p) => s + (p.capacityKwp || 0), 0)
