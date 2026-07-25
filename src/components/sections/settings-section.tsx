@@ -93,20 +93,14 @@ export function SettingsSection() {
             <Users className="h-5 w-5" />
             الأعضاء والأدوار
           </CardTitle>
-          <CardDescription className="text-xs">RBAC/ABAC بنطاق المؤسسة والمشروع والأصل - 9 أدوار رئيسية</CardDescription>
+          <CardDescription className="text-xs">RBAC بنطاق المؤسسة والمشروع - 3 أدوار رئيسية</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {[
-              { role: 'Platform Super Admin', ar: 'مدير المنصة الأعلى', desc: 'صلاحية كاملة على جميع المؤسسات' },
-              { role: 'Organization Admin', ar: 'مدير المؤسسة', desc: 'إدارة كاملة داخل المؤسسة' },
-              { role: 'ESG Manager', ar: 'مدير ESG', desc: 'إدارة الحسابات والتقارير والمنهجيات' },
-              { role: 'Project Manager', ar: 'مدير المشروع', desc: 'إدارة مشاريع ومواقع وأصول' },
-              { role: 'Monitor/Operator', ar: 'مراقب/مشغّل', desc: 'مراقبة القراءات والأجهزة' },
-              { role: 'Auditor/Verifier', ar: 'مدقق/متحقق', desc: 'قراءة فقط + تصديق التقارير' },
-              { role: 'Technician', ar: 'فني', desc: 'إدارة الأجهزة الميدانية' },
-              { role: 'Viewer', ar: 'مشاهد', desc: 'قراءة فقط للوحات' },
-              { role: 'Service Account', ar: 'حساب خدمة', desc: 'تكاملات API وWebhooks' },
+              { role: 'org_admin', ar: 'مدير المؤسسة', desc: 'صلاحية كاملة: إدارة المستخدمين والمشاريع والتقارير والإعدادات، دون قيود' },
+              { role: 'project_manager', ar: 'مدير المشروع', desc: 'محصور بالمشاريع المسندة إليه فقط: قراءة، تدقيق القراءات، تشغيل الحسابات، تنزيل التقارير' },
+              { role: 'data_entry', ar: 'مدخل بيانات', desc: 'إنشاء مشاريع جديدة فقط، بلا وصول لأي بيانات أو تقارير أخرى' },
             ].map((r) => (
               <div key={r.role} className="p-3 rounded-lg bg-muted/40 hover:bg-muted transition-colors">
                 <div className="flex items-center justify-between mb-1">
@@ -119,7 +113,7 @@ export function SettingsSection() {
           </div>
           <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 text-xs text-blue-800 dark:text-blue-300">
             <Shield className="h-3 w-3 inline ml-1" />
-            فصل الواجبات: لا يعتمد المستخدم تقريراً أو نتيجة حساسة أنشأها بنفسه. وصول الدعم إلى بيانات العملاء مؤقت ومبرر ومسجل.
+            عزل البيانات: مدير المشروع لا يرى إلا المشاريع المسندة إليه تحديداً (managerId)؛ لا يعتمد المستخدم تقريراً أنشأه بنفسه.
           </div>
         </CardContent>
       </Card>
