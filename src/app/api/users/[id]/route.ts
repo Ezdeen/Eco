@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const updateData: any = {}
     if (role) {
-      const VALID_ROLES = ['org_admin', 'esg_manager', 'project_manager', 'operator', 'auditor', 'technician', 'viewer']
+      const VALID_ROLES = ['org_admin', 'project_manager', 'data_entry']
       if (!VALID_ROLES.includes(role)) {
         return NextResponse.json(
           { error: 'دور غير صالح' },
