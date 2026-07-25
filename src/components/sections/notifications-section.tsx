@@ -4,57 +4,44 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Bell, CheckCircle2, AlertCircle, AlertTriangle, Info, Check } from 'lucide-react'
+import { Bell, CheckCircle2, AlertCircle, AlertTriangle, Info, Check, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function NotificationsSection() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
 
-  const fetchNotifications = useCallback(() => {
-    setLoading(true)
-    fetch('/api/notifications')
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then((d) => {
-        setNotifications(d?.notifications || [])
-        setStats(d?.stats || null)
-      })
-      .catch(() => {
-        setNotifications([])
-        setStats(null)
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    Promise.resolve().then(() => {
-      if (!cancelled) {
-        setLoading(true)
-        fetch('/api/notifications')
-          .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-          .then((d) => {
-            if (cancelled) return
-            setNotifications(d?.notifications || [])
-            setStats(d?.stats || null)
-          })
-          .catch(() => {
-            if (cancelled) return
-            setNotifications([])
-            setStats(null)
-          })
-          .finally(() => {
-            if (!cancelled) setLoading(false)
-          })
-      }
-    })
-    return () => {
-      cancelled = true
+  const fetchNotifications = useCallback(async (opts?: { silent?: boolean }) => {
+    if (opts?.silent) setRefreshing(true)
+    else setLoading(true)
+    try {
+      const res = await fetch('/api/notifications')
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setNotifications(data?.notifications || [])
+      setStats(data?.stats || null)
+    } catch {
+      setNotifications([])
+      setStats(null)
+      if (opts?.silent) toast.error('تعذّر تحديث الإشعارات')
+    } finally {
+      if (opts?.silent) setRefreshing(false)
+      else setLoading(false)
     }
   }, [])
 
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
+
   const markAsRead = async (id: string) => {
+    setPendingIds((prev) => new Set(prev).add(id))
+    // Optimistic update so the UI feels instant; reconciled by the refetch below.
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
     try {
       const res = await fetch('/api/notifications', {
         method: 'PATCH',
@@ -62,26 +49,37 @@ export function NotificationsSection() {
         body: JSON.stringify({ id, isRead: true }),
       })
       if (!res.ok) throw new Error()
-      fetchNotifications()
+      await fetchNotifications({ silent: true })
     } catch {
       toast.error('فشل تحديث الإشعار')
+      fetchNotifications({ silent: true })
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
   const markAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => n.id)
+    if (unreadIds.length === 0) return
+
+    setMarkingAll(true)
     try {
-      for (const n of notifications.filter((n) => !n.isRead)) {
-        const res = await fetch('/api/notifications', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: n.id, isRead: true }),
-        })
-        if (!res.ok) throw new Error()
-      }
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: unreadIds, isRead: true }),
+      })
+      if (!res.ok) throw new Error()
       toast.success('تم تعليم الكل كمقروء')
-      fetchNotifications()
+      await fetchNotifications({ silent: true })
     } catch {
       toast.error('فشل تحديث الإشعارات')
+    } finally {
+      setMarkingAll(false)
     }
   }
 
@@ -131,12 +129,27 @@ export function NotificationsSection() {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">عرض {notifications.length} إشعار</p>
-        {(stats?.unread || 0) > 0 && (
-          <Button variant="outline" size="sm" onClick={markAllAsRead}>
-            <Check className="h-4 w-4 ml-1" />
-            تعليم الكل كمقروء
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchNotifications({ silent: true })}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ml-1 ${refreshing ? 'animate-spin' : ''}`} />
+            تحديث
           </Button>
-        )}
+          {(stats?.unread || 0) > 0 && (
+            <Button variant="outline" size="sm" onClick={markAllAsRead} disabled={markingAll}>
+              {markingAll ? (
+                <RefreshCw className="h-4 w-4 ml-1 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4 ml-1" />
+              )}
+              تعليم الكل كمقروء
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Notifications list */}
@@ -160,8 +173,13 @@ export function NotificationsSection() {
                           size="sm"
                           className="h-6 px-2 text-xs"
                           onClick={() => markAsRead(n.id)}
+                          disabled={pendingIds.has(n.id)}
                         >
-                          تعليم كمقروء
+                          {pendingIds.has(n.id) ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'تعليم كمقروء'
+                          )}
                         </Button>
                       )}
                     </div>
