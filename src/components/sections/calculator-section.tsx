@@ -15,12 +15,16 @@ export function CalculatorSection() {
   const [inputs, setInputs] = useState({
     capacityKwp: 1000,
     location: 'riyadh',
+    currency: 'SAR',
     capex: 1500000,
     opexAnnual: 22500,
     degradationRate: 0.005,
     tariffRetail: 0.18,
     tariffFeedIn: 0.10,
     selfConsumptionRate: 0.7,
+    financingRate: 0,
+    loanTermYears: 0,
+    loanInterestRate: 0.06,
     inflationRate: 0.02,
     discountRate: 0.08,
     systemLifetimeYears: 25,
@@ -53,7 +57,11 @@ export function CalculatorSection() {
   }
 
   const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })
-  const fmtCurrency = (n: number) => `${fmt(n)} ${'SAR'}`
+  // Use the currency returned by the API (echoes back whatever the user
+  // selected below) rather than a hardcoded 'SAR', since this platform
+  // supports projects/tariffs in multiple currencies (SAR, AED, ...).
+  const currencyLabel = result?.currency || inputs.currency || 'SAR'
+  const fmtCurrency = (n: number) => `${fmt(n)} ${currencyLabel}`
 
   return (
     <div className="space-y-4">
@@ -89,11 +97,41 @@ export function CalculatorSection() {
                 <SelectItem value="dammam">الدمام (PSH: 6.3)</SelectItem>
                 <SelectItem value="mecca">مكة (PSH: 6.4)</SelectItem>
                 <SelectItem value="medina">المدينة (PSH: 6.6)</SelectItem>
+                <SelectItem value="abu_dhabi">أبوظبي (PSH: 6.0)</SelectItem>
+                <SelectItem value="dubai">دبي (PSH: 5.9)</SelectItem>
+                <SelectItem value="doha">الدوحة (PSH: 5.8)</SelectItem>
+                <SelectItem value="kuwait_city">الكويت (PSH: 5.9)</SelectItem>
+                <SelectItem value="manama">المنامة (PSH: 5.7)</SelectItem>
+                <SelectItem value="muscat">مسقط (PSH: 5.9)</SelectItem>
+                <SelectItem value="cairo">القاهرة (PSH: 6.0)</SelectItem>
+                <SelectItem value="amman">عمّان (PSH: 5.8)</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">CAPEX (SAR)</Label>
+            <Label className="text-xs">العملة</Label>
+            <Select value={inputs.currency} onValueChange={(v) => setInputs({ ...inputs, currency: v })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
+                <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
+                <SelectItem value="QAR">ريال قطري (QAR)</SelectItem>
+                <SelectItem value="KWD">دينار كويتي (KWD)</SelectItem>
+                <SelectItem value="BHD">دينار بحريني (BHD)</SelectItem>
+                <SelectItem value="OMR">ريال عُماني (OMR)</SelectItem>
+                <SelectItem value="EGP">جنيه مصري (EGP)</SelectItem>
+                <SelectItem value="JOD">دينار أردني (JOD)</SelectItem>
+                <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">
+              يجب إدخال CAPEX وOPEX والتعرفات كلها بنفس هذه العملة — لا يوجد تحويل عملات تلقائي
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">CAPEX ({inputs.currency})</Label>
             <Input
               type="number"
               value={inputs.capex}
@@ -101,7 +139,7 @@ export function CalculatorSection() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">OPEX السنوي (SAR)</Label>
+            <Label className="text-xs">OPEX السنوي ({inputs.currency})</Label>
             <Input
               type="number"
               value={inputs.opexAnnual}
@@ -118,7 +156,7 @@ export function CalculatorSection() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">تعرفة البيع (SAR/kWh)</Label>
+            <Label className="text-xs">تعرفة البيع ({inputs.currency}/kWh)</Label>
             <Input
               type="number"
               step="0.01"
@@ -127,12 +165,38 @@ export function CalculatorSection() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">تعرفة Feed-in (SAR/kWh)</Label>
+            <Label className="text-xs">تعرفة Feed-in ({inputs.currency}/kWh)</Label>
             <Input
               type="number"
               step="0.01"
               value={inputs.tariffFeedIn}
               onChange={(e) => setInputs({ ...inputs, tariffFeedIn: +e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">نسبة التمويل بالدين (%)</Label>
+            <Input
+              type="number"
+              step="1"
+              value={inputs.financingRate * 100}
+              onChange={(e) => setInputs({ ...inputs, financingRate: +e.target.value / 100 })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">مدة القرض (سنة)</Label>
+            <Input
+              type="number"
+              value={inputs.loanTermYears}
+              onChange={(e) => setInputs({ ...inputs, loanTermYears: +e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">فائدة القرض السنوية (%)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              value={inputs.loanInterestRate * 100}
+              onChange={(e) => setInputs({ ...inputs, loanInterestRate: +e.target.value / 100 })}
             />
           </div>
           <div className="space-y-1.5">
@@ -201,7 +265,7 @@ export function CalculatorSection() {
                 <DollarSign className="h-3 w-3" /> إيراد سنوي (سنة 1)
               </div>
               <p className="text-xl font-bold tabular-nums text-amber-600">{fmt(result.results.annualRevenueYear1)}</p>
-              <p className="text-[10px] text-muted-foreground">SAR</p>
+              <p className="text-[10px] text-muted-foreground">{currencyLabel}</p>
             </Card>
             <Card className="p-4">
               <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
@@ -217,6 +281,11 @@ export function CalculatorSection() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">المؤشرات المالية</CardTitle>
+                <CardDescription className="text-xs">
+                  {inputs.financingRate > 0
+                    ? 'NPV وIRR وPayback محسوبة على تدفقات حقوق الملكية (بعد خصم أقساط الدين)'
+                    : 'NPV وIRR وPayback (بدون تمويل بالدين)'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-3">
@@ -241,7 +310,7 @@ export function CalculatorSection() {
                   <div className="p-3 rounded-lg bg-muted/40">
                     <p className="text-xs text-muted-foreground">LCOE</p>
                     <p className="text-xl font-bold tabular-nums">
-                      {result.results.lcoe_fils} <span className="text-xs font-normal text-muted-foreground">fils/kWh</span>
+                      {result.results.lcoe} <span className="text-xs font-normal text-muted-foreground">{currencyLabel}/kWh</span>
                     </p>
                   </div>
                 </div>
@@ -271,6 +340,40 @@ export function CalculatorSection() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Debt service (only meaningful when financing is used) */}
+          {inputs.financingRate > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">التمويل بالدين</CardTitle>
+                <CardDescription className="text-xs">
+                  فائدة القرض ({(inputs.loanInterestRate * 100).toFixed(1)}%) مستقلة عن معدل الخصم المستخدم في NPV
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">قيمة القرض</p>
+                    <p className="text-lg font-bold tabular-nums">{fmtCurrency(result.debtService.loanAmount)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">حقوق الملكية المدفوعة</p>
+                    <p className="text-lg font-bold tabular-nums">{fmtCurrency(result.debtService.equityCapex)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">قسط سنوي</p>
+                    <p className="text-lg font-bold tabular-nums">{fmtCurrency(result.debtService.annualDebtService)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">DSCR (متوسط مدة القرض)</p>
+                    <p className={`text-lg font-bold tabular-nums ${result.debtService.dscr && result.debtService.dscr >= 1.2 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {result.debtService.dscr ?? '—'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Cash flow chart */}
           <Card>
