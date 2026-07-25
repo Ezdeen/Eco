@@ -70,7 +70,7 @@ export const createProjectSchema = z.object({
   sponsorPhone: nullableString,
   managerId: nullableString,
 
-  currency: z.string().trim().default('SAR'),
+  currency: z.string().trim().default('ILS'),
   capacityKwp: numericOrNull,
   tariffRetail: numericOrNull,
   tariffFeedIn: numericOrNull,
