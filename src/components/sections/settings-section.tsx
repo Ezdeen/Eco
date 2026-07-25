@@ -31,34 +31,42 @@ export function SettingsSection() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">البلد</Label>
-            <Select defaultValue="SA">
+            <Select defaultValue="PS">
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="PS">فلسطين</SelectItem>
                 <SelectItem value="SA">السعودية</SelectItem>
                 <SelectItem value="AE">الإمارات</SelectItem>
                 <SelectItem value="QA">قطر</SelectItem>
                 <SelectItem value="KW">الكويت</SelectItem>
                 <SelectItem value="BH">البحرين</SelectItem>
                 <SelectItem value="OM">عمان</SelectItem>
+                <SelectItem value="EG">مصر</SelectItem>
+                <SelectItem value="JO">الأردن</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">العملة</Label>
-            <Select defaultValue="SAR">
+            <Select defaultValue="ILS">
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="ILS">شيكل جديد (ILS)</SelectItem>
+                <SelectItem value="JOD">دينار أردني (JOD)</SelectItem>
+                <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
                 <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
                 <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
-                <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">المنطقة الزمنية</Label>
-            <Select defaultValue="Asia/Riyadh">
+            <Select defaultValue="Asia/Gaza">
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="Asia/Gaza">آسيا/غزة (UTC+2)</SelectItem>
+                <SelectItem value="Asia/Hebron">آسيا/الخليل (UTC+2)</SelectItem>
+                <SelectItem value="Asia/Amman">آسيا/عمّان (UTC+3)</SelectItem>
                 <SelectItem value="Asia/Riyadh">آسيا/الرياض (UTC+3)</SelectItem>
                 <SelectItem value="Asia/Dubai">آسيا/دبي (UTC+4)</SelectItem>
                 <SelectItem value="Asia/Qatar">آسيا/الدوحة (UTC+3)</SelectItem>
