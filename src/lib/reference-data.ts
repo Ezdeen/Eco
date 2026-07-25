@@ -179,6 +179,8 @@ export async function seedReferenceDataIfEmpty() {
       { countryCode: 'SA', tariffType: 'feed_in', rate: 0.10, currency: 'SAR', source: 'Saudi Electricity Regulatory Authority', version: 'v2024-1', validFrom: new Date('2024-01-01') },
       { countryCode: 'AE', tariffType: 'retail', rate: 0.23, currency: 'AED', source: 'DEWA', version: 'v2024-1', validFrom: new Date('2024-01-01') },
       { countryCode: 'AE', tariffType: 'feed_in', rate: 0.12, currency: 'AED', source: 'DEWA', version: 'v2024-1', validFrom: new Date('2024-01-01') },
+      { countryCode: 'PS', tariffType: 'retail', rate: 0.60, currency: 'ILS', source: 'Palestinian Energy and Natural Resources Authority (PENRA)', version: 'v2024-1', validFrom: new Date('2024-01-01') },
+      { countryCode: 'PS', tariffType: 'feed_in', rate: 0.35, currency: 'ILS', source: 'Palestinian Energy and Natural Resources Authority (PENRA)', version: 'v2024-1', validFrom: new Date('2024-01-01') },
     ]
     await db.tariff.createMany({ data: tariffs })
   }
