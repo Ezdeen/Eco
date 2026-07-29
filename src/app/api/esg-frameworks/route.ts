@@ -293,21 +293,31 @@ export async function GET(request: Request) {
 
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
 
-    // === Emission factor per project, based on each project's own country ===
-    // Previously this used a single hardcoded factor (0.432, the SA fallback) for every
-    // project regardless of its actual country — now matches the methodology used when
-    // running a calculation (getEmissionFactor per project's country, from the DB).
+    // === Emission factor per project, based on each project's own country AND the date
+    // each reading was measured ===
+    // gridEmissionFactor is versioned by date (validFrom/validTo). A calculation run looks
+    // up the factor valid on the reading's own period, not "today" — so looking up "as of
+    // today" here (as an earlier fix did) can still disagree with a run's result whenever
+    // the reference table has more than one version for a country. Bucket by (country,
+    // month-of-reading) so historical readings use the factor version valid when they were
+    // measured, same as running a real calculation would, while keeping DB lookups bounded.
     const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
-    const now = new Date()
+    const getCachedEmissionFactor = async (countryCode: string, date: Date) => {
+      const bucketKey = `${countryCode}:${date.getUTCFullYear()}-${date.getUTCMonth()}`
+      if (!emissionFactorCache.has(bucketKey)) {
+        emissionFactorCache.set(bucketKey, await getEmissionFactor(countryCode, date))
+      }
+      return emissionFactorCache.get(bucketKey)!
+    }
+
     let totalCo2Avoided = 0
     for (const p of allProjects) {
       const countryCode = (p.country || 'SA').substring(0, 2).toUpperCase()
-      if (!emissionFactorCache.has(countryCode)) {
-        emissionFactorCache.set(countryCode, await getEmissionFactor(countryCode, now))
+      const projectReadings = allReadings.filter((r) => r.projectId === p.id)
+      for (const r of projectReadings) {
+        const ef = await getCachedEmissionFactor(countryCode, r.measuredAt)
+        totalCo2Avoided += r.value * ef.factor
       }
-      const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
-      const ef = emissionFactorCache.get(countryCode)!
-      totalCo2Avoided += projectEnergy * ef.factor
     }
 
     // Verified data % — real figure derived from attestation batches for the scoped
@@ -358,13 +368,14 @@ export async function GET(request: Request) {
         value: Math.round(totalCo2Avoided),
         unit: 'kgCO₂e',
         classification: 'محسوب', // محسوب = calculated from formula
-        emissionFactorsUsed: Array.from(emissionFactorCache.entries()).map(([countryCode, ef]) => ({
-          countryCode,
-          factor: ef.factor,
-          source: ef.source,
-          version: ef.version,
-          fromDb: ef.fromDb,
-        })),
+        emissionFactorsUsed: Array.from(
+          new Map(
+            Array.from(emissionFactorCache.entries()).map(([bucketKey, ef]) => {
+              const countryCode = bucketKey.split(':')[0]
+              return [`${countryCode}|${ef.version}|${ef.factor}`, { countryCode, factor: ef.factor, source: ef.source, version: ef.version, fromDb: ef.fromDb }]
+            }),
+          ).values(),
+        ),
         ...KPI_TRACEABILITY.co2Avoided,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'co2Avoided'))
