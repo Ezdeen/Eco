@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
         capacityKwp: true,
         currency: true,
         tariffRetail: true,
+        country: true,
         treeSpecies: true,
         treeCount: true,
         plantedAreaM2: true,
@@ -68,8 +69,34 @@ export async function GET(request: NextRequest) {
 
     // Calculate KPIs by category
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
-    const emissionFactor = 0.432
-    const totalCo2Avoided = totalEnergy * emissionFactor
+
+    // === Emission factor per project, based on each project's own country ===
+    // Previously this used a single hardcoded factor (0.432, the SA fallback) for every
+    // project regardless of its actual country. Now each project's CO2 avoided is computed
+    // with its own country's emission factor (from the gridEmissionFactor reference table,
+    // falling back to the country default only if no DB record is approved for that date).
+    const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
+    const now = new Date()
+    let totalCo2Avoided = 0
+    for (const p of allProjects) {
+      const countryCode = (p.country || 'SA').substring(0, 2).toUpperCase()
+      if (!emissionFactorCache.has(countryCode)) {
+        emissionFactorCache.set(countryCode, await getEmissionFactor(countryCode, now))
+      }
+      const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
+      const ef = emissionFactorCache.get(countryCode)!
+      totalCo2Avoided += projectEnergy * ef.factor
+    }
+    // Blended factor across all scoped projects — informational only; the actual totals
+    // above are computed per-project with each project's own country factor, not this one.
+    const blendedEmissionFactor = totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0
+    const emissionFactorsUsed = Array.from(emissionFactorCache.entries()).map(([countryCode, ef]) => ({
+      countryCode,
+      factor: ef.factor,
+      source: ef.source,
+      version: ef.version,
+      fromDb: ef.fromDb,
+    }))
 
     // Energy KPIs
     const energyExported = totalEnergy * 0.3
@@ -196,6 +223,11 @@ export async function GET(request: NextRequest) {
         co2Stored: Math.round(co2Stored),
         co2Sequestered: Math.round(co2Sequestered),
         carbonIntensity: Math.round(carbonIntensity * 1000) / 1000,
+        // Informational: the blended factor implied by totalCo2Avoided/totalEnergy, plus
+        // the actual per-country factors used to compute it (each project uses its own
+        // country's factor — this is not a single factor applied uniformly).
+        blendedEmissionFactor: Math.round(blendedEmissionFactor * 1000) / 1000,
+        emissionFactorsUsed,
       },
       water: {
         waterSaved: Math.round(waterSaved),
