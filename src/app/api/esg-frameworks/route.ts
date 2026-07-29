@@ -352,7 +352,7 @@ export async function GET(request: Request) {
         category: 'energy',
         labelAr: 'الطاقة المُولّدة',
         labelEn: 'Energy Generated',
-        value: Math.round(totalEnergy),
+        value: totalEnergy,
         unit: 'kWh',
         classification: 'موثق', // موثق = attested on Hedera
         ...KPI_TRACEABILITY.energyGenerated,
@@ -365,7 +365,7 @@ export async function GET(request: Request) {
         category: 'carbon',
         labelAr: 'CO₂e متجنب',
         labelEn: 'CO₂e Avoided',
-        value: Math.round(totalCo2Avoided),
+        value: totalCo2Avoided,
         unit: 'kgCO₂e',
         classification: 'محسوب', // محسوب = calculated from formula
         emissionFactorsUsed: Array.from(
@@ -386,12 +386,12 @@ export async function GET(request: Request) {
         category: 'carbon',
         labelAr: 'CO₂e ممتص (تخزين)',
         labelEn: 'CO₂e Sequestered',
-        value: Math.round(allProjects.filter((p) => p.projectType === 'afforestation').reduce((s, p) => {
+        value: allProjects.filter((p) => p.projectType === 'afforestation').reduce((s, p) => {
           const treeFactor = p.treeSpecies === 'السدر (Ziziphus spina-christi)' ? 22 : 21
           const alive = Math.round((p.treeCount || 0) * (p.survivalRateTarget || 0.85))
           const years = p.plantingDate ? (Date.now() - p.plantingDate.getTime()) / (1000 * 60 * 60 * 24 * 365) : 0
           return s + alive * treeFactor * Math.max(years, 0)
-        }, 0)),
+        }, 0),
         unit: 'kgCO₂e',
         classification: 'تقديري', // تقديري = estimated, requires field verification
         ...KPI_TRACEABILITY.co2Sequestered,
@@ -404,7 +404,7 @@ export async function GET(request: Request) {
         category: 'carbon',
         labelAr: 'كثافة الكربون',
         labelEn: 'Carbon Intensity',
-        value: totalEnergy > 0 ? Math.round((totalCo2Avoided / totalEnergy) * 1000) / 1000 : 0,
+        value: totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0,
         unit: 'kgCO₂e/kWh',
         classification: 'محسوب',
         ...KPI_TRACEABILITY.carbonIntensity,
@@ -432,11 +432,9 @@ export async function GET(request: Request) {
         labelEn: 'Cost Savings',
         // Only a single rounded number when all projects share one currency; otherwise
         // null with byCurrency populated so the UI doesn't render a mixed-currency total.
-        value: costSavingsSingleCurrency ? Math.round(costSavingsByCurrency[costSavingsSingleCurrency]) : null,
+        value: costSavingsSingleCurrency ? costSavingsByCurrency[costSavingsSingleCurrency] : null,
         unit: costSavingsSingleCurrency || 'مختلط (انظر byCurrency)',
-        byCurrency: Object.fromEntries(
-          Object.entries(costSavingsByCurrency).map(([c, v]) => [c, Math.round(v)]),
-        ),
+        byCurrency: costSavingsByCurrency,
         classification: 'محسوب',
         ...KPI_TRACEABILITY.costSavings,
         frameworks: ESG_FRAMEWORKS
@@ -448,7 +446,7 @@ export async function GET(request: Request) {
         category: 'water',
         labelAr: 'مياه موفّرة',
         labelEn: 'Water Saved',
-        value: Math.round(totalEnergy * 1.5),
+        value: totalEnergy * 1.5,
         unit: 'لتر',
         classification: 'تقديري',
         ...KPI_TRACEABILITY.waterSaved,
@@ -461,7 +459,7 @@ export async function GET(request: Request) {
         category: 'attestation',
         labelAr: 'بيانات موثقة',
         labelEn: 'Verified Data %',
-        value: Math.round(verifiedDataPercent * 10) / 10,
+        value: verifiedDataPercent,
         unit: '%',
         classification: 'موثق',
         ...KPI_TRACEABILITY.verifiedDataPercent,
