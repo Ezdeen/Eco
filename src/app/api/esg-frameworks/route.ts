@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, projectScopeFilter } from '@/lib/authorization'
+import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
 
 // ESG Frameworks with mapping to KPIs
 const ESG_FRAMEWORKS = [
@@ -250,16 +250,31 @@ const KPI_TRACEABILITY: Record<string, {
   },
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const auth = await requireAuth()
     if (!auth.authorized) return auth.response
     const { user } = auth
 
+    const { searchParams } = new URL(request.url)
+    const projectId = searchParams.get('projectId')
+
+    // If a specific project was requested, verify the user can actually access it
+    // (org match + project_manager isolation) instead of trusting the query param.
+    if (projectId) {
+      const access = await requireProjectAccess(projectId, 'reading:read')
+      if (!access.authorized) return access.response
+    }
+
     // Security: scope to the user's organization (previously unscoped — leaked every
-    // organization's projects and readings), plus project_manager isolation
+    // organization's projects and readings), plus project_manager isolation, and now
+    // further scoped to a single project when projectId is provided.
     const allProjects = await db.project.findMany({
-      where: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
+      where: {
+        organizationId: user.organizationId!,
+        ...projectScopeFilter(user),
+        ...(projectId ? { id: projectId } : {}),
+      },
       select: {
         id: true, name: true, nameAr: true, code: true, projectType: true,
         capacityKwp: true, currency: true, tariffRetail: true,
@@ -278,6 +293,18 @@ export async function GET() {
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
     const emissionFactor = 0.432
     const totalCo2Avoided = totalEnergy * emissionFactor
+
+    // Verified data % — real figure derived from attestation batches for the scoped
+    // project set, instead of a hardcoded constant that never changed per project.
+    const scopedProjectIds = allProjects.map((p) => p.id)
+    const totalReadingsDb = await db.energyReading.count({ where: { projectId: { in: scopedProjectIds } } })
+    const attestedItems = await db.attestationBatch.aggregate({
+      where: { status: 'confirmed', projectId: { in: scopedProjectIds } },
+      _sum: { itemCount: true },
+    })
+    const verifiedDataPercent = totalReadingsDb > 0
+      ? Math.min(100, ((attestedItems._sum.itemCount || 0) / totalReadingsDb) * 100)
+      : 0
 
     // Cost savings grouped by each project's own currency (Project.currency).
     // Previously this summed tariffs across all projects into one number regardless
@@ -400,7 +427,7 @@ export async function GET() {
         category: 'attestation',
         labelAr: 'بيانات موثقة',
         labelEn: 'Verified Data %',
-        value: 87.5,
+        value: Math.round(verifiedDataPercent * 10) / 10,
         unit: '%',
         classification: 'موثق',
         ...KPI_TRACEABILITY.verifiedDataPercent,
