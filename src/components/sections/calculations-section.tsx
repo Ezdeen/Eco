@@ -146,8 +146,15 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; grad
 }
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
-const fmtCompact = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toString()
+// Exact formatter for KPI Catalog / Traceable KPIs: shows the real value as computed from
+// the database, with thousands separators for readability but WITHOUT rounding or capping
+// decimal places (unlike fmt, which rounds/caps to 2 decimals).
+const fmtExact = (n: number) => {
+  const value = n || 0
+  const [intPart, decPart] = value.toString().split('.')
+  const withSeparators = Number(intPart).toLocaleString('en-US')
+  return decPart ? `${withSeparators}.${decPart}` : withSeparators
+}
 
 export function CalculationsSection() {
   const [projects, setProjects] = useState<any[]>([])
@@ -406,7 +413,7 @@ export function CalculationsSection() {
                                 <div className="text-left shrink-0 space-y-0.5">
                                   {entries.length > 0 ? entries.map(([currency, amount]) => (
                                     <p key={currency} className={`text-xs font-bold tabular-nums ${colors.text}`}>
-                                      {fmtCompact(amount as number)} {currency}
+                                      {fmtExact(amount as number)} {currency}
                                     </p>
                                   )) : (
                                     <p className="text-[10px] text-muted-foreground">—</p>
@@ -423,7 +430,7 @@ export function CalculationsSection() {
                               </div>
                               <div className="text-left shrink-0">
                                 <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
-                                  {fmtCompact(rawValue || 0)}
+                                  {fmtExact(rawValue || 0)}
                                 </p>
                                 <p className="text-[10px] text-muted-foreground">
                                   {cat.key === 'economy' && categoryData.currency
@@ -550,12 +557,12 @@ export function CalculationsSection() {
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           {kpi.value !== null ? (
-                            <p className="text-lg font-bold tabular-nums text-primary">{fmtCompact(kpi.value)}</p>
+                            <p className="text-lg font-bold tabular-nums text-primary">{fmtExact(kpi.value)}</p>
                           ) : kpi.byCurrency ? (
                             <div className="text-left">
                               {Object.entries(kpi.byCurrency).map(([currency, amount]) => (
                                 <p key={currency} className="text-sm font-bold tabular-nums text-primary">
-                                  {fmtCompact(amount as number)} {currency}
+                                  {fmtExact(amount as number)} {currency}
                                 </p>
                               ))}
                             </div>
@@ -701,7 +708,7 @@ export function CalculationsSection() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-xs text-muted-foreground">القيمة الحالية</p>
-                  <p className="text-xl font-bold tabular-nums text-primary">{fmt(traceDialog.value)} {traceDialog.unit}</p>
+                  <p className="text-xl font-bold tabular-nums text-primary">{fmtExact(traceDialog.value)} {traceDialog.unit}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-xs text-muted-foreground">آخر تحقق</p>
