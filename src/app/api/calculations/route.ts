@@ -70,33 +70,50 @@ export async function GET(request: NextRequest) {
     // Calculate KPIs by category
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
 
-    // === Emission factor per project, based on each project's own country ===
+    // === Emission factor per project, based on each project's own country AND the date
+    // each reading was measured ===
     // Previously this used a single hardcoded factor (0.432, the SA fallback) for every
-    // project regardless of its actual country. Now each project's CO2 avoided is computed
-    // with its own country's emission factor (from the gridEmissionFactor reference table,
-    // falling back to the country default only if no DB record is approved for that date).
+    // project regardless of its actual country - then, after that fix, it still looked up
+    // each country's factor as of "today" only. But gridEmissionFactor is versioned by date
+    // (validFrom/validTo), and a calculation run looks up the factor valid on the reading's
+    // own period (periodStart), not today. If the reference table has more than one version
+    // for a country, "as of today" and "as of the reading's date" can legitimately differ,
+    // which is exactly the residual mismatch between a run's result and this catalog.
+    // Fix: look up the factor per (country, month-of-reading) bucket so historical readings
+    // use the factor version that was valid when they were measured, same as a real run would.
     const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
-    const now = new Date()
+    const getCachedEmissionFactor = async (countryCode: string, date: Date) => {
+      // Bucket by month: factor versions in practice don't change more often than that,
+      // and this keeps DB lookups bounded instead of one-per-reading.
+      const bucketKey = `${countryCode}:${date.getUTCFullYear()}-${date.getUTCMonth()}`
+      if (!emissionFactorCache.has(bucketKey)) {
+        emissionFactorCache.set(bucketKey, await getEmissionFactor(countryCode, date))
+      }
+      return emissionFactorCache.get(bucketKey)!
+    }
+
     let totalCo2Avoided = 0
     for (const p of allProjects) {
       const countryCode = (p.country || 'SA').substring(0, 2).toUpperCase()
-      if (!emissionFactorCache.has(countryCode)) {
-        emissionFactorCache.set(countryCode, await getEmissionFactor(countryCode, now))
+      const projectReadings = allReadings.filter((r) => r.projectId === p.id)
+      for (const r of projectReadings) {
+        const ef = await getCachedEmissionFactor(countryCode, r.measuredAt)
+        totalCo2Avoided += r.value * ef.factor
       }
-      const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
-      const ef = emissionFactorCache.get(countryCode)!
-      totalCo2Avoided += projectEnergy * ef.factor
     }
     // Blended factor across all scoped projects — informational only; the actual totals
-    // above are computed per-project with each project's own country factor, not this one.
+    // above are computed per-project/per-reading-date with each factor version, not this one.
     const blendedEmissionFactor = totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0
-    const emissionFactorsUsed = Array.from(emissionFactorCache.entries()).map(([countryCode, ef]) => ({
-      countryCode,
-      factor: ef.factor,
-      source: ef.source,
-      version: ef.version,
-      fromDb: ef.fromDb,
-    }))
+    // De-duplicate the cache (keyed by country:month bucket) down to one entry per distinct
+    // (country, factor, version) combination actually applied, for a readable summary.
+    const emissionFactorsUsed = Array.from(
+      new Map(
+        Array.from(emissionFactorCache.entries()).map(([bucketKey, ef]) => {
+          const countryCode = bucketKey.split(':')[0]
+          return [`${countryCode}|${ef.version}|${ef.factor}`, { countryCode, factor: ef.factor, source: ef.source, version: ef.version, fromDb: ef.fromDb }]
+        }),
+      ).values(),
+    )
 
     // Energy KPIs
     const energyExported = totalEnergy * 0.3
