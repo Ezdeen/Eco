@@ -229,42 +229,42 @@ export async function GET(request: NextRequest) {
 
     const kpiCatalog = {
       energy: {
-        energyGenerated: Math.round(totalEnergy),
-        energyExported: Math.round(energyExported),
-        energyImported: Math.round(energyImported),
-        selfConsumption: Math.round(selfConsumption),
-        renewableFraction: Math.round(renewableFraction * 10) / 10,
+        energyGenerated: totalEnergy,
+        energyExported,
+        energyImported,
+        selfConsumption,
+        renewableFraction,
       },
       carbon: {
-        co2Avoided: Math.round(co2Avoided),
-        co2Stored: Math.round(co2Stored),
-        co2Sequestered: Math.round(co2Sequestered),
-        carbonIntensity: Math.round(carbonIntensity * 1000) / 1000,
+        co2Avoided,
+        co2Stored,
+        co2Sequestered,
+        carbonIntensity,
         // Informational: the blended factor implied by totalCo2Avoided/totalEnergy, plus
         // the actual per-country factors used to compute it (each project uses its own
         // country's factor — this is not a single factor applied uniformly).
-        blendedEmissionFactor: Math.round(blendedEmissionFactor * 1000) / 1000,
+        blendedEmissionFactor,
         emissionFactorsUsed,
       },
       water: {
-        waterSaved: Math.round(waterSaved),
-        waterConsumed: Math.round(waterConsumed),
+        waterSaved,
+        waterConsumed,
       },
       waste: {
-        wasteDiverted: Math.round(wasteDiverted),
-        wasteRecycled: Math.round(wasteRecycled),
+        wasteDiverted,
+        wasteRecycled,
       },
       afforestation: {
         treesPlanted,
-        survivalRate: Math.round(survivalRate * 100),
-        biomass: Math.round(biomass),
-        carbonStock: Math.round(carbonStock),
-        carbonSequestration: Math.round(carbonSequestration),
+        survivalRate,
+        biomass,
+        carbonStock,
+        carbonSequestration,
       },
       biodiversity: {
-        restoredArea: Math.round(restoredArea * 100) / 100,
-        protectedArea: Math.round(protectedArea * 100) / 100,
-        habitatIndex: Math.round(habitatIndex),
+        restoredArea,
+        protectedArea,
+        habitatIndex,
         speciesCount,
       },
       economy: {
@@ -272,28 +272,24 @@ export async function GET(request: NextRequest) {
         // when every project shares the same currency; otherwise they are null and
         // the caller must render costSavingsByCurrency / greenInvestmentByCurrency
         // (one figure per currency) instead of a misleadingly combined total.
-        costSavings: costSavings !== null ? Math.round(costSavings) : null,
-        greenInvestment: greenInvestment !== null ? Math.round(greenInvestment) : null,
-        costPerTCo2e: costPerTCo2e !== null ? Math.round(costPerTCo2e) : null,
-        costPerKwh: costPerKwh !== null ? Math.round(costPerKwh * 100) / 100 : null,
+        costSavings,
+        greenInvestment,
+        costPerTCo2e,
+        costPerKwh,
         currency: singleCurrency, // null when projects use mixed currencies
-        costSavingsByCurrency: Object.fromEntries(
-          Object.entries(costSavingsByCurrency).map(([c, v]) => [c, Math.round(v)]),
-        ),
-        greenInvestmentByCurrency: Object.fromEntries(
-          Object.entries(greenInvestmentByCurrency).map(([c, v]) => [c, Math.round(v)]),
-        ),
+        costSavingsByCurrency,
+        greenInvestmentByCurrency,
       },
       dataQuality: {
-        completeness: Math.round(completeness * 10) / 10,
-        accuracy: Math.round(accuracy * 10) / 10,
-        timeliness: Math.round(timeliness * 10) / 10,
-        validationRate: Math.round(validationRate * 10) / 10,
+        completeness,
+        accuracy,
+        timeliness,
+        validationRate,
       },
       attestation: {
-        verifiedDataPercent: Math.round(verifiedDataPercent * 10) / 10,
-        traceabilityPercent: Math.round(traceabilityPercent * 10) / 10,
-        auditCoveragePercent: Math.round(auditCoveragePercent * 10) / 10,
+        verifiedDataPercent,
+        traceabilityPercent,
+        auditCoveragePercent,
         attestationCount,
       },
     }
