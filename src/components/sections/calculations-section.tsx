@@ -434,6 +434,20 @@ export function CalculationsSection() {
                             </div>
                           )
                         })}
+                        {cat.key === 'carbon' && categoryData.emissionFactorsUsed?.length > 0 && (
+                          <div className="pt-1.5 mt-1 border-t border-border/60">
+                            <p className="text-[10px] text-muted-foreground leading-relaxed">
+                              عامل الانبعاث المُستخدم:{' '}
+                              {categoryData.emissionFactorsUsed.map((ef: any, i: number) => (
+                                <span key={ef.countryCode}>
+                                  {i > 0 && '، '}
+                                  {ef.countryCode} = {ef.factor} kgCO₂e/kWh
+                                  {ef.fromDb ? '' : ' (افتراضي)'}
+                                </span>
+                              ))}
+                            </p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )
