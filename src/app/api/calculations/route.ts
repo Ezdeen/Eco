@@ -1,26 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } from '@/lib/reference-data'
-import { requireProjectAccess } from '@/lib/authorization'
+import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
 import { calculationSchema } from '@/lib/validation'
 
 // Legacy constants removed - now using reference-data.ts library
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.authorized) return auth.response
+    const { user } = auth
+
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
 
-    const where = projectId ? { projectId } : {}
+    // If a specific project was requested, verify the user can actually access it
+    // (org match + project_manager isolation) instead of trusting the query param.
+    if (projectId) {
+      const access = await requireProjectAccess(projectId, 'reading:read')
+      if (!access.authorized) return access.response
+    }
+
+    const runsWhere = projectId
+      ? { projectId }
+      : { project: { organizationId: user.organizationId!, ...projectScopeFilter(user) } }
+
     const runs = await db.calculationRun.findMany({
-      where,
+      where: runsWhere,
       include: { project: { select: { name: true, nameAr: true, code: true } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
     })
 
-    // Fetch comprehensive KPI data
+    // Fetch comprehensive KPI data — scoped to the user's organization (and further to a
+    // single project when projectId is provided), never across the whole platform.
     const allProjects = await db.project.findMany({
+      where: {
+        organizationId: user.organizationId!,
+        ...projectScopeFilter(user),
+        ...(projectId ? { id: projectId } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -39,7 +59,10 @@ export async function GET(request: NextRequest) {
     })
 
     const allReadings = await db.energyReading.findMany({
-      where: { qualityStatus: { in: ['validated', 'approved', 'corrected'] } },
+      where: {
+        qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+        projectId: { in: allProjects.map((p) => p.id) },
+      },
       select: { value: true, measuredAt: true, projectId: true, qualityStatus: true, validationStatus: true },
     })
 
@@ -147,10 +170,13 @@ export async function GET(request: NextRequest) {
     const validationRate = totalReadingsCount > 0 ? (validatedCount / totalReadingsCount) * 100 : 0
 
     // Attestation KPIs
-    const attestationCount = await db.attestationBatch.count({ where: { status: 'confirmed' } })
-    const totalReadingsDb = await db.energyReading.count()
+    const projectIds = allProjects.map((p) => p.id)
+    const attestationCount = await db.attestationBatch.count({
+      where: { status: 'confirmed', projectId: { in: projectIds } },
+    })
+    const totalReadingsDb = await db.energyReading.count({ where: { projectId: { in: projectIds } } })
     const attestedItems = await db.attestationBatch.aggregate({
-      where: { status: 'confirmed' },
+      where: { status: 'confirmed', projectId: { in: projectIds } },
       _sum: { itemCount: true },
     })
     const verifiedDataPercent = totalReadingsDb > 0 ? Math.min(100, ((attestedItems._sum.itemCount || 0) / totalReadingsDb) * 100) : 0
