@@ -165,27 +165,35 @@ export function CalculationsSection() {
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => { if (d && d.projects) setProjects(d.projects) })
       .catch(() => {})
-    fetchCalculations()
-    fetch('/api/esg-frameworks')
-      .then((r) => {
-        if (!r.ok) throw new Error('ESG frameworks API failed')
-        return r.json()
-      })
-      .then((d) => {
-        if (d && d.frameworks) {
-          setEsgData(d)
-        }
-      })
-      .catch(() => {})
   }, [])
 
-  const fetchCalculations = async () => {
+  // Re-fetch KPI Catalog + Traceable KPIs whenever the selected project changes,
+  // and on initial mount (selectedProject starts as '' → shows the org-wide totals).
+  useEffect(() => {
+    fetchCalculations(selectedProject)
+    fetchEsgFrameworks(selectedProject)
+  }, [selectedProject])
+
+  const fetchCalculations = async (projectId?: string) => {
     try {
-      const res = await fetch('/api/calculations')
+      const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+      const res = await fetch(`/api/calculations${qs}`)
       if (!res.ok) return
       const data = await res.json()
       setRecentRuns(data.calculationRuns || [])
       setKpiCatalog(data.kpiCatalog || null)
+    } catch {}
+  }
+
+  const fetchEsgFrameworks = async (projectId?: string) => {
+    try {
+      const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+      const res = await fetch(`/api/esg-frameworks${qs}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data && data.frameworks) {
+        setEsgData(data)
+      }
     } catch {}
   }
 
@@ -214,7 +222,8 @@ export function CalculationsSection() {
       if (data && data.success) {
         setResult(data)
         toast.success('اكتمل الحساب بنجاح')
-        fetchCalculations()
+        fetchCalculations(selectedProject)
+        fetchEsgFrameworks(selectedProject)
       } else {
         toast.error('فشل الحساب')
       }
@@ -236,6 +245,11 @@ export function CalculationsSection() {
               <p className="text-sm opacity-90">
                 جميع المؤشرات البيئية بشكل موحد - 9 فئات تشمل الطاقة والكربون والمياه والنفايات والتشجير والتنوع الحيوي والاقتصاد وجودة البيانات والتوثيق
               </p>
+              <Badge variant="outline" className="mt-2 border-white/40 text-white bg-white/10">
+                {selectedProject
+                  ? `نطاق العرض: ${projects.find((p) => p.id === selectedProject)?.nameAr || projects.find((p) => p.id === selectedProject)?.name || 'المشروع المحدد'}`
+                  : 'نطاق العرض: جميع المشاريع'}
+              </Badge>
             </div>
             <Database className="h-12 w-12 opacity-80" />
           </div>
