@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
+import { getEmissionFactor } from '@/lib/reference-data'
 
 // ESG Frameworks with mapping to KPIs
 const ESG_FRAMEWORKS = [
@@ -193,9 +194,9 @@ const KPI_TRACEABILITY: Record<string, {
     auditTrail: 'Available in Audit Log + Attestation Batch',
   },
   co2Avoided: {
-    source: 'IPCC Grid Emission Factor × Energy Generated',
-    calculationMethod: 'CO₂e = Energy (kWh) × EF (kgCO₂e/kWh)',
-    dataOrigin: 'Saudi Electricity Company - 2024 factor (0.432)',
+    source: 'Grid Emission Factor (per project country) × Energy Generated',
+    calculationMethod: 'CO₂e = Energy (kWh) × EF (kgCO₂e/kWh), EF looked up per project.country',
+    dataOrigin: 'gridEmissionFactor reference table (falls back to country default if unapproved/missing)',
     verificationStatus: 'Calculation reproducible via CalculationRun',
     lastVerified: '2024-07-16',
     auditTrail: 'parametersHash stored in calculation_runs',
@@ -277,7 +278,7 @@ export async function GET(request: Request) {
       },
       select: {
         id: true, name: true, nameAr: true, code: true, projectType: true,
-        capacityKwp: true, currency: true, tariffRetail: true,
+        capacityKwp: true, currency: true, tariffRetail: true, country: true,
         treeSpecies: true, treeCount: true, plantedAreaM2: true, survivalRateTarget: true, plantingDate: true,
       },
     })
@@ -291,8 +292,23 @@ export async function GET(request: Request) {
     })
 
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
-    const emissionFactor = 0.432
-    const totalCo2Avoided = totalEnergy * emissionFactor
+
+    // === Emission factor per project, based on each project's own country ===
+    // Previously this used a single hardcoded factor (0.432, the SA fallback) for every
+    // project regardless of its actual country — now matches the methodology used when
+    // running a calculation (getEmissionFactor per project's country, from the DB).
+    const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
+    const now = new Date()
+    let totalCo2Avoided = 0
+    for (const p of allProjects) {
+      const countryCode = (p.country || 'SA').substring(0, 2).toUpperCase()
+      if (!emissionFactorCache.has(countryCode)) {
+        emissionFactorCache.set(countryCode, await getEmissionFactor(countryCode, now))
+      }
+      const projectEnergy = allReadings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
+      const ef = emissionFactorCache.get(countryCode)!
+      totalCo2Avoided += projectEnergy * ef.factor
+    }
 
     // Verified data % — real figure derived from attestation batches for the scoped
     // project set, instead of a hardcoded constant that never changed per project.
@@ -342,6 +358,13 @@ export async function GET(request: Request) {
         value: Math.round(totalCo2Avoided),
         unit: 'kgCO₂e',
         classification: 'محسوب', // محسوب = calculated from formula
+        emissionFactorsUsed: Array.from(emissionFactorCache.entries()).map(([countryCode, ef]) => ({
+          countryCode,
+          factor: ef.factor,
+          source: ef.source,
+          version: ef.version,
+          fromDb: ef.fromDb,
+        })),
         ...KPI_TRACEABILITY.co2Avoided,
         frameworks: ESG_FRAMEWORKS
           .filter((f) => f.mapping.some((m) => m.kpi === 'co2Avoided'))
