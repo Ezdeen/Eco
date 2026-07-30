@@ -9,8 +9,12 @@ generator client {
 // For local development with SQLite, change provider to "sqlite".
 // For production, use provider = "postgresql" with a proper DATABASE_URL.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // DIRECT_URL: اتصال مباشر (غير مُجمّع) يُستخدم بواسطة Prisma Migrate/introspection.
+  // ضروري مع Supabase لأن DATABASE_URL عادة يمر عبر PgBouncer (transaction pooler)
+  // الذي لا يدعم بعض عمليات الـ migration.
+  directUrl = env("DIRECT_URL")
 }
 
 // ============== الهوية والمؤسسات ==============
@@ -131,6 +135,7 @@ model Project {
   cases          Case[]
   notifications  Notification[]
   auditEvents    AuditEvent[]
+  spaceDataObservations SpaceDataObservation[]
   ingestionBatches IngestionBatch[]
   weatherObservations WeatherObservation[]
   expectedYieldModels ExpectedYieldModel[]
@@ -743,4 +748,91 @@ model Subscription {
 
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan            Plan         @relation(fields: [planId], references: [id])
+}
+
+// ============== البيانات الفضائية (Satellite / Earth Observation Data) ==============
+// مصادر مفتوحة: Google Earth Engine (Sentinel-2/Sentinel-5P, Landsat, MODIS),
+// NASA POWER, Copernicus Atmosphere Monitoring Service (CAMS).
+// تُسحب البيانات يوميًا 3 مرات (10:55 / 15:55 / 17:50) لكل مشروع حسب إحداثياته (lat/lon)
+// وتُخزَّن بشكل موحّد بغض النظر عن مصدرها الأصلي، لدعم القياس البيئي والحوكمة والشفافية
+// (تأسيسًا لإصدار شهادات كربون لمشاريع الطاقة الشمسية والتشجير).
+
+model SpaceDataSource {
+  id              String    @id @default(cuid())
+  key             String    @unique // nasa_power, gee_sentinel2, gee_sentinel5p, gee_landsat, gee_modis, cams
+  name            String    // اسم العرض بالعربية
+  provider        String    // NASA, Google Earth Engine, Copernicus/ECMWF
+  description     String?
+  apiUrl          String?
+  requiresApiKey  Boolean   @default(true)
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?   // success, partial, failed
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  observations    SpaceDataObservation[]
+
+  @@index([key])
+}
+
+model SpaceDataObservation {
+  id              String   @id @default(cuid())
+  projectId       String
+  sourceId        String
+  sourceKey       String   // نسخة مسطّحة من مفتاح المصدر لتسهيل الفلترة/الفهرسة
+  dataset         String   // Sentinel-2, Sentinel-5P, Landsat-8/9, MODIS, NASA-POWER, CAMS
+  observedAt      DateTime // الطابع الزمني للرصدة الفضائية (تاريخ القيمة نفسها)
+  fetchedAt       DateTime @default(now()) // وقت السحب الفعلي (10:55 / 15:55 / 17:50)
+  fetchRun        String?  // 'morning' | 'afternoon' | 'evening' — أي تشغيل يومي أنتج هذه القراءة
+  latitude        Float
+  longitude       Float
+
+  // --- مؤشرات الإشعاع الشمسي والجو (NASA POWER + CAMS) ---
+  ghiWm2          Float?   // Global Horizontal Irradiance
+  dniWm2          Float?   // Direct Normal Irradiance (CAMS)
+  difWm2          Float?   // Diffuse Irradiance (CAMS)
+  aod             Float?   // Aerosol Optical Depth (مؤشر الغبار، CAMS)
+  temperatureC    Float?
+  windSpeedMs     Float?
+  humidityPct     Float?
+  cloudCoverPct   Float?
+  precipitationMm Float?
+
+  // --- مؤشرات القياس الحيوي/النباتي (Google Earth Engine) ---
+  ndvi            Float?   // مؤشر الغطاء النباتي (Sentinel-2/Landsat/MODIS) — مهم لمشاريع التشجير
+  evi             Float?   // Enhanced Vegetation Index
+  lstC            Float?   // Land Surface Temperature (درجة حرارة سطح الأرض)
+  no2ColumnMolM2  Float?   // NO2 troposphere column density (Sentinel-5P) — مؤشر بيئي/حوكمي
+  aerosolIndex    Float?   // Aerosol Index (Sentinel-5P)
+
+  qualityFlag     String?  // good, cloudy, gap_filled, estimated
+  rawPayload      String?  // JSON خام كما وصل من المصدر، للتدقيق والشفافية الكاملة
+  createdAt       DateTime @default(now())
+
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source          SpaceDataSource @relation(fields: [sourceId], references: [id])
+
+  @@index([projectId, observedAt])
+  @@index([sourceKey, observedAt])
+  @@index([projectId, sourceKey, observedAt])
+  @@unique([projectId, sourceKey, dataset, observedAt])
+}
+
+// سجل تشغيلات الجدولة اليومية (Cron runs) — للتدقيق والشفافية حول نجاح/فشل كل سحب بيانات
+model SpaceDataSyncRun {
+  id              String   @id @default(cuid())
+  runLabel        String   // morning (10:55) | afternoon (15:55) | evening (17:50) | manual
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  status          String   @default("running") // running, success, partial, failed
+  projectsTotal   Int      @default(0)
+  projectsOk      Int      @default(0)
+  projectsFailed  Int      @default(0)
+  observationsCreated Int  @default(0)
+  errorSummary    String?  // JSON array of { projectId, source, error }
+  triggeredBy     String?  // 'cron' | user email for manual runs
+
+  @@index([runLabel, startedAt])
 }

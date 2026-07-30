@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Network, CloudSun, FileBarChart, Cpu, Bell, CreditCard,
   CheckCircle2, AlertCircle, AlertTriangle, Plug, ShieldAlert,
-  Activity, Mail, Smartphone, MessageCircle, Settings,
+  Activity, Mail, Smartphone, MessageCircle, Settings, Satellite,
 } from 'lucide-react'
 import { IntegrationConfigSection } from '@/components/sections/integration-config-section'
 
@@ -20,6 +20,7 @@ interface IntegrationData {
   devices: any
   notifications: any
   payments: any
+  spaceData: any
   summary: any
 }
 
@@ -75,7 +76,7 @@ export function IntegrationsSection() {
     )
   }
 
-  const { hedera, openMeteo, reports, devices, notifications, payments, summary } = data
+  const { hedera, openMeteo, reports, devices, notifications, payments, spaceData, summary } = data
 
   return (
     <div className="space-y-5">
@@ -193,6 +194,43 @@ export function IntegrationsSection() {
               </Badge>
             } />
           </div>
+        </IntegrationCard>
+
+        {/* Space Data (NASA POWER / GEE / CAMS) */}
+        <IntegrationCard
+          title="البيانات الفضائية"
+          titleAr="NASA POWER · Google Earth Engine · CAMS"
+          icon={Satellite}
+          status={spaceData.status === 'active' ? 'connected' : 'needs_setup'}
+          description={spaceData.description}
+        >
+          <div className="space-y-2 text-xs">
+            <InfoRow label="NASA POWER" value={
+              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.nasaPower.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                {spaceData.sources.nasaPower.status === 'connected' ? '✓ متصل' : 'يحتاج تفعيل'}
+              </Badge>
+            } />
+            <InfoRow label="Google Earth Engine" value={
+              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.gee.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
+                {spaceData.sources.gee.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
+              </Badge>
+            } />
+            <InfoRow label="CAMS" value={
+              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.cams.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
+                {spaceData.sources.cams.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
+              </Badge>
+            } />
+            <Separator className="my-2" />
+            <InfoRow label="جدولة السحب اليومي" value={<span className="font-mono text-[10px]">{spaceData.schedule.join(' · ')}</span>} />
+            <InfoRow label="آخر مزامنة" value={spaceData.lastSyncAt ? new Date(spaceData.lastSyncAt).toLocaleString('ar-SA') : 'لا توجد بعد'} />
+            <InfoRow label="عدد القراءات" value={<span className="font-bold tabular-nums">{spaceData.totalObservations}</span>} />
+          </div>
+          {spaceData.status !== 'active' && (
+            <div className="mt-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 text-[10px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+              <ShieldAlert className="h-3 w-3 shrink-0 mt-0.5" />
+              <span>أضف مفاتيح Google Earth Engine وCAMS من قسم "إدارة الإعدادات" أدناه لتفعيل جميع المصادر. NASA POWER يعمل تلقائيًا بدون مفتاح.</span>
+            </div>
+          )}
         </IntegrationCard>
 
         {/* Reports */}

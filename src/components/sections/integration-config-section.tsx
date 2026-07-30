@@ -83,6 +83,37 @@ const INTEGRATION_TEMPLATES = [
     secretPlaceholder: 'مفتاح HMAC للتحقق من التوقيع',
   },
   {
+    name: 'space_nasa_power',
+    displayName: 'NASA POWER',
+    description: 'الإشعاع الشمسي التاريخي ودرجة الحرارة والرياح والرطوبة — REST API مجاني بالكامل، لا يحتاج مفتاح',
+    category: 'integration',
+    configFields: [],
+    secretLabel: 'API Key (غير مطلوب)',
+    secretPlaceholder: 'اترك فارغًا — NASA POWER مجاني وبلا مفتاح',
+  },
+  {
+    name: 'space_gee',
+    displayName: 'Google Earth Engine',
+    description: 'بيانات Sentinel-2/5P وLandsat وMODIS (NDVI, EVI, LST, NO2) عبر Earth Engine REST API',
+    category: 'integration',
+    configFields: [
+      { key: 'projectHint', label: 'ملاحظة', type: 'text', placeholder: 'يُقرأ project_id تلقائيًا من ملف Service Account JSON أدناه' },
+    ],
+    secretLabel: 'Service Account JSON (كامل المحتوى)',
+    secretPlaceholder: '{"client_email": "...", "private_key": "...", "project_id": "..."}',
+  },
+  {
+    name: 'space_cams',
+    displayName: 'CAMS (Copernicus Atmosphere)',
+    description: 'الإشعاع الشمسي الفعلي (GHI, DNI, DIF) ونسبة الغبار (AOD) عبر ADS / CAMS Radiation API',
+    category: 'integration',
+    configFields: [
+      { key: 'username', label: 'البريد الإلكتروني المسجّل في CAMS/ADS', type: 'text', placeholder: 'you@example.com' },
+    ],
+    secretLabel: 'ADS API Key',
+    secretPlaceholder: 'مفتاح API من https://ads.atmosphere.copernicus.eu',
+  },
+  {
     name: 'stripe',
     displayName: 'Stripe Payments',
     description: 'بوابة الدفع للاشتراكات',

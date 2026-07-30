@@ -1,0 +1,19 @@
+{
+  "crons": [
+    {
+      "comment": "سحب البيانات الفضائية - صباحًا 10:55 بتوقيت الرياض (Asia/Riyadh, UTC+3) = 07:55 UTC",
+      "path": "/api/space-data/sync?run=morning",
+      "schedule": "55 7 * * *"
+    },
+    {
+      "comment": "سحب البيانات الفضائية - ظهرًا 15:55 بتوقيت الرياض = 12:55 UTC",
+      "path": "/api/space-data/sync?run=afternoon",
+      "schedule": "55 12 * * *"
+    },
+    {
+      "comment": "سحب البيانات الفضائية - مساءً 17:50 بتوقيت الرياض = 14:50 UTC",
+      "path": "/api/space-data/sync?run=evening",
+      "schedule": "50 14 * * *"
+    }
+  ]
+}

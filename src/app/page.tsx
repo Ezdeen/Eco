@@ -9,6 +9,7 @@ import { ProjectsSection } from '@/components/sections/projects-section'
 import { EnergyPerformanceSection } from '@/components/sections/energy-performance-section'
 import { AssetsDevicesSection } from '@/components/sections/assets-devices-section'
 import { DataCenterSection } from '@/components/sections/data-section'
+import { SpaceDataSection } from '@/components/sections/space-data-section'
 import { MonitoringSection } from '@/components/sections/monitoring-section'
 import { CalculationsSection } from '@/components/sections/calculations-section'
 import { AttestationsSection } from '@/components/sections/attestations-section'
@@ -30,6 +31,7 @@ const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   'energy-performance': { title: 'الطاقة الكهربائية', subtitle: 'مؤشرات الأداء التشغيلي - Energy Performance' },
   'assets-devices': { title: 'الأصول والأجهزة', subtitle: 'المصفوفات الشمسية والإنفرترات والأجهزة في قسم موحد' },
   data: { title: 'مركز البيانات', subtitle: 'القراءات الخام والمطبّعة مع جودة وتدقيق' },
+  'space-data': { title: 'البيانات الفضائية', subtitle: 'بيانات الاستشعار عن بعد من NASA POWER وGoogle Earth Engine وCAMS حسب إحداثيات كل مشروع' },
   monitoring: { title: 'مركز المراقبة', subtitle: 'الحوادث والتنبيهات وصحة النظام' },
   calculations: { title: 'الحسابات (KPI Catalog)', subtitle: 'Environmental KPI Catalog - جميع المؤشرات البيئية بشكل موحد' },
   attestations: { title: 'التوثيق والمطابقة', subtitle: 'توثيق حزم البيانات على شبكة Hedera' },
@@ -165,6 +167,7 @@ export default function Home() {
           {section === 'energy-performance' && <EnergyPerformanceSection />}
           {section === 'assets-devices' && <AssetsDevicesSection />}
           {section === 'data' && <DataCenterSection />}
+          {section === 'space-data' && <SpaceDataSection />}
           {section === 'monitoring' && <MonitoringSection />}
           {section === 'calculations' && <CalculationsSection />}
           {section === 'attestations' && <AttestationsSection />}

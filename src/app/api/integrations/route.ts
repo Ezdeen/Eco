@@ -151,8 +151,55 @@ export async function GET() {
       description: 'مطلوب لتحويل المنصة إلى SaaS تجاري. يحتاج تكامل Stripe أو بوابة دفع.',
     }
 
+    // === البيانات الفضائية: NASA POWER / Google Earth Engine / CAMS ===
+    const [nasaPowerCfg, geeCfg, camsCfg] = await Promise.all([
+      db.integrationConfig.findUnique({ where: { name: 'space_nasa_power' } }),
+      db.integrationConfig.findUnique({ where: { name: 'space_gee' } }),
+      db.integrationConfig.findUnique({ where: { name: 'space_cams' } }),
+    ])
+    const [nasaPowerSrc, geeSrc, camsSrc] = await Promise.all([
+      db.spaceDataSource.findUnique({ where: { key: 'space_nasa_power' } }),
+      db.spaceDataSource.findUnique({ where: { key: 'space_gee' } }),
+      db.spaceDataSource.findUnique({ where: { key: 'space_cams' } }),
+    ])
+    const spaceObservationsCount = await db.spaceDataObservation.count()
+    const lastSyncRun = await db.spaceDataSyncRun.findFirst({ orderBy: { startedAt: 'desc' } })
+
+    const nasaPowerActive = nasaPowerCfg ? nasaPowerCfg.isActive : true // مجاني بدون مفتاح، مفعّل افتراضيًا
+    const geeActive = !!(geeCfg?.isActive && geeCfg?.encryptedSecret)
+    const camsActive = !!(camsCfg?.isActive && camsCfg?.encryptedSecret)
+
+    const spaceData = {
+      status: (nasaPowerActive || geeActive || camsActive) ? 'active' : 'needs_setup',
+      description: 'بيانات فضائية من NASA POWER وGoogle Earth Engine (Sentinel/Landsat/MODIS) وCAMS، مرتبطة بإحداثيات كل مشروع',
+      totalObservations: spaceObservationsCount,
+      lastSyncAt: lastSyncRun?.startedAt?.toISOString() || null,
+      lastSyncStatus: lastSyncRun?.status || null,
+      schedule: ['10:55', '15:55', '17:50'],
+      sources: {
+        nasaPower: {
+          label: 'NASA POWER',
+          status: nasaPowerActive ? 'connected' : 'needs_setup',
+          requiresApiKey: false,
+          lastSyncAt: nasaPowerSrc?.lastSyncAt?.toISOString() || null,
+        },
+        gee: {
+          label: 'Google Earth Engine',
+          status: geeActive ? 'connected' : 'needs_setup',
+          requiresApiKey: true,
+          lastSyncAt: geeSrc?.lastSyncAt?.toISOString() || null,
+        },
+        cams: {
+          label: 'CAMS (Copernicus)',
+          status: camsActive ? 'connected' : 'needs_setup',
+          requiresApiKey: true,
+          lastSyncAt: camsSrc?.lastSyncAt?.toISOString() || null,
+        },
+      },
+    }
+
     // === Summary KPIs ===
-    const allIntegrations = [hedera, openMeteo, reports, devices, notifications, payments]
+    const allIntegrations = [hedera, openMeteo, reports, devices, notifications, payments, spaceData]
     const summary = {
       total: allIntegrations.length,
       connected: allIntegrations.filter((i) => i.status === 'connected' || i.status === 'active' || i.status === 'available').length,
@@ -168,6 +215,7 @@ export async function GET() {
       devices,
       notifications,
       payments,
+      spaceData,
       summary,
     })
   } catch (error) {

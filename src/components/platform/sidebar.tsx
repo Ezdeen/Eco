@@ -22,6 +22,7 @@ import {
   Zap,
   Users,
   Plug,
+  Satellite,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,7 @@ export type Section =
   | 'energy-performance'
   | 'assets-devices'
   | 'data'
+  | 'space-data'
   | 'monitoring'
   | 'calculations'
   | 'attestations'
@@ -60,6 +62,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'energy-performance', label: 'الطاقة الكهربائية', labelEn: 'Energy Performance', icon: Zap, group: 'main' },
   { id: 'assets-devices', label: 'الأصول والأجهزة', labelEn: 'Assets & Devices', icon: Server, group: 'main' },
   { id: 'data', label: 'مركز البيانات', labelEn: 'Data Center', icon: Database, group: 'data' },
+  { id: 'space-data', label: 'البيانات الفضائية', labelEn: 'Space Data', icon: Satellite, group: 'data' },
   { id: 'monitoring', label: 'مركز المراقبة', labelEn: 'Monitoring', icon: Activity, group: 'data' },
   { id: 'calculations', label: 'الحسابات (KPI Catalog)', labelEn: 'Calculations', icon: Calculator, group: 'data' },
   { id: 'attestations', label: 'التوثيق', labelEn: 'Attestation', icon: ShieldCheck, group: 'attestation' },

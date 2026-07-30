@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
 import { testHederaConnection } from '@/lib/hedera'
+import { decryptSecret } from '@/lib/crypto'
+import { testNasaPowerConnection } from '@/lib/space-data/nasa-power'
+import { testGeeConnection } from '@/lib/space-data/google-earth-engine'
+import { testCamsConnection } from '@/lib/space-data/cams'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -27,6 +31,34 @@ export async function POST(request: NextRequest, { params }: Params) {
       case 'hedera':
         result = await testHederaConnection()
         break
+      case 'space_nasa_power':
+        result = await testNasaPowerConnection()
+        break
+      case 'space_gee': {
+        if (!existing.encryptedSecret) {
+          result = { success: false, message: 'يلزم إدخال ملف Service Account JSON أولاً' }
+          break
+        }
+        try {
+          const serviceAccount = JSON.parse(decryptSecret(existing.encryptedSecret))
+          result = await testGeeConnection(serviceAccount)
+        } catch {
+          result = { success: false, message: 'محتوى Service Account JSON غير صالح' }
+        }
+        break
+      }
+      case 'space_cams': {
+        if (!existing.encryptedSecret) {
+          result = { success: false, message: 'يلزم إدخال ADS API Key أولاً' }
+          break
+        }
+        const cfg = existing.config ? JSON.parse(existing.config) : {}
+        result = await testCamsConnection({
+          username: cfg.username || '',
+          apiKey: decryptSecret(existing.encryptedSecret),
+        })
+        break
+      }
       default:
         result = {
           success: false,
