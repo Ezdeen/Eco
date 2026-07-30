@@ -48,15 +48,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         break
       }
       case 'space_cams': {
-        if (!existing.encryptedSecret) {
-          result = { success: false, message: 'يلزم إدخال ADS API Key أولاً' }
+        const cfg = existing.config ? JSON.parse(existing.config) : {}
+        if (!cfg.username) {
+          result = { success: false, message: 'يلزم إدخال البريد الإلكتروني المسجَّل في soda-pro.com أولاً' }
           break
         }
-        const cfg = existing.config ? JSON.parse(existing.config) : {}
-        result = await testCamsConnection({
-          username: cfg.username || '',
-          apiKey: decryptSecret(existing.encryptedSecret),
-        })
+        result = await testCamsConnection({ username: cfg.username })
         break
       }
       default:
