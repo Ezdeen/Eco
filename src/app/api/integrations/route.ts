@@ -167,7 +167,7 @@ export async function GET() {
 
     const nasaPowerActive = nasaPowerCfg ? nasaPowerCfg.isActive : true // مجاني بدون مفتاح، مفعّل افتراضيًا
     const geeActive = !!(geeCfg?.isActive && geeCfg?.encryptedSecret)
-    const camsActive = !!(camsCfg?.isActive && camsCfg?.encryptedSecret)
+    const camsActive = !!(camsCfg?.isActive && camsCfg?.config && JSON.parse(camsCfg.config)?.username)
 
     const spaceData = {
       status: (nasaPowerActive || geeActive || camsActive) ? 'active' : 'needs_setup',
@@ -192,7 +192,7 @@ export async function GET() {
         cams: {
           label: 'CAMS (Copernicus)',
           status: camsActive ? 'connected' : 'needs_setup',
-          requiresApiKey: true,
+          requiresApiKey: false, // يتطلب بريدًا إلكترونيًا مسجَّلاً فقط، وليس مفتاح API
           lastSyncAt: camsSrc?.lastSyncAt?.toISOString() || null,
         },
       },
