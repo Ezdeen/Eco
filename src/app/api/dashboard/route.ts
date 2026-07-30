@@ -38,13 +38,22 @@ export async function GET() {
     // All-time readings (unchanged scope from before): used for the headline
     // KPI totals (totalEnergyKwh, totalCo2AvoidedKg, totalSavingsSar, data
     // quality rates), exactly as previously.
-    const readings = await db.energyReading.findMany({
+    //
+    // IMPORTANT: only verified/approved readings feed the actual calculations
+    // (validated, approved, corrected) — suspect and rejected readings (and
+    // "received" ones still awaiting review) must never contribute to energy,
+    // CO2, savings, or any chart total. They are only counted separately below
+    // (dataQuality.suspect / dataQualityRate denominator) so the dashboard can
+    // show how much data was excluded, without that data ever entering a sum.
+    const verifiedStatuses = ['validated', 'approved', 'corrected']
+    const allReadings = await db.energyReading.findMany({
       where: {
         projectId: { in: activeProjects.map((p) => p.id) },
         metricType: 'energy_export_kwh',
       },
       select: { value: true, measuredAt: true, qualityStatus: true, validationStatus: true, projectId: true },
     })
+    const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
 
     const totalEnergyKwh = readings.reduce((sum, r) => sum + r.value, 0)
 
@@ -161,10 +170,14 @@ export async function GET() {
     const attestationItems = await db.attestationBatch.aggregate({ where: attestationScope, _sum: { itemCount: true } })
 
     // Data quality
-    const validatedReadings = readings.filter((r) => r.qualityStatus === 'validated').length
-    const suspectReadings = readings.filter((r) => r.qualityStatus === 'suspect').length
-    const dataQualityRate = readings.length > 0 ? (validatedReadings / readings.length) * 100 : 0
-    const attestationRate = readings.length > 0 ? Math.min(100, (attestationItems._sum.itemCount || 0) / readings.length * 100) : 0
+    // Data quality — computed from allReadings (the full, unfiltered set) so suspect/
+    // rejected readings are counted and shown, even though they were excluded from
+    // `readings` (and therefore from every energy/CO2/savings total above).
+    const validatedReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected').length
+    const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect').length
+    const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected').length
+    const dataQualityRate = allReadings.length > 0 ? (validatedReadings / allReadings.length) * 100 : 0
+    const attestationRate = allReadings.length > 0 ? Math.min(100, (attestationItems._sum.itemCount || 0) / allReadings.length * 100) : 0
 
     // Top/bottom projects by energy
     const projectEnergyMap = new Map<string, number>()
@@ -241,7 +254,11 @@ export async function GET() {
       dataQuality: {
         validated: validatedReadings,
         suspect: suspectReadings,
-        total: readings.length,
+        rejected: rejectedReadings,
+        total: allReadings.length,
+        // Count of readings actually included in the KPI totals above
+        // (validated + approved + corrected only).
+        includedInCalculations: readings.length,
       },
       lastUpdated: new Date().toISOString(),
     })
