@@ -107,16 +107,42 @@ export async function fetchCamsLatest(
       return null
     }
 
-    const lastLine = lines[lines.length - 1]
-    const cols = lastLine.split(';').map((c) => c.trim())
-    // ترتيب أعمدة get_cams_radiation القياسي:
-    // Observation period; TOA; Clear sky GHI; Clear sky BHI; Clear sky DHI; Clear sky BNI;
-    // GHI; BHI; DHI; BNI
-    if (cols.length < 10) {
-      console.error('CAMS Radiation: صيغة استجابة غير متوقعة', lastLine)
+    // نبحث من الأحدث للأقدم عن أول سطر بقيمة GHI صالحة (وليس بالضرورة آخر سطر مطلقًا، لأن
+    // آخر ساعة في النافذة الزمنية قد تكون ليلية فعليًا فتكون كل القيم صفرًا بشكل صحيح لكن
+    // غير مفيد — نفضّل عرض آخر قراءة نهارية فعلية).
+    let chosenCols: string[] | null = null
+    let chosenLine = ''
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const cols = lines[i].split(';').map((c) => c.trim())
+      if (cols.length < 10) continue
+      const ghiCandidate = parseFloat(cols[6])
+      if (isFinite(ghiCandidate) && ghiCandidate > 0) {
+        chosenCols = cols
+        chosenLine = lines[i]
+        break
+      }
+    }
+    // لم نجد أي ساعة نهارية بقيمة GHI > 0 ضمن النافذة (نادر لكن ممكن)؛ نأخذ آخر سطر صالح البنية
+    if (!chosenCols) {
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const cols = lines[i].split(';').map((c) => c.trim())
+        if (cols.length >= 10) {
+          chosenCols = cols
+          chosenLine = lines[i]
+          break
+        }
+      }
+    }
+
+    if (!chosenCols) {
+      console.error('CAMS Radiation: لم يُعثر على أي سطر بعدد أعمدة كافٍ. النص الخام الكامل:', text.slice(0, 1000))
       return null
     }
 
+    const cols = chosenCols
+    // ترتيب أعمدة get_cams_radiation القياسي (تأكيد رسمي من توثيق CAMS):
+    // 1.Observation period 2.TOA 3.Clear sky GHI 4.Clear sky BHI 5.Clear sky DHI
+    // 6.Clear sky BNI 7.GHI 8.BHI 9.DHI 10.BNI [11.Reliability ...]
     const period = cols[0] // مثال: "2026-07-27T10:00:00.0/2026-07-27T11:00:00.0"
     const observedAt = new Date(period.split('/')[0]).toISOString()
 
@@ -124,13 +150,19 @@ export async function fetchCamsLatest(
     const dhi = parseFloat(cols[8]) // Diffuse Horizontal Irradiance ≈ DIF
     const bni = parseFloat(cols[9]) // Beam Normal Irradiance ≈ DNI
 
+    // تسجيل تشخيصي: إن كانت كل القيم غير رقمية رغم عدد أعمدة كافٍ، نطبع السطر الخام كاملاً
+    // لمعرفة السبب بالضبط (قيم نصية غير متوقعة، فاصل عشري مختلف، إلخ) بدل صمت تام.
+    if (!isFinite(ghi) && !isFinite(dhi) && !isFinite(bni)) {
+      console.error('CAMS Radiation: كل القيم الرقمية غير صالحة (NaN). السطر الخام:', chosenLine, '| آخر 3 أسطر:', lines.slice(-3))
+    }
+
     return {
       observedAt,
       ghiWm2: isFinite(ghi) ? ghi : null,
       dniWm2: isFinite(bni) ? bni : null,
       difWm2: isFinite(dhi) ? dhi : null,
       aod: null, // AOD يتطلب استعلام منتج CAMS منفصل (Aerosol)؛ محجوز للتوسعة اللاحقة
-      raw: { period, columns: cols },
+      raw: { period, columns: cols, allLines: lines.slice(-5) },
     }
   } catch (error) {
     console.error('CAMS fetch failed:', error)
