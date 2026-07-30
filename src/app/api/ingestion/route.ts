@@ -1,113 +1,225 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireProjectAccess, requirePermission, projectScopeFilter } from '@/lib/authorization'
-import { ingestReadings, getIngestionBatchStatus } from '@/lib/ingestion'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ingestionSchema } from '@/lib/validation'
+import { requireAuth } from '@/lib/authorization'
 
-// POST /api/ingestion - Submit readings for ingestion
-export async function POST(request: NextRequest) {
+// GET /api/integrations — Safe status of all integrations (no secrets exposed)
+export async function GET() {
   try {
-    const body = await request.json()
-
-    // Validate body with Zod
-    const parsed = ingestionSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'بيانات غير صالحة', details: parsed.error.flatten() },
-        { status: 400 },
-      )
-    }
-    const { projectId, readings, idempotencyKey, source } = parsed.data
-
-    // Authorization: check project access
-    const auth = await requireProjectAccess(projectId, 'reading:audit')
+    const auth = await requireAuth()
     if (!auth.authorized) return auth.response
 
-    // Transform input to IngestReadingInput format
-    const inputs = readings.map((r) => ({
-      projectId,
-      deviceId: r.deviceId,
-      siteId: r.siteId,
-      assetId: r.assetId,
-      metricType: r.metricType,
-      measuredAt: new Date(r.measuredAt),
-      intervalStart: new Date(r.intervalStart || r.measuredAt),
-      intervalEnd: r.intervalEnd ? new Date(r.intervalEnd) : undefined,
-      value: typeof r.value === 'string' ? parseFloat(r.value) : r.value,
-      unit: r.unit,
-      cumulativeValue: r.cumulativeValue
-        ? (typeof r.cumulativeValue === 'string' ? parseFloat(r.cumulativeValue) : r.cumulativeValue)
-        : undefined,
-      sourceEventId: r.sourceEventId,
-      source: source || 'http_api',
-      rawPayload: r,
-    }))
+    // === Hedera ===
+    const hederaRow = await db.integrationConfig.findUnique({ where: { name: 'hedera' } })
+    const hederaCfg = hederaRow?.config ? JSON.parse(hederaRow.config) : {}
 
-    // Run ingestion pipeline
-    const result = await ingestReadings(inputs, { idempotencyKey, source })
+    // Prefer database config; fall back to env vars for manual/advanced setups
+    const hederaNetwork = hederaCfg.network || process.env.HEDERA_NETWORK || 'simulation'
+    const hederaAccountId = hederaCfg.accountId || process.env.HEDERA_OPERATOR_ID || ''
+    const hederaHasKey = !!(hederaRow?.encryptedSecret) || !!process.env.HEDERA_OPERATOR_KEY
+    const hederaTopicId = hederaCfg.topicId || process.env.HEDERA_TOPIC_ID || ''
+    const hederaIsActive = hederaRow?.isActive ?? false
 
-    return NextResponse.json({
-      success: true,
-      batchId: result.batchId,
-      summary: result.summary,
-      results: result.results,
-    }, { status: 201 })
-  } catch (error: any) {
-    console.error('Ingestion API error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 },
-    )
-  }
-}
+    const isSimulation = hederaNetwork === 'simulation'
+    const isConfigured = hederaIsActive && !!(hederaAccountId && hederaHasKey)
+    const hederaMode = isSimulation ? 'simulation' : (isConfigured ? 'live' : 'needs_setup')
 
-// GET /api/ingestion?batchId=xxx - Get batch status
-export async function GET(request: NextRequest) {
-  try {
-    // Security: this endpoint had NO authentication check at all — any anonymous
-    // visitor could list ingestion batches from every organization on the platform.
-    const auth = await requirePermission('project:read')
-    if (!auth.authorized) return auth.response
-    const { user } = auth
-
-    const { searchParams } = new URL(request.url)
-    const batchId = searchParams.get('batchId')
-
-    if (batchId) {
-      const batch = await getIngestionBatchStatus(batchId)
-      if (!batch) {
-        return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
-      }
-      // Verify this batch's project actually belongs to the user's organization
-      // (and, for project_manager, to their assigned project specifically)
-      const project = await db.project.findUnique({
-        where: { id: (batch as any).projectId },
-        select: { organizationId: true, managerId: true },
-      })
-      if (!project || project.organizationId !== user.organizationId) {
-        return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
-      }
-      if (user.role === 'project_manager' && project.managerId !== user.userId) {
-        return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
-      }
-      return NextResponse.json({ batch })
-    }
-
-    // List recent batches — scoped to organization + project-manager assignment
-    const batches = await db.ingestionBatch.findMany({
-      where: {
-        project: { organizationId: user.organizationId!, ...projectScopeFilter(user) },
-      },
-      take: 20,
+    // Fetch latest attestation from DB
+    const lastAttestation = await db.attestationBatch.findFirst({
+      where: { status: { in: ['confirmed', 'submitted'] } },
       orderBy: { createdAt: 'desc' },
-      include: {
-        project: { select: { name: true, nameAr: true, code: true } },
+      select: {
+        hederaTransactionId: true,
+        consensusTimestamp: true,
+        status: true,
+        confirmedAt: true,
+        itemCount: true,
       },
     })
 
-    return NextResponse.json({ batches })
+    const attestationCount = await db.attestationBatch.count({
+      where: { status: { in: ['confirmed', 'submitted'] } },
+    })
+
+    // Mask account ID (show last 4 chars only)
+    const maskedOperatorId = hederaAccountId
+      ? `****${hederaAccountId.slice(-4)}`
+      : null
+
+    const hedera = {
+      status: hederaMode === 'live' ? 'connected' : hederaMode === 'simulation' ? 'simulation' : 'needs_setup',
+      network: hederaNetwork,
+      mode: hederaMode,
+      isProductionEvidence: hederaMode === 'live',
+      topicId: hederaTopicId || null,
+      maskedOperatorId,
+      operatorKeyConfigured: hederaHasKey,
+      lastTestedAt: hederaRow?.lastTestedAt?.toISOString() || null,
+      lastTestResult: hederaRow?.lastTestResult || null,
+      lastTransactionId: lastAttestation?.hederaTransactionId || null,
+      lastConsensusTimestamp: lastAttestation?.consensusTimestamp || null,
+      lastConfirmedAt: lastAttestation?.confirmedAt?.toISOString() || null,
+      totalAttestations: attestationCount,
+      warning: isSimulation
+        ? 'هذا الوضع محاكاة (simulation) وليس دليلاً إنتاجيًا. أضف بيانات حساب Hedera الحقيقية من قسم التكاملات → إدارة الإعدادات، واختر شبكة testnet أو mainnet.'
+        : !isConfigured
+        ? 'التكامل غير مفعّل بعد. أضف Account ID والمفتاح الخاص من قسم التكاملات → إدارة الإعدادات.'
+        : null,
+    }
+
+    // === Open-Meteo (Weather) ===
+    const weatherSource = await db.weatherSource.findFirst({
+      where: { name: 'Open-Meteo' },
+      select: { name: true, apiUrl: true, isActive: true, lastSyncAt: true },
+    })
+
+    const weatherObsCount = await db.weatherObservation.count()
+
+    const openMeteo = {
+      status: 'available',
+      name: 'Open-Meteo',
+      description: 'يستخدم لجلب بيانات الطقس والإشعاع الشمسي وحساب الأداء المتوقع (Expected Yield) و Performance Ratio',
+      apiUrl: weatherSource?.apiUrl || 'https://api.open-meteo.com/v1/forecast',
+      isActive: weatherSource?.isActive ?? true,
+      lastSyncAt: weatherSource?.lastSyncAt?.toISOString() || null,
+      totalObservations: weatherObsCount,
+      requiresApiKey: false,
+    }
+
+    // === Reports ===
+    const publishedReports = await db.report.count({ where: { status: 'published' } })
+    const approvedReports = await db.report.count({ where: { status: 'approved' } })
+    const draftReports = await db.report.count({ where: { status: 'draft' } })
+    const lastReport = await db.report.findFirst({
+      where: { status: { in: ['published', 'approved'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { title: true, status: true, createdAt: true },
+    })
+
+    const reports = {
+      status: 'active',
+      formats: ['PDF', 'CSV', 'HTML'],
+      pdfEnabled: true,
+      csvEnabled: true,
+      htmlEnabled: true,
+      publishedCount: publishedReports,
+      approvedCount: approvedReports,
+      draftCount: draftReports,
+      lastReportTitle: lastReport?.title || null,
+      lastReportStatus: lastReport?.status || null,
+      lastReportDate: lastReport?.createdAt?.toISOString() || null,
+      description: 'تصدير الأثر البيئي والمالي والأداء بصيغ متعددة مع رسوم بيانية',
+    }
+
+    // === Devices / IoT ===
+    const totalDevices = await db.device.count()
+    const connectedDevices = await db.device.count({ where: { status: 'connected' } })
+    const registeredDevices = await db.device.count({ where: { status: 'registered' } })
+    const offlineDevices = await db.device.count({ where: { status: { in: ['offline', 'disabled'] } } })
+
+    const protocols = await db.device.findMany({
+      select: { protocol: true },
+      distinct: ['protocol'],
+    })
+
+    const devices = {
+      status: totalDevices > 0 ? 'active' : 'needs_setup',
+      totalDevices,
+      connectedDevices,
+      registeredDevices,
+      offlineDevices,
+      supportedProtocols: protocols.map((p) => p.protocol).filter(Boolean),
+      description: 'ربط الإنفرترات والعدادات وبوابات IoT عبر بروتوكولات متعددة',
+    }
+
+    // === Notifications ===
+    const notifications = {
+      status: 'internal',
+      channels: {
+        inApp: { enabled: true, label: 'داخل التطبيق' },
+        email: { enabled: false, label: 'البريد الإلكتروني' },
+        sms: { enabled: false, label: 'SMS' },
+        whatsapp: { enabled: false, label: 'WhatsApp' },
+      },
+      description: 'الإشعارات الداخلية مفعّلة. البريد و SMS و WhatsApp مستقبلية.',
+    }
+
+    // === Payments & Subscriptions ===
+    const payments = {
+      status: 'not_enabled',
+      stripeEnabled: false,
+      checkoutEnabled: false,
+      description: 'مطلوب لتحويل المنصة إلى SaaS تجاري. يحتاج تكامل Stripe أو بوابة دفع.',
+    }
+
+    // === البيانات الفضائية: NASA POWER / Google Earth Engine / CAMS ===
+    const [nasaPowerCfg, geeCfg, camsCfg] = await Promise.all([
+      db.integrationConfig.findUnique({ where: { name: 'space_nasa_power' } }),
+      db.integrationConfig.findUnique({ where: { name: 'space_gee' } }),
+      db.integrationConfig.findUnique({ where: { name: 'space_cams' } }),
+    ])
+    const [nasaPowerSrc, geeSrc, camsSrc] = await Promise.all([
+      db.spaceDataSource.findUnique({ where: { key: 'space_nasa_power' } }),
+      db.spaceDataSource.findUnique({ where: { key: 'space_gee' } }),
+      db.spaceDataSource.findUnique({ where: { key: 'space_cams' } }),
+    ])
+    const spaceObservationsCount = await db.spaceDataObservation.count()
+    const lastSyncRun = await db.spaceDataSyncRun.findFirst({ orderBy: { startedAt: 'desc' } })
+
+    const nasaPowerActive = nasaPowerCfg ? nasaPowerCfg.isActive : true // مجاني بدون مفتاح، مفعّل افتراضيًا
+    const geeActive = !!(geeCfg?.isActive && geeCfg?.encryptedSecret)
+    const camsActive = !!(camsCfg?.isActive && camsCfg?.encryptedSecret)
+
+    const spaceData = {
+      status: (nasaPowerActive || geeActive || camsActive) ? 'active' : 'needs_setup',
+      description: 'بيانات فضائية من NASA POWER وGoogle Earth Engine (Sentinel/Landsat/MODIS) وCAMS، مرتبطة بإحداثيات كل مشروع',
+      totalObservations: spaceObservationsCount,
+      lastSyncAt: lastSyncRun?.startedAt?.toISOString() || null,
+      lastSyncStatus: lastSyncRun?.status || null,
+      schedule: ['10:55', '15:55', '17:50'],
+      sources: {
+        nasaPower: {
+          label: 'NASA POWER',
+          status: nasaPowerActive ? 'connected' : 'needs_setup',
+          requiresApiKey: false,
+          lastSyncAt: nasaPowerSrc?.lastSyncAt?.toISOString() || null,
+        },
+        gee: {
+          label: 'Google Earth Engine',
+          status: geeActive ? 'connected' : 'needs_setup',
+          requiresApiKey: true,
+          lastSyncAt: geeSrc?.lastSyncAt?.toISOString() || null,
+        },
+        cams: {
+          label: 'CAMS (Copernicus)',
+          status: camsActive ? 'connected' : 'needs_setup',
+          requiresApiKey: true,
+          lastSyncAt: camsSrc?.lastSyncAt?.toISOString() || null,
+        },
+      },
+    }
+
+    // === Summary KPIs ===
+    const allIntegrations = [hedera, openMeteo, reports, devices, notifications, payments, spaceData]
+    const summary = {
+      total: allIntegrations.length,
+      connected: allIntegrations.filter((i) => i.status === 'connected' || i.status === 'active' || i.status === 'available').length,
+      needsSetup: allIntegrations.filter((i) => i.status === 'needs_setup').length,
+      notEnabled: allIntegrations.filter((i) => i.status === 'not_enabled' || i.status === 'internal').length,
+      simulation: allIntegrations.filter((i) => i.status === 'simulation').length,
+    }
+
+    return NextResponse.json({
+      hedera,
+      openMeteo,
+      reports,
+      devices,
+      notifications,
+      payments,
+      spaceData,
+      summary,
+    })
   } catch (error) {
-    console.error('Get ingestion error:', error)
+    console.error('Integrations API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
