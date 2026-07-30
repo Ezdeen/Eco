@@ -691,6 +691,9 @@ export function ReportsSection() {
                     <p className="font-bold tabular-nums text-red-600">{fmt(previewReport.data.summary.rejectedReadings)}</p>
                   </div>
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  المؤشرات أعلاه (الطاقة، CO₂، الوفر، Performance Ratio) محسوبة من القراءات المتحقَّق منها والمعتمدة فقط. القراءات المشبوهة والمرفوضة مستبعدة تمامًا من الحسابات وتظهر هنا للتوثيق فقط.
+                </p>
               </Card>
 
               {/* Equivalences */}
