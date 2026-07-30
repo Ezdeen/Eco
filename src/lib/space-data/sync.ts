@@ -67,9 +67,9 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     true,
   )
   const camsSource = await ensureSpaceDataSource(
-    SOURCE_KEYS.CAMS, 'CAMS (Copernicus Atmosphere)', 'ECMWF/Copernicus',
-    'الإشعاع الشمسي الفعلي المباشر والمشتت (GHI, DNI, DIF) ونسبة الغبار (AOD)',
-    true,
+    SOURCE_KEYS.CAMS, 'CAMS (Copernicus Atmosphere)', 'ECMWF/Copernicus (soda-pro.com)',
+    'الإشعاع الشمسي الفعلي المباشر والمشتت (GHI, DNI, DIF) — يتطلب بريدًا إلكترونيًا مسجَّلاً فقط',
+    false,
   )
 
   const nasaConfig = await getIntegrationConfig('space_nasa_power')
@@ -90,14 +90,20 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     }
   }
 
-  const camsEnabled = !!(camsConfig?.isActive && camsConfig?.encryptedSecret)
+  // CAMS: المصادقة الوحيدة هي البريد الإلكتروني المسجَّل على soda-pro.com (لا "سر" مشفَّر
+  // فعليًا)، لذا نعتبره مفعّلاً إن كان isActive=true وبريد صالح مخزَّن في config (وليس secret).
+  const camsEnabled = !!(camsConfig?.isActive && camsConfig?.config)
   let camsCredentials: CamsCredentials | null = null
   if (camsEnabled) {
     try {
       const cfg = camsConfig!.config ? JSON.parse(camsConfig!.config) : {}
-      camsCredentials = { username: cfg.username || '', apiKey: decryptSecret(camsConfig!.encryptedSecret!) }
+      if (cfg.username) {
+        camsCredentials = { username: cfg.username }
+      } else {
+        errors.push({ projectId: '-', projectName: '-', source: 'CAMS', error: 'البريد الإلكتروني المسجَّل في soda-pro.com غير مُدخَل' })
+      }
     } catch {
-      errors.push({ projectId: '-', projectName: '-', source: 'CAMS', error: 'تعذّر قراءة بيانات اعتماد CAMS المخزّنة' })
+      errors.push({ projectId: '-', projectName: '-', source: 'CAMS', error: 'تعذّر قراءة إعدادات CAMS المخزّنة' })
     }
   }
 
