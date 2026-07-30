@@ -105,13 +105,13 @@ const INTEGRATION_TEMPLATES = [
   {
     name: 'space_cams',
     displayName: 'CAMS (Copernicus Atmosphere)',
-    description: 'الإشعاع الشمسي الفعلي (GHI, DNI, DIF) ونسبة الغبار (AOD) عبر ADS / CAMS Radiation API',
+    description: 'الإشعاع الشمسي الفعلي (GHI, DNI, DIF) عبر CAMS Radiation Service — يغطي أوروبا/أفريقيا/الشرق الأوسط تقريبًا',
     category: 'integration',
     configFields: [
-      { key: 'username', label: 'البريد الإلكتروني المسجّل في CAMS/ADS', type: 'text', placeholder: 'you@example.com' },
+      { key: 'username', label: 'البريد الإلكتروني المسجَّل في soda-pro.com', type: 'text', placeholder: 'you@example.com' },
     ],
-    secretLabel: 'ADS API Key',
-    secretPlaceholder: 'مفتاح API من https://ads.atmosphere.copernicus.eu',
+    secretLabel: 'غير مطلوب لهذا التكامل',
+    secretPlaceholder: 'اترك هذا الحقل فارغًا — المصادقة تتم بالبريد الإلكتروني أعلاه فقط',
   },
   {
     name: 'stripe',
