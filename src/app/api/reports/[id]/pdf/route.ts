@@ -28,7 +28,7 @@ async function generateReportData(reportId: string) {
 
   if (!report) return null
 
-  const readings = await db.energyReading.findMany({
+  const allReadings = await db.energyReading.findMany({
     where: {
       projectId: report.projectId,
       measuredAt: { gte: report.periodStart, lte: report.periodEnd },
@@ -40,6 +40,12 @@ async function generateReportData(reportId: string) {
     },
     orderBy: { measuredAt: 'asc' },
   })
+
+  // Only verified/approved readings feed the actual calculations below (validated,
+  // approved, corrected). Suspect and rejected readings must never contribute to
+  // energy, CO2, savings, or any chart total — see the download route for the same rule.
+  const verifiedStatuses = ['validated', 'approved', 'corrected']
+  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
 
   const calcRuns = await db.calculationRun.findMany({
     where: {
@@ -58,9 +64,9 @@ async function generateReportData(reportId: string) {
   })
 
   const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
-  const validReadings = readings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved')
-  const suspectReadings = readings.filter((r) => r.qualityStatus === 'suspect')
-  const rejectedReadings = readings.filter((r) => r.qualityStatus === 'rejected')
+  const validReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected')
+  const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect')
+  const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected')
   const emissionFactor = 0.432
   const totalCo2Avoided = totalEnergy * emissionFactor
   const selfConsumed = totalEnergy * 0.7
@@ -89,9 +95,10 @@ async function generateReportData(reportId: string) {
     report, project: report.project,
     summary: {
       periodStart: report.periodStart, periodEnd: report.periodEnd,
-      totalReadings: readings.length, validReadings: validReadings.length,
+      totalReadings: allReadings.length, validReadings: validReadings.length,
       suspectReadings: suspectReadings.length, rejectedReadings: rejectedReadings.length,
-      dataQualityRate: readings.length > 0 ? (validReadings.length / readings.length) * 100 : 0,
+      includedInCalculations: readings.length,
+      dataQualityRate: allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0,
       totalEnergy: Math.round(totalEnergy * 100) / 100,
       totalCo2Avoided: Math.round(totalCo2Avoided * 100) / 100,
       totalCo2AvoidedTons: Math.round((totalCo2Avoided / 1000) * 100) / 100,
