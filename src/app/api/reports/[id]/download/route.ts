@@ -25,7 +25,7 @@ async function generateReportData(reportId: string) {
   if (!report) return null
 
   // Get readings for the period
-  const readings = await db.energyReading.findMany({
+  const allReadings = await db.energyReading.findMany({
     where: {
       projectId: report.projectId,
       measuredAt: { gte: report.periodStart, lte: report.periodEnd },
@@ -42,7 +42,15 @@ async function generateReportData(reportId: string) {
     orderBy: { measuredAt: 'asc' },
   })
 
-  console.info('generateReportData:', { reportId, readings: readings.length, periodStart: report.periodStart, periodEnd: report.periodEnd })
+  // Only verified/approved readings feed the actual calculations below (validated,
+  // approved, corrected). Suspect and rejected readings (and any still "received" and
+  // awaiting review) must never contribute to energy, CO2, savings, or any chart total —
+  // they are counted separately (summary.suspectReadings / rejectedReadings) so the report
+  // can show how much data was excluded, without that data ever entering a sum.
+  const verifiedStatuses = ['validated', 'approved', 'corrected']
+  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
+
+  console.info('generateReportData:', { reportId, readings: readings.length, totalReadings: allReadings.length, periodStart: report.periodStart, periodEnd: report.periodEnd })
 
   // Get calculations
   const calcRuns = await db.calculationRun.findMany({
@@ -62,11 +70,14 @@ async function generateReportData(reportId: string) {
     },
   })
 
-  // Compute aggregations
+  // Compute aggregations — totalEnergy and everything derived from it use only the
+  // verified `readings` (validated/approved/corrected). validReadings/suspectReadings/
+  // rejectedReadings/dataQualityRate are computed from allReadings so the report can show
+  // how much data was excluded, without that excluded data ever entering a sum below.
   const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
-  const validReadings = readings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved')
-  const suspectReadings = readings.filter((r) => r.qualityStatus === 'suspect')
-  const rejectedReadings = readings.filter((r) => r.qualityStatus === 'rejected')
+  const validReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected')
+  const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect')
+  const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected')
   const emissionFactor = 0.432 // Saudi grid
   const totalCo2Avoided = totalEnergy * emissionFactor
   const selfConsumed = totalEnergy * 0.7
@@ -99,11 +110,12 @@ async function generateReportData(reportId: string) {
     summary: {
       periodStart: report.periodStart,
       periodEnd: report.periodEnd,
-      totalReadings: readings.length,
+      totalReadings: allReadings.length,
       validReadings: validReadings.length,
       suspectReadings: suspectReadings.length,
       rejectedReadings: rejectedReadings.length,
-      dataQualityRate: readings.length > 0 ? (validReadings.length / readings.length) * 100 : 0,
+      includedInCalculations: readings.length,
+      dataQualityRate: allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0,
       totalEnergy: Math.round(totalEnergy * 100) / 100,
       totalCo2Avoided: Math.round(totalCo2Avoided * 100) / 100,
       totalCo2AvoidedTons: Math.round((totalCo2Avoided / 1000) * 100) / 100,
