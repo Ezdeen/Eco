@@ -72,7 +72,7 @@ interface DashboardData {
     capacity: number
     specificYield: number
   }[]
-  dataQuality: { validated: number; suspect: number; total: number }
+  dataQuality: { validated: number; suspect: number; rejected?: number; total: number; includedInCalculations?: number }
   lastUpdated: string
 }
 
@@ -245,6 +245,7 @@ export function DashboardSection() {
                   data={[
                     { name: 'متحقّق', value: dataQuality.validated, color: '#16a34a' },
                     { name: 'مشبوه', value: dataQuality.suspect, color: '#ca8a04' },
+                    { name: 'مرفوض', value: dataQuality.rejected ?? 0, color: '#dc2626' },
                   ]}
                   dataKey="value"
                   nameKey="name"
@@ -254,8 +255,8 @@ export function DashboardSection() {
                   outerRadius={80}
                   paddingAngle={2}
                 >
-                  {[0, 1].map((i) => (
-                    <Cell key={i} fill={i === 0 ? '#16a34a' : '#ca8a04'} />
+                  {[0, 1, 2].map((i) => (
+                    <Cell key={i} fill={i === 0 ? '#16a34a' : i === 1 ? '#ca8a04' : '#dc2626'} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -279,6 +280,16 @@ export function DashboardSection() {
                 </div>
                 <span className="tabular-nums font-semibold">{fmt(dataQuality.suspect)}</span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <span>مرفوض</span>
+                </div>
+                <span className="tabular-nums font-semibold">{fmt(dataQuality.rejected ?? 0)}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground pt-1">
+                القراءات المشبوهة والمرفوضة مستبعدة من كل حسابات الطاقة والانبعاثات والتوفير أعلاه.
+              </p>
               <div className="pt-2 border-t">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">نسبة الجودة</span>
