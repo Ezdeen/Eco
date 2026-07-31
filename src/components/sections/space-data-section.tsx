@@ -63,13 +63,11 @@ interface SyncRun {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  space_nasa_power: 'NASA POWER',
-  space_gee: 'Google Earth Engine',
-  space_cams: 'CAMS',
+  open_meteo: 'Open-Meteo Solar API',
   space_cdse: 'CDSE (Copernicus)',
 }
 
-const DATASET_OPTIONS = ['Sentinel-2', 'Sentinel-3', 'Sentinel-5P', 'Landsat-8/9', 'MODIS', 'NASA-POWER', 'CAMS']
+const DATASET_OPTIONS = ['Open-Meteo Solar', 'CDSE', 'Sentinel-2', 'Sentinel-5P']
 
 const RUN_LABELS: Record<string, string> = {
   morning: 'صباحًا (10:55)',
@@ -199,7 +197,7 @@ export function SpaceDataSection() {
               <div>
                 <h2 className="font-cairo text-2xl font-bold">البيانات الفضائية</h2>
                 <p className="text-sm opacity-90">
-                  بيانات استشعار عن بعد لكل مشروع حسب إحداثياته — NASA POWER · Google Earth Engine (Sentinel/Landsat/MODIS) · CAMS
+                  بيانات الطقس والإشعاع الشمسي من Open-Meteo Solar API مع مؤشرات CDSE (Sentinel-2 / Sentinel-5P)
                 </p>
               </div>
             </div>
@@ -299,10 +297,8 @@ export function SpaceDataSection() {
                 <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="كل المصادر" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">كل المصادر</SelectItem>
-                  <SelectItem value="space_nasa_power">NASA POWER</SelectItem>
-                  <SelectItem value="space_cams">CAMS</SelectItem>
+                  <SelectItem value="open_meteo">Open-Meteo Solar API</SelectItem>
                   <SelectItem value="space_cdse">CDSE (Copernicus)</SelectItem>
-                  <SelectItem value="space_gee">Google Earth Engine</SelectItem>
                 </SelectContent>
               </Select>
             </div>
