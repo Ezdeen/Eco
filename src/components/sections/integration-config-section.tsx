@@ -116,7 +116,7 @@ const INTEGRATION_TEMPLATES = [
   {
     name: 'space_cdse',
     displayName: 'Copernicus Data Space Ecosystem (CDSE)',
-    description: 'بديل Google Earth Engine: NDVI/EVI (Sentinel-2)، حرارة سطح الأرض (Sentinel-3)، NO2 (Sentinel-5P) — مصادقة OAuth2 أبسط',
+    description: 'بديل Google Earth Engine: NDVI/EVI (Sentinel-2)، NO2 (Sentinel-5P) — مصادقة OAuth2 أبسط',
     category: 'integration',
     configFields: [
       { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'من إعدادات حسابك في dataspace.copernicus.eu' },
