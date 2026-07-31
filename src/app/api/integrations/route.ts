@@ -151,16 +151,18 @@ export async function GET() {
       description: 'مطلوب لتحويل المنصة إلى SaaS تجاري. يحتاج تكامل Stripe أو بوابة دفع.',
     }
 
-    // === البيانات الفضائية: NASA POWER / Google Earth Engine / CAMS ===
-    const [nasaPowerCfg, geeCfg, camsCfg] = await Promise.all([
+    // === البيانات الفضائية: NASA POWER / Google Earth Engine / CAMS / CDSE ===
+    const [nasaPowerCfg, geeCfg, camsCfg, cdseCfg] = await Promise.all([
       db.integrationConfig.findUnique({ where: { name: 'space_nasa_power' } }),
       db.integrationConfig.findUnique({ where: { name: 'space_gee' } }),
       db.integrationConfig.findUnique({ where: { name: 'space_cams' } }),
+      db.integrationConfig.findUnique({ where: { name: 'space_cdse' } }),
     ])
-    const [nasaPowerSrc, geeSrc, camsSrc] = await Promise.all([
+    const [nasaPowerSrc, geeSrc, camsSrc, cdseSrc] = await Promise.all([
       db.spaceDataSource.findUnique({ where: { key: 'space_nasa_power' } }),
       db.spaceDataSource.findUnique({ where: { key: 'space_gee' } }),
       db.spaceDataSource.findUnique({ where: { key: 'space_cams' } }),
+      db.spaceDataSource.findUnique({ where: { key: 'space_cdse' } }),
     ])
     const spaceObservationsCount = await db.spaceDataObservation.count()
     const lastSyncRun = await db.spaceDataSyncRun.findFirst({ orderBy: { startedAt: 'desc' } })
@@ -168,10 +170,11 @@ export async function GET() {
     const nasaPowerActive = nasaPowerCfg ? nasaPowerCfg.isActive : true // مجاني بدون مفتاح، مفعّل افتراضيًا
     const geeActive = !!(geeCfg?.isActive && geeCfg?.encryptedSecret)
     const camsActive = !!(camsCfg?.isActive && camsCfg?.config && JSON.parse(camsCfg.config)?.username)
+    const cdseActive = !!(cdseCfg?.isActive && cdseCfg?.config && JSON.parse(cdseCfg.config)?.clientId && cdseCfg?.encryptedSecret)
 
     const spaceData = {
-      status: (nasaPowerActive || geeActive || camsActive) ? 'active' : 'needs_setup',
-      description: 'بيانات فضائية من NASA POWER وGoogle Earth Engine (Sentinel/Landsat/MODIS) وCAMS، مرتبطة بإحداثيات كل مشروع',
+      status: (nasaPowerActive || geeActive || camsActive || cdseActive) ? 'active' : 'needs_setup',
+      description: 'بيانات فضائية من NASA POWER وCAMS وCopernicus Data Space Ecosystem (وGoogle Earth Engine اختياريًا)، مرتبطة بإحداثيات كل مشروع',
       totalObservations: spaceObservationsCount,
       lastSyncAt: lastSyncRun?.startedAt?.toISOString() || null,
       lastSyncStatus: lastSyncRun?.status || null,
@@ -194,6 +197,12 @@ export async function GET() {
           status: camsActive ? 'connected' : 'needs_setup',
           requiresApiKey: false, // يتطلب بريدًا إلكترونيًا مسجَّلاً فقط، وليس مفتاح API
           lastSyncAt: camsSrc?.lastSyncAt?.toISOString() || null,
+        },
+        cdse: {
+          label: 'Copernicus Data Space Ecosystem',
+          status: cdseActive ? 'connected' : 'needs_setup',
+          requiresApiKey: true,
+          lastSyncAt: cdseSrc?.lastSyncAt?.toISOString() || null,
         },
       },
     }
