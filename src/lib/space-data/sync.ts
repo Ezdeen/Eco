@@ -8,6 +8,7 @@ import { decryptSecret } from '@/lib/crypto'
 import { fetchNasaPowerLatest } from './nasa-power'
 import { fetchGeeObservations, GeeServiceAccount } from './google-earth-engine'
 import { fetchCamsLatest, CamsCredentials } from './cams'
+import { fetchCdseObservations, CdseCredentials } from './cdse'
 
 export type FetchRun = 'morning' | 'afternoon' | 'evening' | 'manual'
 
@@ -26,6 +27,7 @@ const SOURCE_KEYS = {
   NASA_POWER: 'space_nasa_power',
   GEE: 'space_gee',
   CAMS: 'space_cams',
+  CDSE: 'space_cdse',
 } as const
 
 async function ensureSpaceDataSource(key: string, name: string, provider: string, description: string, requiresApiKey: boolean) {
@@ -71,10 +73,16 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     'الإشعاع الشمسي الفعلي المباشر والمشتت (GHI, DNI, DIF) — يتطلب بريدًا إلكترونيًا مسجَّلاً فقط',
     false,
   )
+  const cdseSource = await ensureSpaceDataSource(
+    SOURCE_KEYS.CDSE, 'Copernicus Data Space Ecosystem', 'ESA/Copernicus (dataspace.copernicus.eu)',
+    'بيانات Sentinel-2/3/5P (NDVI, EVI, LST, NO2) — بديل GEE بمصادقة OAuth2 أبسط (Client ID/Secret)',
+    true,
+  )
 
   const nasaConfig = await getIntegrationConfig('space_nasa_power')
   const geeConfig = await getIntegrationConfig('space_gee')
   const camsConfig = await getIntegrationConfig('space_cams')
+  const cdseConfig = await getIntegrationConfig('space_cdse')
 
   // NASA POWER لا يحتاج مفتاحًا — نعتبره مفعّلاً افتراضيًا ما لم يُعطَّل صراحة
   const nasaEnabled = nasaConfig ? nasaConfig.isActive : true
@@ -104,6 +112,22 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
       }
     } catch {
       errors.push({ projectId: '-', projectName: '-', source: 'CAMS', error: 'تعذّر قراءة إعدادات CAMS المخزّنة' })
+    }
+  }
+
+  // CDSE: مصادقة OAuth2 قياسية — Client ID في config العادي، Client Secret مشفَّر
+  const cdseEnabled = !!(cdseConfig?.isActive && cdseConfig?.config && cdseConfig?.encryptedSecret)
+  let cdseCredentials: CdseCredentials | null = null
+  if (cdseEnabled) {
+    try {
+      const cfg = cdseConfig!.config ? JSON.parse(cdseConfig!.config) : {}
+      if (cfg.clientId) {
+        cdseCredentials = { clientId: cfg.clientId, clientSecret: decryptSecret(cdseConfig!.encryptedSecret!) }
+      } else {
+        errors.push({ projectId: '-', projectName: '-', source: 'CDSE', error: 'Client ID غير مُدخَل' })
+      }
+    } catch {
+      errors.push({ projectId: '-', projectName: '-', source: 'CDSE', error: 'تعذّر قراءة إعدادات CDSE المخزّنة' })
     }
   }
 
@@ -239,7 +263,47 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
       }
     }
 
-    if (anySuccessForProject || (!nasaEnabled && !geeEnabled && !camsEnabled)) {
+    // --- Copernicus Data Space Ecosystem (CDSE) ---
+    if (cdseEnabled && cdseCredentials) {
+      try {
+        const observations = await fetchCdseObservations(cdseCredentials, lat, lon)
+        for (const obs of observations) {
+          await db.spaceDataObservation.upsert({
+            where: {
+              projectId_sourceKey_dataset_observedAt: {
+                projectId: project.id,
+                sourceKey: SOURCE_KEYS.CDSE,
+                dataset: obs.dataset,
+                observedAt: new Date(obs.observedAt),
+              },
+            },
+            update: {
+              fetchedAt: new Date(), fetchRun: runLabel,
+              ndvi: obs.ndvi, evi: obs.evi, lstC: obs.lstC,
+              no2ColumnMolM2: obs.no2ColumnMolM2, aerosolIndex: obs.aerosolIndex,
+              rawPayload: JSON.stringify(obs.raw),
+            },
+            create: {
+              projectId: project.id, sourceId: cdseSource.id, sourceKey: SOURCE_KEYS.CDSE,
+              dataset: obs.dataset, observedAt: new Date(obs.observedAt), fetchRun: runLabel,
+              latitude: lat, longitude: lon,
+              ndvi: obs.ndvi, evi: obs.evi, lstC: obs.lstC,
+              no2ColumnMolM2: obs.no2ColumnMolM2, aerosolIndex: obs.aerosolIndex,
+              qualityFlag: 'good', rawPayload: JSON.stringify(obs.raw),
+            },
+          })
+          observationsCreated++
+          anySuccessForProject = true
+        }
+        if (observations.length === 0) {
+          errors.push({ projectId: project.id, projectName: project.nameAr || project.name, source: 'CDSE', error: 'لم يتم إرجاع أي مؤشرات (قد تكون كل المشاهد ضمن النافذة الزمنية مغطاة بالسحاب بالكامل)' })
+        }
+      } catch (e: any) {
+        errors.push({ projectId: project.id, projectName: project.nameAr || project.name, source: 'CDSE', error: e?.message || 'خطأ غير معروف' })
+      }
+    }
+
+    if (anySuccessForProject || (!nasaEnabled && !geeEnabled && !camsEnabled && !cdseEnabled)) {
       projectsOk++
     } else {
       projectsFailed++
@@ -279,6 +343,12 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     await db.spaceDataSource.update({
       where: { id: camsSource.id },
       data: { lastSyncAt: now, lastSyncStatus: errors.some((e) => e.source === 'CAMS') ? 'partial' : 'success' },
+    })
+  }
+  if (cdseEnabled) {
+    await db.spaceDataSource.update({
+      where: { id: cdseSource.id },
+      data: { lastSyncAt: now, lastSyncStatus: errors.some((e) => e.source === 'CDSE') ? 'partial' : 'success' },
     })
   }
 
