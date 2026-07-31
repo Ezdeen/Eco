@@ -59,6 +59,7 @@ interface SyncRun {
   observationsCreated: number
   projectsOk: number
   projectsFailed: number
+  errors: Array<{ projectId: string; projectName: string; source: string; error: string }>
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -81,6 +82,7 @@ export function SpaceDataSection() {
   const [rows, setRows] = useState<SpaceObservation[]>([])
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [lastRuns, setLastRuns] = useState<SyncRun[]>([])
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [total, setTotal] = useState(0)
@@ -223,24 +225,50 @@ export function SpaceDataSection() {
       {/* Last sync runs */}
       {lastRuns.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {lastRuns.map((run) => (
-            <Card key={run.id} className="p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium">{RUN_LABELS[run.runLabel] || run.runLabel}</span>
-                {run.status === 'success' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-                {run.status === 'partial' && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
-                {run.status === 'failed' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
-                {run.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />}
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                {new Date(run.startedAt).toLocaleString('ar-SA')}
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {run.observationsCreated} قراءة · {run.projectsOk} مشروع ناجح
-                {run.projectsFailed > 0 && ` · ${run.projectsFailed} فشل`}
-              </p>
-            </Card>
-          ))}
+          {lastRuns.map((run) => {
+            const hasErrors = run.errors && run.errors.length > 0
+            const isExpanded = expandedRunId === run.id
+            return (
+              <Card
+                key={run.id}
+                className={`p-3 ${hasErrors ? 'cursor-pointer hover:border-amber-300' : ''}`}
+                onClick={() => hasErrors && setExpandedRunId(isExpanded ? null : run.id)}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium">{RUN_LABELS[run.runLabel] || run.runLabel}</span>
+                  {run.status === 'success' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+                  {run.status === 'partial' && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                  {run.status === 'failed' && <XCircle className="h-3.5 w-3.5 text-red-600" />}
+                  {run.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {new Date(run.startedAt).toLocaleString('ar-SA')}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {run.observationsCreated} قراءة · {run.projectsOk} مشروع ناجح
+                  {run.projectsFailed > 0 && ` · ${run.projectsFailed} فشل`}
+                </p>
+                {hasErrors && (
+                  <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> {run.errors.length} تنبيه — اضغط للتفاصيل
+                  </p>
+                )}
+                {isExpanded && hasErrors && (
+                  <div className="mt-2 pt-2 border-t space-y-1.5 max-h-48 overflow-y-auto">
+                    {run.errors.map((err, i) => (
+                      <div key={i} className="text-[10px] bg-amber-50 dark:bg-amber-950/30 rounded p-1.5">
+                        <span className="font-medium">{err.source}</span>
+                        {err.projectName && err.projectName !== '-' && (
+                          <span className="text-muted-foreground"> · {err.projectName}</span>
+                        )}
+                        <p className="text-amber-800 dark:text-amber-300 mt-0.5">{err.error}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
 
