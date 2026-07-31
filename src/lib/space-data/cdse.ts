@@ -20,7 +20,7 @@ export interface CdseCredentials {
 
 export interface CdseObservation {
   observedAt: string
-  dataset: string // 'Sentinel-2' | 'Sentinel-3' | 'Sentinel-5P'
+  dataset: string // 'Sentinel-2' | 'Sentinel-5P' (Sentinel-3 LST معطَّل مؤقتًا، راجع الملاحظة أدناه)
   ndvi: number | null
   evi: number | null
   lstC: number | null
@@ -148,18 +148,15 @@ function evaluatePixel(s) {
   return { evi: [evi], dataMask: [s.dataMask * cloudMask] }
 }`
 
-// حرارة سطح الأرض التقريبية من Sentinel-3 SLSTR (LST band جاهز مباشرة بوحدة كلفن)
-const LST_EVALSCRIPT = `
-//VERSION=3
-function setup() {
-  return {
-    input: [{ bands: ["LST", "dataMask"] }],
-    output: [{ id: "lst", bands: 1 }, { id: "dataMask", bands: 1 }]
-  }
-}
-function evaluatePixel(s) {
-  return { lst: [s.LST], dataMask: [s.dataMask] }
-}`
+// ملاحظة مهمة: تمت إزالة استعلام Land Surface Temperature (LST) من Sentinel-3 SLSTR هنا.
+// السبب (مؤكَّد من اختبار فعلي وتوثيق Copernicus الرسمي): مجموعة `sentinel-3-slstr` المتاحة
+// في Sentinel Hub Process/Statistical API هي منتج L1B الخام (نطاقات S1-S8 فقط: انعكاسية
+// وحرارة إشعاعية خام)، وليست منتج LST الجاهز (Sentinel-3 SLSTR L2 LST). حساب LST من L1B
+// يتطلب معادلة تصحيح انبعاثية معقّدة (باستخدام NDVI مساعد)، بينما منتج L2 LST الجاهز غير
+// متاح حاليًا كـ collection قياسي في evalscript بنفس السهولة (يحتاج وصولاً مختلفًا عبر
+// Catalog/OData أو BYOC). لتفادي فشل صامت متكرر في كل تشغيل، أُبقي فقط على المؤشرات
+// المؤكَّدة عمليًا: NDVI/EVI (Sentinel-2) وNO2 (Sentinel-5P). يمكن إضافة LST لاحقًا عند
+// توفر وقت لتطبيق معادلة التصحيح الكاملة أو الوصول لمنتج L2 عبر طريقة بديلة.
 
 // NO2 من Sentinel-5P (مؤشر بيئي/حوكمي إضافي لجودة الهواء حول الموقع)
 const NO2_EVALSCRIPT = `
@@ -231,23 +228,8 @@ export async function fetchCdseObservations(
     console.error('CDSE Sentinel-2 EVI fetch failed:', e)
   }
 
-  // Sentinel-3 SLSTR — Land Surface Temperature
-  try {
-    const lstKelvin = await runStatisticalQuery({
-      accessToken, bbox, collection: 'sentinel-3-slstr',
-      evalscript: LST_EVALSCRIPT, outputId: 'lst', band: 'lst',
-      fromDate: start7.toISOString(), toDate: end.toISOString(),
-    })
-    if (lstKelvin !== null) {
-      results.push({
-        observedAt: now, dataset: 'Sentinel-3',
-        ndvi: null, evi: null, lstC: Math.round((lstKelvin - 273.15) * 100) / 100,
-        no2ColumnMolM2: null, aerosolIndex: null, raw: { index: 'LST', kelvin: lstKelvin },
-      })
-    }
-  } catch (e) {
-    console.error('CDSE Sentinel-3 LST fetch failed:', e)
-  }
+  // ملاحظة: استعلام Sentinel-3 LST أُزيل مؤقتًا (راجع الملاحظة أعلى ملف evalscripts) —
+  // منتج L1B لا يحتوي band جاهزًا لـ LST، ومنتج L2 LST الجاهز يحتاج طريقة وصول مختلفة.
 
   // Sentinel-5P — NO2 (مؤشر بيئي/حوكمي إضافي: جودة الهواء حول الموقع)
   try {

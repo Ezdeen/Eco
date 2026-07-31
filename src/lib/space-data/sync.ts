@@ -75,7 +75,7 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
   )
   const cdseSource = await ensureSpaceDataSource(
     SOURCE_KEYS.CDSE, 'Copernicus Data Space Ecosystem', 'ESA/Copernicus (dataspace.copernicus.eu)',
-    'بيانات Sentinel-2/3/5P (NDVI, EVI, LST, NO2) — بديل GEE بمصادقة OAuth2 أبسط (Client ID/Secret)',
+    'بيانات Sentinel-2/5P (NDVI, EVI, NO2) — بديل GEE بمصادقة OAuth2 أبسط (Client ID/Secret)',
     true,
   )
 
