@@ -7,8 +7,13 @@
 | المصدر | يوفّر | مفتاح مطلوب | البروتوكول الفعلي |
 |---|---|---|---|
 | **NASA POWER** | الإشعاع الشمسي التاريخي (GHI)، درجة حرارة الهواء، سرعة الرياح، الرطوبة، الهطول | لا | REST API مجاني ومباشر بالكامل |
-| **Google Earth Engine** | NDVI/EVI (Sentinel-2, MODIS, Landsat)، حرارة سطح الأرض (MODIS LST)، NO2 (Sentinel-5P) | نعم (Service Account JSON) | Earth Engine REST API + OAuth2 JWT Bearer |
-| **CAMS (Copernicus Atmosphere)** | الإشعاع الشمسي الفعلي GHI/DNI/DIF ونسبة الغبار AOD | نعم (حساب ADS مجاني) | CAMS Radiation Service (WPS REST) |
+| **CAMS (Copernicus Atmosphere)** | الإشعاع الشمسي الفعلي GHI/DNI/DIF | لا (بريد إلكتروني مسجَّل فقط) | CAMS Radiation Service (soda-pro.com) |
+| **Copernicus Data Space Ecosystem (CDSE)** | NDVI/EVI (Sentinel-2)، حرارة سطح الأرض (Sentinel-3)، NO2 (Sentinel-5P) | نعم (Client ID + Client Secret) | Sentinel Hub Statistical API — OAuth2 client_credentials قياسي |
+| **Google Earth Engine** (اختياري، معطَّل افتراضيًا) | نفس مؤشرات CDSE + Landsat/MODIS | نعم (Service Account JSON + تسجيل مشروع Cloud) | Earth Engine REST API + OAuth2 JWT Bearer |
+
+> **ملاحظة**: CDSE هو المصدر **الموصى به فعليًا** لمؤشرات NDVI/EVI/LST/NO2 — مصادقته أبسط بكثير
+> من GEE (Client ID/Secret قياسي، بدون تسجيل مشروع Cloud منفصل أو أدوار IAM). GEE يبقى في
+> الكود كخيار بديل يمكن تفعيله لاحقًا (مثلاً للوصول لـ Landsat/MODIS تحديدًا) إن رغبت.
 
 ## قرار معماري مهم: لا توجد بيئة Python في هذا المشروع
 مشروعك الحالي بالكامل Next.js/TypeScript. المكتبتان المذكورتان أصلاً (`earthengine-api`
@@ -102,8 +107,14 @@ npx prisma migrate deploy
 - **NASA POWER**: فعّله فقط (لا يحتاج مفتاح).
 - **Google Earth Engine**: أنشئ Service Account من Google Cloud Console بصلاحية
   Earth Engine، فعّل Earth Engine API على المشروع، الصق **محتوى ملف JSON كاملاً** كـ secret.
-- **CAMS**: سجّل حسابًا مجانيًا في https://ads.atmosphere.copernicus.eu، أدخل البريد
-  الإلكتروني المسجَّل وAPI key.
+- **CAMS**: سجّل حسابًا مجانيًا في https://www.soda-pro.com، أدخل البريد الإلكتروني المسجَّل فقط (لا يوجد مفتاح API منفصل لهذه الخدمة).
+- **Copernicus Data Space Ecosystem (CDSE)**:
+  1. أنشئ حسابًا مجانيًا في https://dataspace.copernicus.eu
+  2. من إعدادات الحساب → **OAuth clients** (أو Sentinel Hub Dashboard) → أنشئ عميلاً جديدًا (OAuth Client)
+  3. احفظ **Client ID** و**Client Secret** فور إنشائه (لن تتمكن من رؤية الـ secret مرة أخرى)
+  4. أدخلهما في المنصة: Client ID في الحقل العادي، Client Secret في حقل السر
+  5. ملاحظة تغطية: هذا المصدر لا يواجه قيود GEE الإدارية (لا يحتاج تسجيل مشروع Cloud منفصل)
+- **Google Earth Engine** (اختياري، أعقد إعدادًا):
 
 اضغط "اختبار الاتصال" على كل بطاقة للتحقق قبل انتظار أول تشغيل مجدول، أو اضغط
 "سحب البيانات الآن" من قسم "البيانات الفضائية" نفسه لتشغيل يدوي فوري.
