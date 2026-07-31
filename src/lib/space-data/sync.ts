@@ -117,6 +117,15 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
 
   // CDSE: مصادقة OAuth2 قياسية — Client ID في config العادي، Client Secret مشفَّر
   const cdseEnabled = !!(cdseConfig?.isActive && cdseConfig?.config && cdseConfig?.encryptedSecret)
+  // تسجيل تشخيصي صريح: يطبع حالة كل شرط فرعي بغض النظر عن النتيجة النهائية، لتفادي
+  // فشل صامت بلا أي أثر في السجلات إن كان cdseEnabled=false لسبب غير متوقع.
+  console.log('[space-data-sync] CDSE config check:', {
+    found: !!cdseConfig,
+    isActive: cdseConfig?.isActive,
+    hasConfig: !!cdseConfig?.config,
+    hasEncryptedSecret: !!cdseConfig?.encryptedSecret,
+    cdseEnabled,
+  })
   let cdseCredentials: CdseCredentials | null = null
   if (cdseEnabled) {
     try {
