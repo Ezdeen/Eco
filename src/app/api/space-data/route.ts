@@ -40,11 +40,10 @@ export async function GET(request: NextRequest) {
       projectFilter = { projectId: { in: ids.length > 0 ? ids : ['__none__'] } }
     }
 
-    const where: any = {
+    const allowedSourceKeys = ['space_cdse', 'open_meteo']
+    const spaceWhere: any = {
       ...projectFilter,
       ...(projectId ? { projectId } : {}),
-      ...(sourceKey ? { sourceKey } : {}),
-      ...(dataset ? { dataset } : {}),
       ...(dateFrom || dateTo
         ? {
             observedAt: {
@@ -55,33 +54,57 @@ export async function GET(request: NextRequest) {
         : {}),
     }
 
-    const orderBy: any =
-      sortBy === 'fetchedAt' ? { fetchedAt: sortDir } : { observedAt: sortDir }
+    if (!sourceKey || sourceKey === 'all' || sourceKey === 'space_cdse') {
+      spaceWhere.sourceKey = { in: ['space_cdse'] }
+    } else if (sourceKey === 'open_meteo') {
+      delete spaceWhere.sourceKey
+    }
 
-    const [total, rows] = await Promise.all([
-      db.spaceDataObservation.count({ where }),
+    if (dataset && dataset !== 'all') {
+      if (dataset === 'Open-Meteo Solar') {
+        // لا تُضاف شروط على SpaceDataObservation عند اختيار Open-Meteo Solar
+      } else if (dataset === 'CDSE') {
+        spaceWhere.dataset = { in: ['Sentinel-2', 'Sentinel-5P'] }
+      } else if (dataset === 'Sentinel-2' || dataset === 'Sentinel-5P') {
+        spaceWhere.dataset = dataset
+      }
+    }
+
+    const weatherWhere: any = {
+      ...projectFilter,
+      ...(projectId ? { projectId } : {}),
+      ...(dateFrom || dateTo
+        ? {
+            observedAt: {
+              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+              ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
+            },
+          }
+        : {}),
+    }
+
+    if (!sourceKey || sourceKey === 'all' || sourceKey === 'open_meteo') {
+      weatherWhere.dataSource = 'Open-Meteo'
+    }
+
+    const [spaceRows, weatherRows] = await Promise.all([
       db.spaceDataObservation.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        where: spaceWhere,
+        orderBy: { observedAt: sortDir },
         include: {
-          project: { select: { id: true, name: true, nameAr: true, projectType: true } },
+          project: { select: { id: true, name: true, nameAr: true, projectType: true, latitude: true, longitude: true } },
+        },
+      }),
+      db.weatherObservation.findMany({
+        where: weatherWhere,
+        orderBy: { observedAt: sortDir },
+        include: {
+          project: { select: { id: true, name: true, nameAr: true, projectType: true, latitude: true, longitude: true } },
         },
       }),
     ])
 
-    // فرز حسب اسم المشروع يتم بعد الجلب (Prisma لا يدعم orderBy على حقل علاقة نصي مباشرة بسهولة هنا مع تعدد اللغات)
-    let result = rows
-    if (sortBy === 'projectName') {
-      result = [...rows].sort((a, b) => {
-        const an = a.project.nameAr || a.project.name
-        const bn = b.project.nameAr || b.project.name
-        return sortDir === 'asc' ? an.localeCompare(bn, 'ar') : bn.localeCompare(an, 'ar')
-      })
-    }
-
-    const data = result.map((r) => ({
+    const mappedSpaceRows = spaceRows.map((r) => ({
       id: r.id,
       projectId: r.projectId,
       projectName: r.project.nameAr || r.project.name,
@@ -91,8 +114,8 @@ export async function GET(request: NextRequest) {
       observedAt: r.observedAt.toISOString(),
       fetchedAt: r.fetchedAt.toISOString(),
       fetchRun: r.fetchRun,
-      latitude: r.latitude,
-      longitude: r.longitude,
+      latitude: r.project.latitude ?? 0,
+      longitude: r.project.longitude ?? 0,
       ghiWm2: r.ghiWm2,
       dniWm2: r.dniWm2,
       difWm2: r.difWm2,
@@ -109,6 +132,61 @@ export async function GET(request: NextRequest) {
       aerosolIndex: r.aerosolIndex,
       qualityFlag: r.qualityFlag,
     }))
+
+    const mappedWeatherRows = weatherRows.map((r) => ({
+      id: r.id,
+      projectId: r.projectId,
+      projectName: r.project.nameAr || r.project.name,
+      projectType: r.project.projectType,
+      sourceKey: 'open_meteo',
+      dataset: 'Open-Meteo Solar',
+      observedAt: r.observedAt.toISOString(),
+      fetchedAt: r.createdAt.toISOString(),
+      fetchRun: null,
+      latitude: r.project.latitude ?? 0,
+      longitude: r.project.longitude ?? 0,
+      ghiWm2: r.irradianceWm2,
+      dniWm2: null,
+      difWm2: null,
+      aod: null,
+      temperatureC: r.temperatureC,
+      windSpeedMs: r.windSpeedMs,
+      humidityPct: r.humidityPct,
+      cloudCoverPct: r.cloudCoverPct,
+      precipitationMm: r.precipitationMm,
+      ndvi: null,
+      evi: null,
+      lstC: null,
+      no2ColumnMolM2: null,
+      aerosolIndex: null,
+      qualityFlag: null,
+    }))
+
+    let result = [...mappedSpaceRows, ...mappedWeatherRows]
+
+    if (sortBy === 'projectName') {
+      result = result.sort((a, b) => {
+        const an = a.projectName || ''
+        const bn = b.projectName || ''
+        return sortDir === 'asc' ? an.localeCompare(bn, 'ar') : bn.localeCompare(an, 'ar')
+      })
+    } else if (sortBy === 'fetchedAt') {
+      result = result.sort((a, b) => {
+        const av = new Date(a.fetchedAt).getTime()
+        const bv = new Date(b.fetchedAt).getTime()
+        return sortDir === 'asc' ? av - bv : bv - av
+      })
+    } else {
+      result = result.sort((a, b) => {
+        const av = new Date(a.observedAt).getTime()
+        const bv = new Date(b.observedAt).getTime()
+        return sortDir === 'asc' ? av - bv : bv - av
+      })
+    }
+
+    const total = result.length
+    const startIndex = (page - 1) * pageSize
+    const data = result.slice(startIndex, startIndex + pageSize)
 
     // ملخص سريع لآخر تشغيلات المزامنة (لعرضه أعلى الجدول)
     const lastRuns = await db.spaceDataSyncRun.findMany({
