@@ -65,9 +65,10 @@ const SOURCE_LABELS: Record<string, string> = {
   space_nasa_power: 'NASA POWER',
   space_gee: 'Google Earth Engine',
   space_cams: 'CAMS',
+  space_cdse: 'CDSE (Copernicus)',
 }
 
-const DATASET_OPTIONS = ['Sentinel-2', 'Sentinel-5P', 'Landsat-8/9', 'MODIS', 'NASA-POWER', 'CAMS']
+const DATASET_OPTIONS = ['Sentinel-2', 'Sentinel-3', 'Sentinel-5P', 'Landsat-8/9', 'MODIS', 'NASA-POWER', 'CAMS']
 
 const RUN_LABELS: Record<string, string> = {
   morning: 'صباحًا (10:55)',
@@ -271,8 +272,9 @@ export function SpaceDataSection() {
                 <SelectContent>
                   <SelectItem value="all">كل المصادر</SelectItem>
                   <SelectItem value="space_nasa_power">NASA POWER</SelectItem>
-                  <SelectItem value="space_gee">Google Earth Engine</SelectItem>
                   <SelectItem value="space_cams">CAMS</SelectItem>
+                  <SelectItem value="space_cdse">CDSE (Copernicus)</SelectItem>
+                  <SelectItem value="space_gee">Google Earth Engine</SelectItem>
                 </SelectContent>
               </Select>
             </div>

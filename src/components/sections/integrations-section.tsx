@@ -199,7 +199,7 @@ export function IntegrationsSection() {
         {/* Space Data (NASA POWER / GEE / CAMS) */}
         <IntegrationCard
           title="البيانات الفضائية"
-          titleAr="NASA POWER · Google Earth Engine · CAMS"
+          titleAr="NASA POWER · CAMS · CDSE · Google Earth Engine"
           icon={Satellite}
           status={spaceData.status === 'active' ? 'connected' : 'needs_setup'}
           description={spaceData.description}
@@ -210,14 +210,19 @@ export function IntegrationsSection() {
                 {spaceData.sources.nasaPower.status === 'connected' ? '✓ متصل' : 'يحتاج تفعيل'}
               </Badge>
             } />
-            <InfoRow label="Google Earth Engine" value={
-              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.gee.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
-                {spaceData.sources.gee.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
-              </Badge>
-            } />
             <InfoRow label="CAMS" value={
               <Badge variant="outline" className={`text-[10px] ${spaceData.sources.cams.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
                 {spaceData.sources.cams.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
+              </Badge>
+            } />
+            <InfoRow label="Copernicus Data Space (CDSE)" value={
+              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.cdse.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
+                {spaceData.sources.cdse.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
+              </Badge>
+            } />
+            <InfoRow label="Google Earth Engine" value={
+              <Badge variant="outline" className={`text-[10px] ${spaceData.sources.gee.status === 'connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'}`}>
+                {spaceData.sources.gee.status === 'connected' ? '✓ متصل' : 'يحتاج إعداد'}
               </Badge>
             } />
             <Separator className="my-2" />
@@ -228,7 +233,7 @@ export function IntegrationsSection() {
           {spaceData.status !== 'active' && (
             <div className="mt-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 text-[10px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
               <ShieldAlert className="h-3 w-3 shrink-0 mt-0.5" />
-              <span>أضف مفاتيح Google Earth Engine وCAMS من قسم "إدارة الإعدادات" أدناه لتفعيل جميع المصادر. NASA POWER يعمل تلقائيًا بدون مفتاح.</span>
+              <span>أضف بريد CAMS أو مفاتيح CDSE/GEE من قسم "إدارة الإعدادات" أدناه لتفعيل المصادر النباتية/البيئية. NASA POWER يعمل تلقائيًا بدون مفتاح.</span>
             </div>
           )}
         </IntegrationCard>

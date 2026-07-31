@@ -114,6 +114,17 @@ const INTEGRATION_TEMPLATES = [
     secretPlaceholder: 'اترك هذا الحقل فارغًا — المصادقة تتم بالبريد الإلكتروني أعلاه فقط',
   },
   {
+    name: 'space_cdse',
+    displayName: 'Copernicus Data Space Ecosystem (CDSE)',
+    description: 'بديل Google Earth Engine: NDVI/EVI (Sentinel-2)، حرارة سطح الأرض (Sentinel-3)، NO2 (Sentinel-5P) — مصادقة OAuth2 أبسط',
+    category: 'integration',
+    configFields: [
+      { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'من إعدادات حسابك في dataspace.copernicus.eu' },
+    ],
+    secretLabel: 'Client Secret',
+    secretPlaceholder: 'يُنشأ عند تسجيل OAuth Client في إعدادات الحساب',
+  },
+  {
     name: 'stripe',
     displayName: 'Stripe Payments',
     description: 'بوابة الدفع للاشتراكات',
