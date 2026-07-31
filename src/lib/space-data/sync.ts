@@ -274,8 +274,10 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
 
     // --- Copernicus Data Space Ecosystem (CDSE) ---
     if (cdseEnabled && cdseCredentials) {
+      console.log(`[space-data-sync] CDSE: calling fetchCdseObservations for project ${project.id} (${project.nameAr || project.name}) at ${lat},${lon}`)
       try {
         const observations = await fetchCdseObservations(cdseCredentials, lat, lon)
+        console.log(`[space-data-sync] CDSE: returned ${observations.length} observation(s) for project ${project.id}`, JSON.stringify(observations))
         for (const obs of observations) {
           await db.spaceDataObservation.upsert({
             where: {
