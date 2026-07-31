@@ -128,6 +128,7 @@ export async function GET(request: NextRequest) {
         observationsCreated: r.observationsCreated,
         projectsOk: r.projectsOk,
         projectsFailed: r.projectsFailed,
+        errors: r.errorSummary ? JSON.parse(r.errorSummary) : [],
       })),
     })
   } catch (error: any) {
