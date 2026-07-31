@@ -6,6 +6,7 @@ import { decryptSecret } from '@/lib/crypto'
 import { testNasaPowerConnection } from '@/lib/space-data/nasa-power'
 import { testGeeConnection } from '@/lib/space-data/google-earth-engine'
 import { testCamsConnection } from '@/lib/space-data/cams'
+import { testCdseConnection } from '@/lib/space-data/cdse'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -54,6 +55,19 @@ export async function POST(request: NextRequest, { params }: Params) {
           break
         }
         result = await testCamsConnection({ username: cfg.username })
+        break
+      }
+      case 'space_cdse': {
+        if (!existing.encryptedSecret) {
+          result = { success: false, message: 'يلزم إدخال Client Secret أولاً' }
+          break
+        }
+        const cfg = existing.config ? JSON.parse(existing.config) : {}
+        if (!cfg.clientId) {
+          result = { success: false, message: 'يلزم إدخال Client ID أولاً' }
+          break
+        }
+        result = await testCdseConnection({ clientId: cfg.clientId, clientSecret: decryptSecret(existing.encryptedSecret) })
         break
       }
       default:
