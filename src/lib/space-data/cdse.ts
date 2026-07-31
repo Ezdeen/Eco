@@ -60,6 +60,25 @@ function buildBoundingBox(lat: number, lon: number) {
   return [lon - deltaDeg, lat - deltaDeg, lon + deltaDeg, lat + deltaDeg]
 }
 
+export function extractMeanFromStatisticalResponse(data: any, outputId: string): number | null {
+  const intervals = Array.isArray(data?.data) ? data.data : []
+
+  for (let i = intervals.length - 1; i >= 0; i--) {
+    const output = intervals[i]?.outputs?.[outputId]
+    const bands = output?.bands
+
+    if (!bands || typeof bands !== 'object') continue
+
+    const bandEntries = Object.entries(bands as Record<string, any>)
+    for (const [, bandData] of bandEntries) {
+      const mean = bandData?.stats?.mean
+      if (typeof mean === 'number' && isFinite(mean)) return mean
+    }
+  }
+
+  return null
+}
+
 async function runStatisticalQuery(params: {
   accessToken: string
   bbox: number[]
@@ -107,15 +126,7 @@ async function runStatisticalQuery(params: {
   }
 
   const data = await response.json()
-  // نأخذ آخر فاصل زمني (الأحدث) الذي يحتوي بيانات فعلية (وليس بالضرورة أول عنصر)
-  const intervals = data?.data
-  if (!Array.isArray(intervals) || intervals.length === 0) return null
-
-  for (let i = intervals.length - 1; i >= 0; i--) {
-    const mean = intervals[i]?.outputs?.[outputId]?.bands?.[band]?.stats?.mean
-    if (typeof mean === 'number' && isFinite(mean)) return mean
-  }
-  return null
+  return extractMeanFromStatisticalResponse(data, outputId)
 }
 
 // evalscripts لكل مؤشر — بسيطة ومباشرة، تُرجع قيمة واحدة (index) مع dataMask لاستبعاد
