@@ -9,6 +9,14 @@ import { fetchNasaPowerLatest } from './nasa-power'
 import { fetchGeeObservations, GeeServiceAccount } from './google-earth-engine'
 import { fetchCamsLatest, CamsCredentials } from './cams'
 import { fetchCdseObservations, CdseCredentials } from './cdse'
+import { fetchLiveWeather } from '@/lib/weather'
+
+// المرحلة الحالية: نعتمد فقط على Open-Meteo Solar وCDSE لسحب البيانات.
+// NASA POWER وGEE وCAMS مُعطَّلة مؤقتًا في دورة السحب (الكود موجود ومُبقى عليه
+// لإعادة التفعيل لاحقًا) — لا تُفعَّل هذه الأسطر بدون قرار صريح بالعودة إليها.
+const NASA_POWER_SYNC_ENABLED = false
+const GEE_SYNC_ENABLED = false
+const CAMS_SYNC_ENABLED = false
 
 export type FetchRun = 'morning' | 'afternoon' | 'evening' | 'manual'
 
@@ -85,9 +93,10 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
   const cdseConfig = await getIntegrationConfig('space_cdse')
 
   // NASA POWER لا يحتاج مفتاحًا — نعتبره مفعّلاً افتراضيًا ما لم يُعطَّل صراحة
-  const nasaEnabled = nasaConfig ? nasaConfig.isActive : true
+  // (لكن في هذه المرحلة نوقفه عبر NASA_POWER_SYNC_ENABLED، راجع تعليق أعلى الملف)
+  const nasaEnabled = NASA_POWER_SYNC_ENABLED && (nasaConfig ? nasaConfig.isActive : true)
 
-  const geeEnabled = !!(geeConfig?.isActive && geeConfig?.encryptedSecret)
+  const geeEnabled = GEE_SYNC_ENABLED && !!(geeConfig?.isActive && geeConfig?.encryptedSecret)
   let geeServiceAccount: GeeServiceAccount | null = null
   if (geeEnabled) {
     try {
@@ -100,7 +109,7 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
 
   // CAMS: المصادقة الوحيدة هي البريد الإلكتروني المسجَّل على soda-pro.com (لا "سر" مشفَّر
   // فعليًا)، لذا نعتبره مفعّلاً إن كان isActive=true وبريد صالح مخزَّن في config (وليس secret).
-  const camsEnabled = !!(camsConfig?.isActive && camsConfig?.config)
+  const camsEnabled = CAMS_SYNC_ENABLED && !!(camsConfig?.isActive && camsConfig?.config)
   let camsCredentials: CamsCredentials | null = null
   if (camsEnabled) {
     try {
@@ -150,10 +159,60 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     select: { id: true, name: true, nameAr: true, latitude: true, longitude: true },
   })
 
+  // Open-Meteo Solar: نضمن وجود سجل WeatherSource أساسي (متوافق مع البنية القديمة
+  // في src/lib/weather.ts) حتى يظهر بشكل صحيح في قسم التكاملات.
+  let openMeteoSource = await db.weatherSource.findFirst({ where: { name: 'Open-Meteo' } })
+  if (!openMeteoSource) {
+    openMeteoSource = await db.weatherSource.create({
+      data: { name: 'Open-Meteo', apiUrl: 'https://api.open-meteo.com/v1/forecast', isActive: true },
+    })
+  }
+
   for (const project of projects) {
     const lat = project.latitude!
     const lon = project.longitude!
     let anySuccessForProject = false
+
+    // --- Open-Meteo Solar (مفعّل دائمًا في هذه المرحلة — لا يحتاج مفتاحًا) ---
+    try {
+      const live = await fetchLiveWeather(lat, lon)
+      if (live) {
+        await db.weatherObservation.upsert({
+          where: {
+            projectId_observedAt_sourceId: {
+              projectId: project.id,
+              observedAt: new Date(live.observedAt),
+              sourceId: openMeteoSource.id,
+            },
+          },
+          update: {
+            temperatureC: live.temperatureC,
+            humidityPct: live.humidityPct,
+            irradianceWm2: live.irradianceWm2,
+            windSpeedMs: live.windSpeedMs,
+            cloudCoverPct: live.cloudCoverPct,
+          },
+          create: {
+            projectId: project.id,
+            sourceId: openMeteoSource.id,
+            observedAt: new Date(live.observedAt),
+            temperatureC: live.temperatureC,
+            humidityPct: live.humidityPct,
+            irradianceWm2: live.irradianceWm2,
+            windSpeedMs: live.windSpeedMs,
+            cloudCoverPct: live.cloudCoverPct,
+            precipitationMm: null,
+            dataSource: 'Open-Meteo',
+          },
+        })
+        observationsCreated++
+        anySuccessForProject = true
+      } else {
+        errors.push({ projectId: project.id, projectName: project.nameAr || project.name, source: 'Open-Meteo', error: 'لم يتم إرجاع بيانات صالحة' })
+      }
+    } catch (e: any) {
+      errors.push({ projectId: project.id, projectName: project.nameAr || project.name, source: 'Open-Meteo', error: e?.message || 'خطأ غير معروف' })
+    }
 
     // --- NASA POWER ---
     if (nasaEnabled) {
@@ -338,6 +397,10 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
 
   // تحديث حالة آخر مزامنة لكل مصدر (لعرضها في قسم التكاملات) — فقط للمصادر المفعّلة فعليًا
   const now = new Date()
+  await db.weatherSource.update({
+    where: { id: openMeteoSource.id },
+    data: { lastSyncAt: now },
+  })
   await db.spaceDataSource.update({
     where: { id: nasaSource.id },
     data: nasaEnabled
