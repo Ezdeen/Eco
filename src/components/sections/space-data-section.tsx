@@ -20,28 +20,31 @@ interface SpaceObservation {
   projectId: string
   projectName: string
   projectType: string
-  sourceKey: string
-  dataset: string
-  observedAt: string
-  fetchedAt: string
-  fetchRun: string | null
+  observedDate: string
   latitude: number
   longitude: number
-  ghiWm2: number | null
-  dniWm2: number | null
-  difWm2: number | null
-  aod: number | null
-  temperatureC: number | null
-  windSpeedMs: number | null
-  humidityPct: number | null
-  cloudCoverPct: number | null
-  precipitationMm: number | null
-  ndvi: number | null
-  evi: number | null
-  lstC: number | null
-  no2ColumnMolM2: number | null
-  aerosolIndex: number | null
-  qualityFlag: string | null
+  openMeteo: {
+    observedAt: string
+    fetchedAt: string
+    ghiWm2: number | null
+    temperatureC: number | null
+    humidityPct: number | null
+    windSpeedMs: number | null
+    cloudCoverPct: number | null
+    precipitationMm: number | null
+  } | null
+  cdse: {
+    observedAt: string
+    fetchedAt: string
+    fetchRun: string | null
+    dataset: string
+    ndvi: number | null
+    evi: number | null
+    lstC: number | null
+    no2ColumnMolM2: number | null
+    aerosolIndex: number | null
+    qualityFlag: string | null
+  } | null
 }
 
 interface ProjectOption {
@@ -61,13 +64,6 @@ interface SyncRun {
   projectsFailed: number
   errors: Array<{ projectId: string; projectName: string; source: string; error: string }>
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  open_meteo: 'Open-Meteo Solar API',
-  space_cdse: 'CDSE (Copernicus)',
-}
-
-const DATASET_OPTIONS = ['Open-Meteo Solar', 'CDSE', 'Sentinel-2', 'Sentinel-5P']
 
 const RUN_LABELS: Record<string, string> = {
   morning: 'صباحًا (10:55)',
@@ -89,13 +85,11 @@ export function SpaceDataSection() {
 
   // Filters
   const [projectId, setProjectId] = useState<string>('all')
-  const [sourceKey, setSourceKey] = useState<string>('all')
-  const [dataset, setDataset] = useState<string>('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
   // Sort
-  const [sortBy, setSortBy] = useState<'observedAt' | 'fetchedAt' | 'projectName'>('observedAt')
+  const [sortBy, setSortBy] = useState<'observedAt' | 'projectName'>('observedAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const fetchProjects = useCallback(() => {
@@ -114,8 +108,6 @@ export function SpaceDataSection() {
       sortBy, sortDir, page: String(page), pageSize: String(pageSize),
     })
     if (projectId !== 'all') params.set('projectId', projectId)
-    if (sourceKey !== 'all') params.set('sourceKey', sourceKey)
-    if (dataset !== 'all') params.set('dataset', dataset)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
 
@@ -128,12 +120,12 @@ export function SpaceDataSection() {
       })
       .catch(() => toast.error('تعذر تحميل البيانات الفضائية'))
       .finally(() => setLoading(false))
-  }, [projectId, sourceKey, dataset, dateFrom, dateTo, sortBy, sortDir, page])
+  }, [projectId, dateFrom, dateTo, sortBy, sortDir, page])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
   useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSort = (field: 'observedAt' | 'fetchedAt' | 'projectName') => {
+  const handleSort = (field: 'observedAt' | 'projectName') => {
     if (sortBy === field) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
     } else {
@@ -143,7 +135,7 @@ export function SpaceDataSection() {
     setPage(1)
   }
 
-  const SortIcon = ({ field }: { field: 'observedAt' | 'fetchedAt' | 'projectName' }) => {
+  const renderSortIcon = (field: 'observedAt' | 'projectName') => {
     if (sortBy !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />
     return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
   }
@@ -176,11 +168,11 @@ export function SpaceDataSection() {
   }
 
   const clearFilters = () => {
-    setProjectId('all'); setSourceKey('all'); setDataset('all'); setDateFrom(''); setDateTo('')
+    setProjectId('all'); setDateFrom(''); setDateTo('')
     setPage(1)
   }
 
-  const hasActiveFilters = projectId !== 'all' || sourceKey !== 'all' || dataset !== 'all' || dateFrom || dateTo
+  const hasActiveFilters = projectId !== 'all' || dateFrom || dateTo
 
   const fmtNum = (v: number | null, digits = 1) => (v === null || v === undefined ? '—' : v.toFixed(digits))
 
@@ -278,7 +270,7 @@ export function SpaceDataSection() {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">المشروع</label>
               <Select value={projectId} onValueChange={(v) => { setProjectId(v); setPage(1) }}>
@@ -287,29 +279,6 @@ export function SpaceDataSection() {
                   <SelectItem value="all">كل المشاريع</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.nameAr || p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">المصدر</label>
-              <Select value={sourceKey} onValueChange={(v) => { setSourceKey(v); setPage(1) }}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="كل المصادر" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل المصادر</SelectItem>
-                  <SelectItem value="open_meteo">Open-Meteo Solar API</SelectItem>
-                  <SelectItem value="space_cdse">CDSE (Copernicus)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">نوع البيانات (Dataset)</label>
-              <Select value={dataset} onValueChange={(v) => { setDataset(v); setPage(1) }}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="الكل" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">الكل</SelectItem>
-                  {DATASET_OPTIONS.map((d) => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -353,15 +322,13 @@ export function SpaceDataSection() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="cursor-pointer select-none" onClick={() => handleSort('projectName')}>
-                      <span className="flex items-center gap-1">المشروع <SortIcon field="projectName" /></span>
+                      <span className="flex items-center gap-1">المشروع {renderSortIcon('projectName')}</span>
                     </TableHead>
-                    <TableHead>المصدر</TableHead>
-                    <TableHead>Dataset</TableHead>
                     <TableHead className="cursor-pointer select-none" onClick={() => handleSort('observedAt')}>
-                      <span className="flex items-center gap-1">تاريخ الرصد <SortIcon field="observedAt" /></span>
+                      <span className="flex items-center gap-1">التاريخ {renderSortIcon('observedAt')}</span>
                     </TableHead>
                     <TableHead>
-                      <span className="flex items-center gap-1"><CloudSun className="h-3 w-3" /> GHI / DNI / DIF (W/m²)</span>
+                      <span className="flex items-center gap-1"><CloudSun className="h-3 w-3" /> GHI (Open-Meteo, W/m²)</span>
                     </TableHead>
                     <TableHead>
                       <span className="flex items-center gap-1"><Thermometer className="h-3 w-3" /> حرارة°C</span>
@@ -369,39 +336,35 @@ export function SpaceDataSection() {
                     <TableHead>
                       <span className="flex items-center gap-1"><Wind className="h-3 w-3" /> رياح m/s</span>
                     </TableHead>
+                    <TableHead>رطوبة % / غيوم %</TableHead>
                     <TableHead>
-                      <span className="flex items-center gap-1"><Leaf className="h-3 w-3" /> NDVI/EVI</span>
+                      <span className="flex items-center gap-1"><Leaf className="h-3 w-3" /> NDVI/EVI (CDSE)</span>
                     </TableHead>
-                    <TableHead>AOD/NO2</TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => handleSort('fetchedAt')}>
-                      <span className="flex items-center gap-1">وقت السحب <SortIcon field="fetchedAt" /></span>
-                    </TableHead>
+                    <TableHead>NO2/Aerosol (CDSE)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="text-xs font-medium max-w-[140px] truncate">{r.projectName}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[r.sourceKey] || r.sourceKey}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{r.dataset}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(r.observedAt).toLocaleDateString('ar-SA')}
+                        {new Date(r.observedDate).toLocaleDateString('ar-SA')}
+                        <div className="flex gap-1 mt-1">
+                          {r.openMeteo && <Badge variant="outline" className="text-[9px]">Open-Meteo</Badge>}
+                          {r.cdse && <Badge variant="outline" className="text-[9px]">CDSE</Badge>}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap tabular-nums">
-                        {fmtNum(r.ghiWm2)} / {fmtNum(r.dniWm2)} / {fmtNum(r.difWm2)}
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums">{fmtNum(r.temperatureC)}</TableCell>
-                      <TableCell className="text-xs tabular-nums">{fmtNum(r.windSpeedMs)}</TableCell>
+                      <TableCell className="text-xs tabular-nums">{fmtNum(r.openMeteo?.ghiWm2 ?? null)}</TableCell>
+                      <TableCell className="text-xs tabular-nums">{fmtNum(r.openMeteo?.temperatureC ?? null)}</TableCell>
+                      <TableCell className="text-xs tabular-nums">{fmtNum(r.openMeteo?.windSpeedMs ?? null)}</TableCell>
                       <TableCell className="text-xs tabular-nums">
-                        {r.ndvi !== null ? fmtNum(r.ndvi, 3) : '—'} / {r.evi !== null ? fmtNum(r.evi, 3) : '—'}
+                        {fmtNum(r.openMeteo?.humidityPct ?? null)} / {fmtNum(r.openMeteo?.cloudCoverPct ?? null)}
                       </TableCell>
                       <TableCell className="text-xs tabular-nums">
-                        {fmtNum(r.aod, 2)} / {r.no2ColumnMolM2 !== null ? r.no2ColumnMolM2.toExponential(2) : '—'}
+                        {r.cdse?.ndvi != null ? fmtNum(r.cdse.ndvi, 3) : '—'} / {r.cdse?.evi != null ? fmtNum(r.cdse.evi, 3) : '—'}
                       </TableCell>
-                      <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap">
-                        {new Date(r.fetchedAt).toLocaleString('ar-SA')}
+                      <TableCell className="text-xs tabular-nums">
+                        {r.cdse?.no2ColumnMolM2 != null ? r.cdse.no2ColumnMolM2.toExponential(2) : '—'} / {r.cdse?.aerosolIndex != null ? fmtNum(r.cdse.aerosolIndex, 2) : '—'}
                       </TableCell>
                     </TableRow>
                   ))}
