@@ -165,9 +165,32 @@ export async function GET() {
     // activeProjects; these were the one exception, causing "Hedera
     // confirmations" and "attestation rate" to show platform-wide numbers
     // regardless of which organization or project-manager was logged in.
+    //
+    // SECOND FIX: this project actually runs TWO independent Hedera attestation
+    // systems that don't share any rows:
+    //  1) The legacy batch/Merkle-root system (AttestationBatch table),
+    //     created only via POST /api/attestations.
+    //  2) The current per-reading system (n8n + Blind Signer), which stamps
+    //     hederaTransactionId directly onto each EnergyReading row and is what
+    //     "مركز البيانات" / /api/attestations/readings actually displays.
+    // Daily testnet activity flows through system (2), so counting only
+    // AttestationBatch rows under-reports (often to zero) even though
+    // attestations are happening every day. Count confirmations from both.
     const attestationScope = { projectId: { in: activeProjects.map((p) => p.id) }, status: 'confirmed' }
-    const attestations = await db.attestationBatch.count({ where: attestationScope })
-    const attestationItems = await db.attestationBatch.aggregate({ where: attestationScope, _sum: { itemCount: true } })
+    const legacyBatchAttestations = await db.attestationBatch.count({ where: attestationScope })
+    const legacyBatchItems = await db.attestationBatch.aggregate({ where: attestationScope, _sum: { itemCount: true } })
+
+    const perReadingAttestedCount = await db.energyReading.count({
+      where: {
+        projectId: { in: activeProjects.map((p) => p.id) },
+        hederaTransactionId: { not: null },
+      },
+    })
+
+    const attestations = legacyBatchAttestations + perReadingAttestedCount
+    const attestationItems = {
+      _sum: { itemCount: (legacyBatchItems._sum.itemCount || 0) + perReadingAttestedCount },
+    }
 
     // Data quality
     // Data quality — computed from allReadings (the full, unfiltered set) so suspect/
