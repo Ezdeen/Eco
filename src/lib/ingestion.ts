@@ -406,6 +406,18 @@ async function runValidationRules(
       where: { id: readingId },
       data: { qualityStatus: 'validated', validationStatus: 'valid' },
     })
+
+    // === مقارنة البيانات الأرضية بالبيانات الفضائية ===
+    // تُطبَّق فقط الآن، بعد أن أصبحت validationStatus = 'valid' فعليًا — وليس قبل ذلك.
+    // لا نُفشل الاستيعاب بأكمله إذا تعذّرت هذه المقارنة (مثلاً: لا توجد بيانات فضائية
+    // متاحة بعد لهذا المشروع/اليوم) — هذه طبقة تدقيق إضافية فوق نجاح الاستيعاب، وليست
+    // شرطًا له.
+    try {
+      const { runGroundSpaceComparison } = await import('./space-comparison')
+      await runGroundSpaceComparison(readingId)
+    } catch (error) {
+      console.error('Ground-vs-space comparison error (non-blocking):', error)
+    }
   }
 }
 
