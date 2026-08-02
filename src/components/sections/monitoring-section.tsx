@@ -1,445 +1,454 @@
-// Ingestion Pipeline Library
-// Supports: idempotency, deduplication, reset/rollover handling
-import { db } from './db'
-import crypto from 'crypto'
+'use client'
 
-export interface IngestReadingInput {
-  projectId: string
-  deviceId?: string
-  siteId?: string
-  assetId?: string
-  metricType: string
-  measuredAt: Date
-  intervalStart: Date
-  intervalEnd?: Date
-  value: number
-  unit: string
-  cumulativeValue?: number
-  sourceEventId?: string
-  source?: string // http_api, mqtt, csv, manual
-  rawPayload?: any
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/platform/status-badge'
+import { Activity, AlertTriangle, AlertCircle, CheckCircle2, Clock, BellRing, ShieldCheck, Satellite, Gauge } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+
+interface Case {
+  id: string
+  title: string
+  caseType: string
+  priority: string
+  status: string
+  description?: string
+  slaDeadline?: string
+  createdAt: string
+  project: { name: string; nameAr?: string; code: string }
 }
 
-export interface IngestResult {
-  success: boolean
-  readingId?: string
-  status: 'created' | 'duplicate' | 'failed'
-  reason?: string
-  error?: string
+interface NotificationItem {
+  id: string
+  title: string
+  body: string
+  severity: string
+  isRead: boolean
+  createdAt: string
+  project?: { name: string; nameAr?: string; code: string }
 }
 
-// === PRIORITY 4: Canonical JSON with stable sorting ===
-// Ensures consistent hashing regardless of key insertion order
-function canonicalStringify(obj: any): string {
-  if (obj === null || obj === undefined) return 'null'
-  if (typeof obj !== 'object') return JSON.stringify(obj)
-  if (Array.isArray(obj)) {
-    return '[' + obj.map(canonicalStringify).join(',') + ']'
+interface DashboardSummary {
+  kpis?: {
+    dataQualityRate?: number
+    attestationRate?: number
+    connectedDevices?: number
+    totalDevices?: number
+    unreadNotifications?: number
+    openCases?: number
+    criticalCases?: number
   }
-  const keys = Object.keys(obj).sort()
-  return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}'
 }
 
-// Compute SHA-256 hash of raw payload using canonical JSON
-function computePayloadHash(data: any): string {
-  const canonical = canonicalStringify(data)
-  return crypto.createHash('sha256').update(canonical).digest('hex')
+interface SpaceComparisonItem {
+  id: string
+  assessment: string
+  severity: string | null
+  efficiencyRatio: number
+  deviationPct: number
+  groundValueKwh: number
+  expectedEnergyKwh: number
+  measuredAt: string
+  spaceSourceKey: string | null
+  project: { name: string; nameAr?: string; code: string }
 }
 
-// Generate idempotency key for batch
-function generateIdempotencyKey(projectId: string, sourceEventId?: string): string {
-  return sourceEventId
-    ? `${projectId}:${sourceEventId}`
-    : `${projectId}:${Date.now()}:${Math.random()}`
+interface SpaceComparisonStats {
+  total: number
+  normal: number
+  overstated: number
+  understated: number
+  dustAccumulation: number
+  efficiencyLoss: number
+  avgEfficiencyRatio: number | null
 }
 
-// Main ingestion function with full pipeline
-export async function ingestReadings(
-  inputs: IngestReadingInput[],
-  options?: { idempotencyKey?: string; source?: string },
-): Promise<{
-  batchId: string
-  results: IngestResult[]
-  summary: { total: number; created: number; duplicates: number; failed: number }
-}> {
-  if (inputs.length === 0) {
-    throw new Error('No readings to ingest')
-  }
+const ASSESSMENT_CONFIG: Record<string, { label: string; icon: typeof AlertTriangle; color: string; bg: string }> = {
+  overstated: { label: 'قراءة مبالغ فيها', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900' },
+  understated: { label: 'قراءة منخفضة', icon: AlertCircle, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900' },
+  dust_accumulation: { label: 'تراكم الغبار', icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900' },
+  efficiency_loss: { label: 'نقص الكفاءة', icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900' },
+}
 
-  const projectId = inputs[0].projectId
-  const source = options?.source || 'http_api'
-  const idempotencyKey = options?.idempotencyKey || generateIdempotencyKey(projectId, inputs[0].sourceEventId)
+const CASE_TYPE_LABELS: Record<string, string> = {
+  anomaly: 'قراءة شاذة',
+  device_offline: 'جهاز غير متصل',
+  data_gap: 'فجوة بيانات',
+  attestation_failure: 'فشل التوثيق',
+  performance_drop: 'هبوط الأداء',
+  overstated_reading: 'قراءة مبالغ فيها',
+  low_reading: 'قراءة منخفضة',
+  dust_accumulation: 'تراكم الغبار',
+  efficiency_loss: 'نقص الكفاءة',
+}
 
-  // Idempotency: check if batch already processed
-  const existingBatch = await db.ingestionBatch.findUnique({
-    where: { idempotencyKey },
-    include: { rawPayloads: true },
-  })
+const PRIORITY_CONFIG = {
+  critical: { label: 'حرج', color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900' },
+  high: { label: 'عالٍ', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900' },
+  medium: { label: 'متوسط', color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900' },
+  low: { label: 'منخفض', color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' },
+}
 
-  if (existingBatch && existingBatch.status === 'completed') {
-    // Return existing results - idempotent
-    return {
-      batchId: existingBatch.id,
-      results: existingBatch.rawPayloads.map((rp) => ({
-        success: rp.status === 'processed',
-        readingId: rp.readingId || undefined,
-        status: rp.status === 'duplicate' ? 'duplicate' : rp.status === 'processed' ? 'created' : 'failed',
-        reason: rp.errorMessage || undefined,
-      })),
-      summary: {
-        total: existingBatch.rawPayloadCount,
-        created: existingBatch.processedCount,
-        duplicates: existingBatch.duplicateCount,
-        failed: existingBatch.failedCount,
-      },
-    }
-  }
+const SEVERITY_CONFIG: Record<string, { label: string; color: string }> = {
+  error: { label: 'خطأ', color: 'text-red-600' },
+  warning: { label: 'تنبيه', color: 'text-amber-600' },
+  success: { label: 'نجاح', color: 'text-emerald-600' },
+  info: { label: 'معلومة', color: 'text-blue-600' },
+}
 
-  // Create new ingestion batch
-  const batch = await db.ingestionBatch.create({
-    data: {
-      projectId,
-      deviceId: inputs[0].deviceId,
-      source,
-      sourceEventId: inputs[0].sourceEventId,
-      idempotencyKey,
-      status: 'processing',
-      rawPayloadCount: inputs.length,
-    },
-  })
+export function MonitoringSection() {
+  const [cases, setCases] = useState<Case[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [spaceComparisons, setSpaceComparisons] = useState<SpaceComparisonItem[]>([])
+  const [spaceStats, setSpaceStats] = useState<SpaceComparisonStats | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const results: IngestResult[] = []
-  let created = 0
-  let duplicates = 0
-  let failed = 0
+  useEffect(() => {
+    let cancelled = false
 
-  for (const input of inputs) {
-    try {
-      // Compute payload hash for deduplication
-      const payloadHash = computePayloadHash({
-        deviceId: input.deviceId,
-        metricType: input.metricType,
-        intervalStart: input.intervalStart.toISOString(),
-        value: input.value,
-        unit: input.unit,
-      })
+    async function loadData() {
+      setLoading(true)
+      try {
+        const [casesRes, dashboardRes, notificationsRes, spaceComparisonRes] = await Promise.all([
+          fetch('/api/cases'),
+          fetch('/api/dashboard'),
+          fetch('/api/notifications?unreadOnly=true&limit=5'),
+          fetch('/api/space-comparison?limit=10'),
+        ])
 
-      // Check for duplicate via payload hash
-      const existingPayload = await db.rawPayload.findUnique({
-        where: { payloadHash },
-      })
+        if (cancelled) return
 
-      if (existingPayload && existingPayload.status === 'processed') {
-        // Deduplication: skip already processed payload
-        duplicates++
-        results.push({
-          success: true,
-          status: 'duplicate',
-          reason: 'Duplicate payload - already processed',
-          readingId: existingPayload.readingId || undefined,
-        })
+        const casesData = casesRes.ok ? await casesRes.json() : { cases: [], stats: null }
+        const dashboardData = dashboardRes.ok ? await dashboardRes.json() : null
+        const notificationsData = notificationsRes.ok ? await notificationsRes.json() : { notifications: [] }
+        const spaceComparisonData = spaceComparisonRes.ok ? await spaceComparisonRes.json() : { comparisons: [], stats: null }
 
-        // Store as duplicate in raw_payloads
-        await db.rawPayload.create({
-          data: {
-            ingestionBatchId: batch.id,
-            deviceId: input.deviceId,
-            payloadHash: `dup-${payloadHash}`,
-            rawData: JSON.stringify(input.rawPayload || input),
-            payloadSize: JSON.stringify(input).length,
-            status: 'duplicate',
-          },
-        })
-        continue
-      }
-
-      // Store raw payload
-      const rawPayload = await db.rawPayload.create({
-        data: {
-          ingestionBatchId: batch.id,
-          deviceId: input.deviceId,
-          payloadHash,
-          rawData: JSON.stringify(input.rawPayload || input),
-          payloadSize: JSON.stringify(input).length,
-          status: 'received',
-        },
-      })
-
-      // === PRIORITY 4: Meter reset/rollover with documented logic and meter max ===
-      let finalValue = input.value
-      let finalCumulative = input.cumulativeValue
-      let adjustmentApplied = false
-      let adjustmentReason = ''
-      let adjustmentReasonCode = ''
-
-      // Meter max value (configurable per device, default 999999 kWh)
-      const METER_MAX = 999999 // kWh - typical for industrial meters
-
-      if (input.cumulativeValue !== undefined && input.cumulativeValue !== null) {
-        const lastReading = await db.energyReading.findFirst({
-          where: {
-            projectId: input.projectId,
-            deviceId: input.deviceId,
-            metricType: input.metricType,
-            measuredAt: { lt: input.measuredAt },
-          },
-          orderBy: { measuredAt: 'desc' },
-          select: { cumulativeValue: true, value: true },
-        })
-
-        if (lastReading?.cumulativeValue !== null && lastReading?.cumulativeValue !== undefined) {
-          // Case 1: Meter Reset - cumulative dropped to near zero
-          if (input.cumulativeValue < lastReading.cumulativeValue * 0.1) {
-            finalValue = input.cumulativeValue
-            adjustmentApplied = true
-            adjustmentReason = `Meter reset: cumulative dropped from ${lastReading.cumulativeValue} to ${input.cumulativeValue}`
-            adjustmentReasonCode = 'METER_RESET'
-          }
-          // Case 2: Rollover - cumulative wrapped around METER_MAX
-          else if (input.cumulativeValue < lastReading.cumulativeValue) {
-            finalValue = (METER_MAX - lastReading.cumulativeValue) + input.cumulativeValue
-            adjustmentApplied = true
-            adjustmentReason = `Meter rollover at max=${METER_MAX}: prev=${lastReading.cumulativeValue}, new=${input.cumulativeValue}, computed=${finalValue}`
-            adjustmentReasonCode = 'ROLLOVER'
-          }
-          // Case 3: Normal cumulative increase
-          else {
-            finalValue = input.cumulativeValue - lastReading.cumulativeValue
-          }
+        setCases(casesData?.cases || [])
+        setStats(casesData?.stats || null)
+        setDashboard(dashboardData)
+        setNotifications(notificationsData?.notifications || [])
+        setSpaceComparisons(spaceComparisonData?.comparisons || [])
+        setSpaceStats(spaceComparisonData?.stats || null)
+      } catch {
+        if (!cancelled) {
+          setCases([])
+          setStats(null)
+          setDashboard(null)
+          setNotifications([])
+          setSpaceComparisons([])
+          setSpaceStats(null)
         }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-
-      // Check idempotency constraint (deviceId + metricType + intervalStart)
-      const existingReading = await db.energyReading.findUnique({
-        where: {
-          deviceId_metricType_intervalStart: {
-            deviceId: input.deviceId || '',
-            metricType: input.metricType,
-            intervalStart: input.intervalStart,
-          },
-        },
-      }).catch(() => null) // handle null deviceId
-
-      if (existingReading) {
-        duplicates++
-        results.push({
-          success: true,
-          status: 'duplicate',
-          reason: 'Reading already exists for this interval',
-          readingId: existingReading.id,
-        })
-
-        await db.rawPayload.update({
-          where: { id: rawPayload.id },
-          data: { status: 'duplicate', readingId: existingReading.id, processedAt: new Date() },
-        })
-        continue
-      }
-
-      // Create the energy reading
-      const reading = await db.energyReading.create({
-        data: {
-          projectId: input.projectId,
-          siteId: input.siteId,
-          assetId: input.assetId,
-          deviceId: input.deviceId,
-          metricType: input.metricType,
-          measuredAt: input.measuredAt,
-          receivedAt: new Date(),
-          intervalStart: input.intervalStart,
-          intervalEnd: input.intervalEnd,
-          value: finalValue,
-          unit: input.unit,
-          cumulativeValue: finalCumulative,
-          qualityStatus: 'received',
-          validationStatus: 'pending',
-          canonicalPayloadHash: payloadHash,
-          sourceEventId: input.sourceEventId,
-        },
-      })
-
-      // Run deterministic validation rules with measuredAt
-      await runValidationRules(reading.id, reading.value, reading.metricType, input.projectId, input.measuredAt)
-
-      // === PRIORITY 4: Link ReadingAdjustment to the real reading ===
-      if (adjustmentApplied && adjustmentReasonCode) {
-        await db.readingAdjustment.create({
-          data: {
-            readingId: reading.id, // NOW linked to real reading
-            originalValue: input.value,
-            adjustedValue: finalValue,
-            reason: adjustmentReason,
-            reasonCode: adjustmentReasonCode,
-            adjustedBy: 'system@ingestion',
-            status: 'approved', // auto-approved for system adjustments
-            note: `Auto-detected during ingestion. METER_MAX=${METER_MAX}`,
-          },
-        }).catch(() => {})
-      }
-
-      // Update raw payload status
-      await db.rawPayload.update({
-        where: { id: rawPayload.id },
-        data: { status: 'processed', readingId: reading.id, processedAt: new Date() },
-      })
-
-      created++
-      results.push({
-        success: true,
-        status: 'created',
-        readingId: reading.id,
-        reason: adjustmentApplied ? 'Created with adjustment (meter reset/rollover)' : undefined,
-      })
-    } catch (error: any) {
-      failed++
-      results.push({
-        success: false,
-        status: 'failed',
-        error: error.message,
-      })
     }
-  }
 
-  // Update batch summary
-  await db.ingestionBatch.update({
-    where: { id: batch.id },
-    data: {
-      status: failed === inputs.length ? 'failed' : duplicates === inputs.length ? 'completed' : 'completed',
-      processedCount: created,
-      duplicateCount: duplicates,
-      failedCount: failed,
-      processedAt: new Date(),
-      errorMessage: failed > 0 ? `${failed} readings failed` : null,
-    },
-  })
-
-  return {
-    batchId: batch.id,
-    results,
-    summary: { total: inputs.length, created, duplicates, failed },
-  }
-}
-
-// Deterministic validation rules
-// === PRIORITY 4: Use measuredAt instead of new Date() for nighttime check ===
-async function runValidationRules(
-  readingId: string,
-  value: number,
-  metricType: string,
-  projectId: string,
-  measuredAt: Date, // PRIORITY 4: pass measuredAt for accurate validation
-) {
-  const rules = [
-    {
-      ruleCode: 'NEGATIVE_VALUE',
-      check: () => value < 0,
-      severity: 'critical',
-      details: { value, expected: '>= 0' },
-    },
-    {
-      ruleCode: 'ZERO_READING',
-      check: () => value === 0,
-      severity: 'low',
-      details: { value, note: 'Zero reading - may indicate no production' },
-    },
-    {
-      ruleCode: 'NIGHTTIME_READING',
-      check: () => {
-        // === PRIORITY 4: Use measuredAt, not current time ===
-        const hour = measuredAt.getHours()
-        return (hour < 5 || hour > 19) && value > 0.5 && metricType === 'energy_export_kwh'
-      },
-      severity: 'high',
-      details: {
-        measuredAt: measuredAt.toISOString(),
-        hour: measuredAt.getHours(),
-        value,
-        expected: '< 0.5 kWh at night (hours 20-4)',
-      },
-    },
-  ]
-
-  for (const rule of rules) {
-    if (rule.check()) {
-      await db.validationResult.create({
-        data: {
-          readingId,
-          ruleCode: rule.ruleCode,
-          status: 'failed',
-          severity: rule.severity,
-          details: JSON.stringify(rule.details),
-        },
-      })
-
-      // Update reading quality status
-      await db.energyReading.update({
-        where: { id: readingId },
-        data: {
-          qualityStatus: rule.severity === 'critical' ? 'rejected' : 'suspect',
-          validationStatus: 'invalid',
-          suspectReason: `${rule.ruleCode}: ${JSON.stringify(rule.details)}`,
-          suspectRuleCode: rule.ruleCode,
-          suspectSeverity: rule.severity,
-          suspectDetails: JSON.stringify(rule.details),
-        },
-      })
-    } else {
-      // Passed
-      await db.validationResult.create({
-        data: {
-          readingId,
-          ruleCode: rule.ruleCode,
-          status: 'passed',
-          severity: 'low',
-        },
-      })
+    loadData()
+    return () => {
+      cancelled = true
     }
+  }, [])
+
+  if (loading) {
+    return <Card className="h-96 animate-pulse bg-muted/40" />
   }
 
-  // If all rules passed, mark as validated
-  const failures = await db.validationResult.count({
-    where: { readingId, status: 'failed' },
-  })
+  const dataQualityRate = dashboard?.kpis?.dataQualityRate ?? 0
+  const attestationRate = dashboard?.kpis?.attestationRate ?? 0
+  const connectedDevices = dashboard?.kpis?.connectedDevices ?? 0
+  const totalDevices = dashboard?.kpis?.totalDevices ?? 0
+  const connectedRatio = totalDevices > 0 ? (connectedDevices / totalDevices) * 100 : 0
+  const unreadNotifications = notifications.length
+  const openCasesCount = stats?.open || 0
+  const criticalCasesCount = stats?.critical || 0
 
-  if (failures === 0) {
-    await db.energyReading.update({
-      where: { id: readingId },
-      data: { qualityStatus: 'validated', validationStatus: 'valid' },
-    })
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground">إجمالي الحالات</p>
+              <p className="text-2xl font-bold tabular-nums">{stats?.total || 0}</p>
+            </div>
+            <Activity className="h-8 w-8 text-muted-foreground/30" />
+          </div>
+        </Card>
+        <Card className="p-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-amber-700 dark:text-amber-400">مفتوحة</p>
+              <p className="text-2xl font-bold tabular-nums text-amber-600">{openCasesCount}</p>
+            </div>
+            <AlertCircle className="h-8 w-8 text-amber-300" />
+          </div>
+        </Card>
+        <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-blue-700 dark:text-blue-400">تنبيهات غير مقروءة</p>
+              <p className="text-2xl font-bold tabular-nums text-blue-600">{unreadNotifications}</p>
+            </div>
+            <BellRing className="h-8 w-8 text-blue-300" />
+          </div>
+        </Card>
+        <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-red-700 dark:text-red-400">حرجة</p>
+              <p className="text-2xl font-bold tabular-nums text-red-600">{criticalCasesCount}</p>
+            </div>
+            <AlertTriangle className="h-8 w-8 text-red-300" />
+          </div>
+        </Card>
+      </div>
 
-    // === مقارنة البيانات الأرضية بالبيانات الفضائية ===
-    // تُطبَّق فقط الآن، بعد أن أصبحت validationStatus = 'valid' فعليًا — وليس قبل ذلك.
-    // لا نُفشل الاستيعاب بأكمله إذا تعذّرت هذه المقارنة (مثلاً: لا توجد بيانات فضائية
-    // متاحة بعد لهذا المشروع/اليوم) — هذه طبقة تدقيق إضافية فوق نجاح الاستيعاب، وليست
-    // شرطًا له.
-    try {
-      const { runGroundSpaceComparison } = await import('./space-comparison')
-      await runGroundSpaceComparison(readingId)
-    } catch (error) {
-      console.error('Ground-vs-space comparison error (non-blocking):', error)
-    }
-  }
-}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">آخر التحديثات</CardTitle>
+          <CardDescription className="text-xs">
+            متصل مباشرة بالتنبيهات والحالات الجديدة من النظام
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {notifications.length > 0 ? (
+            notifications.map((notification) => {
+              const config = SEVERITY_CONFIG[notification.severity] || SEVERITY_CONFIG.info
+              return (
+                <div key={notification.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{notification.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{notification.body}</p>
+                    </div>
+                    <Badge variant="outline" className={`text-[10px] ${config.color} border-current`}>
+                      {config.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    {notification.project && <span>{notification.project.nameAr || notification.project.name}</span>}
+                    <span>•</span>
+                    <span className="tabular-nums">{new Date(notification.createdAt).toLocaleString('ar-SA', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <p className="text-sm text-muted-foreground">لا توجد تحديثات جديدة حالياً.</p>
+          )}
+        </CardContent>
+      </Card>
 
-// Get ingestion batch status
-export async function getIngestionBatchStatus(batchId: string) {
-  const batch = await db.ingestionBatch.findUnique({
-    where: { id: batchId },
-    include: {
-      rawPayloads: {
-        select: {
-          id: true,
-          status: true,
-          payloadHash: true,
-          readingId: true,
-          errorMessage: true,
-          receivedAt: true,
-          processedAt: true,
-        },
-        take: 50,
-      },
-    },
-  })
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">الحوادث والتنبيهات</CardTitle>
+          <CardDescription className="text-xs">
+            كل عنصر يعرض السبب والحالة الحالية مباشرة من سجلات النظام
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {cases.map((c) => {
+            const config = PRIORITY_CONFIG[c.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.medium
+            const isResolved = c.status === 'resolved' || c.status === 'closed'
+            return (
+              <div
+                key={c.id}
+                className={`p-4 rounded-xl border ${
+                  isResolved
+                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200'
+                    : c.priority === 'critical'
+                      ? 'bg-red-50/50 dark:bg-red-950/20 border-red-200'
+                      : c.priority === 'high'
+                        ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200'
+                        : 'bg-card border-border'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
+                    {isResolved ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                    ) : c.priority === 'critical' ? (
+                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                    ) : (
+                      <AlertCircle className={`h-5 w-5 ${config.color}`} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h4 className="font-semibold text-sm">{c.title}</h4>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline" className={`text-xs ${config.color} border-current`}>
+                          {config.label}
+                        </Badge>
+                        <StatusBadge status={c.status} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">{c.description}</p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="font-medium">{c.project.nameAr || c.project.name}</span>
+                      <span>•</span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {CASE_TYPE_LABELS[c.caseType] || c.caseType}
+                      </Badge>
+                      <span>•</span>
+                      <span className="tabular-nums">
+                        {new Date(c.createdAt).toLocaleString('ar-SA', {
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {c.slaDeadline && !isResolved && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-600 dark:text-red-400">
+                            SLA: {new Date(c.slaDeadline).toLocaleString('ar-SA', { hour: '2-digit', minute: '2-digit', day: '2-digit' })}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
 
-  return batch
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Satellite className="h-4 w-4 text-blue-600" />
+            مقارنة البيانات الأرضية بالبيانات الفضائية
+          </CardTitle>
+          <CardDescription className="text-xs">
+            تقييم دقة القراءات الأرضية (بعد التحقق) مقارنةً بالإشعاع الشمسي الفعلي، وإصدار تنبيهات الجودة تلقائيًا
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(['overstated', 'understated', 'dust_accumulation', 'efficiency_loss'] as const).map((key) => {
+              const config = ASSESSMENT_CONFIG[key]
+              const Icon = config.icon
+              const count = spaceStats
+                ? key === 'overstated'
+                  ? spaceStats.overstated
+                  : key === 'understated'
+                    ? spaceStats.understated
+                    : key === 'dust_accumulation'
+                      ? spaceStats.dustAccumulation
+                      : spaceStats.efficiencyLoss
+                : 0
+              return (
+                <div key={key} className="rounded-xl border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
+                      <Icon className={`h-4 w-4 ${config.color}`} />
+                    </div>
+                    <span className="text-xl font-bold tabular-nums">{count}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">⚠️ {config.label}</p>
+                </div>
+              )
+            })}
+          </div>
+
+          {spaceStats && spaceStats.avgEfficiencyRatio !== null && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted/40 p-3">
+              <Gauge className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span className="text-sm">
+                متوسط كفاءة القراءات مقارنةً بالمتوقع فضائيًا:{' '}
+                <span className="font-semibold text-emerald-600">
+                  {(spaceStats.avgEfficiencyRatio * 100).toFixed(1)}%
+                </span>{' '}
+                (عبر {spaceStats.total} قراءة مُدقَّقة)
+              </span>
+            </div>
+          )}
+
+          {spaceComparisons.filter((c) => c.assessment !== 'normal').length > 0 ? (
+            <div className="space-y-2">
+              {spaceComparisons
+                .filter((c) => c.assessment !== 'normal')
+                .slice(0, 5)
+                .map((c) => {
+                  const config = ASSESSMENT_CONFIG[c.assessment] || ASSESSMENT_CONFIG.efficiency_loss
+                  const Icon = config.icon
+                  return (
+                    <div key={c.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
+                        <Icon className={`h-4 w-4 ${config.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold">⚠️ {config.label}</p>
+                          <Badge variant="outline" className={`text-[10px] ${config.color} border-current`}>
+                            انحراف {c.deviationPct > 0 ? '+' : ''}{c.deviationPct.toFixed(1)}%
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {c.project.nameAr || c.project.name} • الأرضية {c.groundValueKwh.toFixed(1)} kWh مقابل المتوقع {c.expectedEnergyKwh.toFixed(1)} kWh
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          الكفاءة: {(c.efficiencyRatio * 100).toFixed(1)}%
+                          {c.spaceSourceKey && ` • المصدر الفضائي: ${c.spaceSourceKey}`}
+                          {' • '}
+                          {new Date(c.measuredAt).toLocaleString('ar-SA', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">لا توجد انحرافات جودة بيانات حاليًا مقارنةً بالبيانات الفضائية.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">صحة النظام</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm">جودة البيانات</span>
+              <span className="text-sm font-semibold text-emerald-600">{dataQualityRate.toFixed(1)}%</span>
+            </div>
+            <Progress value={dataQualityRate} className="h-2" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm">توصّل الأجهزة</span>
+              <span className="text-sm font-semibold text-emerald-600">{connectedRatio.toFixed(1)}%</span>
+            </div>
+            <Progress value={connectedRatio} className="h-2" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm">نسبة التوثيق</span>
+              <span className="text-sm font-semibold text-blue-600">{attestationRate.toFixed(1)}%</span>
+            </div>
+            <Progress value={attestationRate} className="h-2" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm">الحالات الحرجة</span>
+              <span className="text-sm font-semibold text-red-600">{criticalCasesCount}</span>
+            </div>
+            <Progress value={Math.min(100, criticalCasesCount * 20)} className="h-2" />
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            آخر تحديث تلقائي من لوحة القيادة والتنبيهات
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
