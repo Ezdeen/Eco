@@ -419,6 +419,126 @@ export async function runGroundSpaceComparison(readingId: string): Promise<Compa
   }
 }
 
+// ============== بوابة الأهلية لإصدار إثبات كربون (Attestation Eligibility Gate) ==============
+//
+// الغرض: قبل السماح لأي فترة/مشروع بالانتقال من "كربون مُقدَّر" إلى "كربون مُتحقَّق
+// وموثَّق على Hedera" (انظر src/lib/impact-attestation.ts)، يجب التأكد أن القراءات
+// الأرضية التي استند إليها الحساب متوافقة فعلاً مع الإشعاع الفضائي لنفس الفترة — أي أن
+// التغيّر البيئي/الإنتاج المُعلَن يعكس واقعًا يمكن التحقق منه بمصدر مستقل (الأقمار
+// الصناعية)، وليس مجرد رقم من عداد قد يكون معطوبًا أو مُتلاعَبًا به.
+//
+// القاعدة (موثّقة صراحة لسهولة المراجعة والتعديل لاحقًا من فريق المنهجية):
+//   - تُجمَع كل نتائج GroundSpaceComparison للقراءات الواقعة ضمن الفترة المطلوبة.
+//   - إن لم توجد أي مقارنة فضائية-أرضية بعد لهذه الفترة => 'needs_review' (لا يوجد أساس
+//     كافٍ لا للقبول ولا للرفض؛ يتطلب تدخلاً بشريًا أو انتظار اكتمال المزامنة الفضائية).
+//   - إن كانت نسبة القراءات المصنّفة 'normal' >= MIN_NORMAL_PCT_FOR_ELIGIBILITY => 'eligible'.
+//   - وإلا => 'ineligible' (نسبة معتبرة من القراءات مشبوهة: مبالغ فيها، منخفضة، تراكم
+//     غبار غير معالَج، أو نقص كفاءة عام) — لا يجوز توثيق كربون لفترة كهذه دون تصحيح
+//     القراءات المشبوهة أو استثنائها أولاً.
+const ELIGIBILITY_THRESHOLDS = {
+  // نسبة القراءات "normal" اللازمة لاعتبار الفترة مؤهلة تلقائيًا دون مراجعة بشرية
+  MIN_NORMAL_PCT_FOR_ELIGIBILITY: 90,
+  // إن كانت التغطية (عدد القراءات المقارَنة فضائيًا ÷ عدد القراءات الصالحة الكلي للفترة)
+  // أقل من هذا الحد، لا يُعتد بالنتيجة كافية ويُصنَّف needs_review بغض النظر عن النسبة
+  MIN_COVERAGE_PCT_FOR_DECISION: 50,
+} as const
+
+export type EligibilityStatus = 'eligible' | 'ineligible' | 'needs_review'
+
+export interface PeriodEligibilityResult {
+  status: EligibilityStatus
+  normalPct: number | null
+  coveragePct: number | null
+  comparedReadingCount: number
+  validReadingCount: number
+  distribution: Record<ComparisonAssessment, number>
+  reason: string
+}
+
+/**
+ * يفحص أهلية فترة زمنية لمشروع معيّن لإصدار "ملف إثبات كربون" عنها، بناءً على مدى
+ * توافق قراءاتها الأرضية مع البيانات الفضائية (GroundSpaceComparison). هذه الدالة هي
+ * البوابة التي يجب أن يجتازها أي طلب توثيق قبل الوصول إلى impact-attestation.ts.
+ */
+export async function checkPeriodEligibility(
+  projectId: string,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<PeriodEligibilityResult> {
+  const [comparisons, validReadingCount] = await Promise.all([
+    db.groundSpaceComparison.findMany({
+      where: { projectId, measuredAt: { gte: periodStart, lt: periodEnd } },
+      select: { assessment: true },
+    }),
+    db.energyReading.count({
+      where: {
+        projectId,
+        metricType: 'energy_export_kwh',
+        validationStatus: 'valid',
+        measuredAt: { gte: periodStart, lt: periodEnd },
+      },
+    }),
+  ])
+
+  const distribution: Record<ComparisonAssessment, number> = {
+    normal: 0, overstated: 0, understated: 0, dust_accumulation: 0, efficiency_loss: 0,
+  }
+  for (const c of comparisons) {
+    distribution[c.assessment as ComparisonAssessment] = (distribution[c.assessment as ComparisonAssessment] || 0) + 1
+  }
+
+  const comparedReadingCount = comparisons.length
+
+  if (comparedReadingCount === 0) {
+    return {
+      status: 'needs_review',
+      normalPct: null,
+      coveragePct: validReadingCount > 0 ? 0 : null,
+      comparedReadingCount,
+      validReadingCount,
+      distribution,
+      reason: 'لا توجد أي مقارنة أرضية-فضائية لهذه الفترة بعد؛ لا يمكن تأكيد أن الإنتاج المُعلَن يطابق الإشعاع الفعلي',
+    }
+  }
+
+  const coveragePct = validReadingCount > 0 ? (comparedReadingCount / validReadingCount) * 100 : 0
+  const normalPct = (distribution.normal / comparedReadingCount) * 100
+
+  if (coveragePct < ELIGIBILITY_THRESHOLDS.MIN_COVERAGE_PCT_FOR_DECISION) {
+    return {
+      status: 'needs_review',
+      normalPct: Math.round(normalPct * 10) / 10,
+      coveragePct: Math.round(coveragePct * 10) / 10,
+      comparedReadingCount,
+      validReadingCount,
+      distribution,
+      reason: `تغطية المقارنة الفضائية منخفضة (${Math.round(coveragePct)}% فقط من القراءات الصالحة قُورنت بالإشعاع الفضائي)؛ العينة غير كافية لقرار آلي`,
+    }
+  }
+
+  if (normalPct >= ELIGIBILITY_THRESHOLDS.MIN_NORMAL_PCT_FOR_ELIGIBILITY) {
+    return {
+      status: 'eligible',
+      normalPct: Math.round(normalPct * 10) / 10,
+      coveragePct: Math.round(coveragePct * 10) / 10,
+      comparedReadingCount,
+      validReadingCount,
+      distribution,
+      reason: `${Math.round(normalPct)}% من القراءات المقارَنة ضمن النطاق الطبيعي المتوقع من الإشعاع الفضائي`,
+    }
+  }
+
+  return {
+    status: 'ineligible',
+    normalPct: Math.round(normalPct * 10) / 10,
+    coveragePct: Math.round(coveragePct * 10) / 10,
+    comparedReadingCount,
+    validReadingCount,
+    distribution,
+    reason: `فقط ${Math.round(normalPct)}% من القراءات ضمن النطاق الطبيعي (الحد الأدنى ${ELIGIBILITY_THRESHOLDS.MIN_NORMAL_PCT_FOR_ELIGIBILITY}%)؛ توجد قراءات مشبوهة (مبالغ فيها/منخفضة/تراكم غبار/نقص كفاءة) يجب تصحيحها أو استثناؤها قبل التوثيق`,
+  }
+}
+
 /**
  * يُشغِّل المقارنة لدفعة من القراءات (مثلاً كل القراءات الصالحة التي لم تُقارَن بعد
  * لمشروع معيّن، أو للنظام كله). يُستخدم من مسار API اليدوي ومن مهمة مجدولة لاحقًا.
