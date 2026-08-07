@@ -312,22 +312,45 @@ model CalculationRun {
 }
 
 // ============== التوثيق على Hedera ==============
-
+//
+// AttestationBatch هو "ملف إثبات الكربون" الكامل لفترة/مشروع معيّن: يُجمّد لحظة معينة من
+// المدخلات (قراءات + معاملات + نتيجة بوابة المراقبة الأرضية-الفضائية)، يحسب هاش SHA-256
+// واحد لكل ذلك، ثم يُرسَل عبر OutboxEvent (بنفس نمط توثيق القراءات الفردية الموجود أصلاً)
+// إلى Hedera. لا يُصدر أي AttestationBatch إلا بعد اجتياز بوابة الأهلية في space-comparison.ts
+// (انظر checkPeriodEligibility)، بحيث لا يُوثَّق كربون دون تأكيد أن القراءات الأرضية التي
+// استند إليها الحساب متوافقة مع الإشعاع الفضائي الفعلي لنفس الفترة.
 model AttestationBatch {
   id                  String   @id @default(cuid())
   projectId           String
-  batchHash           String   @unique // SHA-256 of canonical payload
+  batchHash           String   @unique // SHA-256 of canonical payload (payloadSummary)
   merkleRoot          String?
   status              String   @default("pending") // pending, submitted, confirmed, mismatch, failed, superseded
   hederaTransactionId String?
   consensusTimestamp  String?
-  payloadSummary      String?  // JSON
+  payloadSummary      String?  // JSON: كل المدخلات المجمَّدة (قراءات، معاملات، نتيجة المراقبة، الصيغة)
   itemCount           Int      @default(0)
+
+  // فترة الكربون التي يغطيها هذا الإثبات
+  periodStart         DateTime?
+  periodEnd           DateTime?
+  kgCO2eClaimed       Float?   // إجمالي الكربون المُطالَب به لهذه الفترة (قبل أي ترقية لوحدة أثر)
+
+  // ---- بوابة الأهلية (Ground vs Space QA gate) — نتيجة checkPeriodEligibility مجمَّدة هنا ----
+  eligibilityStatus       String?  // eligible, ineligible, needs_review — محسوبة وقت إنشاء الدفعة
+  eligibilityNormalPct    Float?   // نسبة القراءات "normal" ضمن الفترة وقت الفحص
+  eligibilityReadingCount Int?     // عدد قراءات GroundSpaceComparison التي استند إليها الفحص
+  eligibilityDetails      String?  // JSON: توزيع assessment الكامل (normal/overstated/...) + العتبة المستخدمة
+
   createdAt           DateTime @default(now())
   submittedAt         DateTime?
   confirmedAt         DateTime?
+  createdBy           String?  // userId — لمن أنشأ الدفعة (Separation of Duties عند الترقية لاحقًا)
 
-  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project             Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  impactUnits         ImpactUnit[]
+
+  @@index([projectId, periodStart, periodEnd])
+  @@index([status])
 }
 
 // ============== وحدات الأثر ==============
@@ -358,8 +381,15 @@ model ImpactUnit {
   createdAt       DateTime @default(now())
   retiredAt       DateTime?
 
+  // الربط بملف الإثبات المجمَّد الذي رُقّيت هذه الوحدة بناءً عليه. تبقى null طالما الوحدة
+  // بحالة 'estimated' (لم تجتز بعد بوابة الأهلية + التوثيق على Hedera).
+  attestationBatchId String?
+  attestationBatch    AttestationBatch? @relation(fields: [attestationBatchId], references: [id])
+
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   account         ImpactAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([attestationBatchId])
 }
 
 // ============== التقارير ==============
