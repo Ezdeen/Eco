@@ -15,6 +15,8 @@ import {
   Droplet, Fuel, Zap, Activity, Gauge, Calendar, MapPin, Database,
   Sprout, Heart, Ruler, Beaker, Clock, Users, AlertCircle, ArrowUpDown,
 } from 'lucide-react'
+import { IssueAttestationButton } from './issue-attestation-button'
+import { AttestationBatchesList } from './attestation-batches-list'
 
 export function ImpactSection() {
   const [data, setData] = useState<any>(null)
@@ -344,6 +346,7 @@ export function ImpactSection() {
                       <th className="p-2 text-center">ديزل مستبدل</th>
                       <th className="p-2 text-center">غاز مستبدل</th>
                       <th className="p-2 text-center">كثافة الكربون</th>
+                      <th className="p-2 text-center">إثبات الكربون</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -366,6 +369,9 @@ export function ImpactSection() {
                         <td className="p-2 text-center tabular-nums text-amber-600">{fmt(p.fossilFuelReplaced.dieselLiters)} L</td>
                         <td className="p-2 text-center tabular-nums text-blue-600">{fmt(p.fossilFuelReplaced.naturalGasM3)} m³</td>
                         <td className="p-2 text-center tabular-nums text-violet-600">{p.carbonIntensity}</td>
+                        <td className="p-2 text-center">
+                          <IssueAttestationButton projectId={p.projectId} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -604,6 +610,9 @@ export function ImpactSection() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Carbon Attestation Files (Ground-Space QA → Verified Calculation → Hedera) */}
+      <AttestationBatchesList />
 
       {/* Accounts & Ledger */}
       <Card>
