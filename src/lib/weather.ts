@@ -6,6 +6,22 @@ import { db } from './db'
 
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast'
 
+// In-memory cache for live weather lookups, keyed by rounded coordinates.
+// The projects list page mounts one ProjectWeatherWidget per project card,
+// each firing its own request on mount — with several projects open at once
+// this can burst past Open-Meteo's free-tier rate limit (HTTP 429) within
+// seconds. Weather also doesn't meaningfully change minute to minute, so a
+// short TTL cache both protects the upstream quota and avoids redundant
+// calls for projects that share (or nearly share) a location.
+const LIVE_WEATHER_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const liveWeatherCache = new Map<string, { data: LiveWeatherData; expiresAt: number }>()
+
+function liveWeatherCacheKey(latitude: number, longitude: number): string {
+  // Round to ~1km precision; irradiance/temperature don't vary meaningfully
+  // at finer granularity for this purpose, and it lets nearby projects share a cache entry.
+  return `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+}
+
 export interface WeatherData {
   temperatureC: number
   humidityPct: number
@@ -36,46 +52,82 @@ export async function fetchLiveWeather(
   latitude: number,
   longitude: number,
 ): Promise<LiveWeatherData | null> {
-  try {
-    const params = new URLSearchParams({
-      latitude: latitude.toString(),
-      longitude: longitude.toString(),
-      current: 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,shortwave_radiation,is_day,weather_code',
-      timezone: 'auto',
-    })
-
-    const url = `${OPEN_METEO_URL}?${params}`
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
-      // Live weather changes constantly; avoid any accidental caching layer serving stale data.
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      console.error('Open-Meteo current weather API error:', response.status)
-      return null
-    }
-
-    const data = await response.json()
-    const current = data.current
-
-    if (!current) return null
-
-    return {
-      observedAt: current.time,
-      temperatureC: current.temperature_2m ?? null,
-      humidityPct: current.relative_humidity_2m ?? null,
-      windSpeedMs: current.wind_speed_10m ?? null,
-      cloudCoverPct: current.cloud_cover ?? null,
-      irradianceWm2: current.shortwave_radiation ?? null,
-      isDay: current.is_day === 1,
-      weatherCode: current.weather_code ?? null,
-      source: 'Open-Meteo',
-    }
-  } catch (error) {
-    console.error('Live weather fetch error:', error)
-    return null
+  const cacheKey = liveWeatherCacheKey(latitude, longitude)
+  const cached = liveWeatherCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data
   }
+
+  const params = new URLSearchParams({
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
+    current: 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,shortwave_radiation,is_day,weather_code',
+    timezone: 'auto',
+  })
+  const url = `${OPEN_METEO_URL}?${params}`
+
+  // Up to 2 attempts total. Hosts on slow/cold-starting outbound networks
+  // (e.g. free-tier PaaS instances waking from idle) can occasionally miss
+  // a 12s window on the first try; a single retry avoids surfacing a
+  // transient failure to the user. Exception: HTTP 429 (rate limited) is
+  // never retried immediately — hammering a rate-limited endpoint again
+  // within the same request only makes the throttling worse.
+  const maxAttempts = 2
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(12000),
+        // Live weather changes constantly; avoid any accidental caching layer serving stale data.
+        cache: 'no-store',
+      })
+
+      if (response.status === 429) {
+        console.error('Open-Meteo current weather API error: 429 (rate limited) — not retrying')
+        // Serve a stale cache entry rather than nothing, if we have one.
+        if (cached) return cached.data
+        return null
+      }
+
+      if (!response.ok) {
+        console.error(`Open-Meteo current weather API error (attempt ${attempt}/${maxAttempts}):`, response.status)
+        lastError = new Error(`HTTP ${response.status}`)
+        continue
+      }
+
+      const data = await response.json()
+      const current = data.current
+
+      if (!current) {
+        lastError = new Error('Missing `current` field in Open-Meteo response')
+        continue
+      }
+
+      const result: LiveWeatherData = {
+        observedAt: current.time,
+        temperatureC: current.temperature_2m ?? null,
+        humidityPct: current.relative_humidity_2m ?? null,
+        windSpeedMs: current.wind_speed_10m ?? null,
+        cloudCoverPct: current.cloud_cover ?? null,
+        irradianceWm2: current.shortwave_radiation ?? null,
+        isDay: current.is_day === 1,
+        weatherCode: current.weather_code ?? null,
+        source: 'Open-Meteo',
+      }
+
+      liveWeatherCache.set(cacheKey, { data: result, expiresAt: Date.now() + LIVE_WEATHER_CACHE_TTL_MS })
+      return result
+    } catch (error) {
+      console.error(`Live weather fetch error (attempt ${attempt}/${maxAttempts}):`, error)
+      lastError = error
+    }
+  }
+
+  console.error('Live weather fetch failed after all attempts:', lastError)
+  // Serve stale cache rather than an error, if available.
+  if (cached) return cached.data
+  return null
 }
 
 // Fetch weather data from Open-Meteo for a specific location and date
