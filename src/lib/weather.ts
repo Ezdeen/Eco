@@ -84,7 +84,18 @@ export async function fetchLiveWeather(
       })
 
       if (response.status === 429) {
-        console.error('Open-Meteo current weather API error: 429 (rate limited) — not retrying')
+        // Open-Meteo's 429 body distinguishes daily vs. minutely/hourly
+        // limits (e.g. "Daily API request limit exceeded. Please try
+        // again tomorrow." vs. "Minutely API request limit exceeded.").
+        // Logging the full body lets us diagnose which limit was hit
+        // without shell access on the hosting platform's free tier.
+        let bodyText = ''
+        try {
+          bodyText = await response.text()
+        } catch {
+          // ignore — body read failure shouldn't mask the 429 itself
+        }
+        console.error('Open-Meteo current weather API error: 429 (rate limited) — not retrying. Response body:', bodyText)
         // Serve a stale cache entry rather than nothing, if we have one.
         if (cached) return cached.data
         return null
