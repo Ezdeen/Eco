@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/platform/status-badge'
-import { Activity, AlertTriangle, AlertCircle, CheckCircle2, Clock, BellRing, ShieldCheck, Satellite, Gauge } from 'lucide-react'
+import { Activity, AlertTriangle, AlertCircle, CheckCircle2, Clock, BellRing, ShieldCheck, Satellite, Gauge, RefreshCw } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 
 interface Case {
@@ -105,6 +106,49 @@ export function MonitoringSection() {
   const [spaceComparisons, setSpaceComparisons] = useState<SpaceComparisonItem[]>([])
   const [spaceStats, setSpaceStats] = useState<SpaceComparisonStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [runningComparison, setRunningComparison] = useState(false)
+  const [comparisonRunMessage, setComparisonRunMessage] = useState<string | null>(null)
+
+  async function loadSpaceComparisonOnly() {
+    try {
+      const res = await fetch('/api/space-comparison?limit=10')
+      const data = res.ok ? await res.json() : { comparisons: [], stats: null }
+      setSpaceComparisons(data?.comparisons || [])
+      setSpaceStats(data?.stats || null)
+    } catch {
+      // نتجاهل بصمت هنا؛ الفشل الفعلي (لو وُجد) ظهر أصلاً برسالة تشغيل المقارنة
+    }
+  }
+
+  // تشغيل يدوي فوري لمقارنة القراءات الأرضية غير المُقارَنة بعد بالبيانات الفضائية
+  // المتوفرة حاليًا (POST /api/space-comparison). مفيد عندما تكون البيانات الفعلية
+  // (أرضية وفضائية) متوفرة لكن خطوة المقارنة نفسها لم تُنفَّذ بعد للفترة المطلوبة.
+  async function handleRunComparison() {
+    setRunningComparison(true)
+    setComparisonRunMessage(null)
+    try {
+      const res = await fetch('/api/space-comparison', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 300 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setComparisonRunMessage(data?.error || 'تعذّر تشغيل المقارنة، يرجى المحاولة لاحقًا')
+      } else {
+        setComparisonRunMessage(
+          data?.processed > 0
+            ? `تم تشغيل المقارنة على ${data.processed} قراءة جديدة`
+            : 'لا توجد قراءات جديدة بحاجة للمقارنة حاليًا (كل القراءات الصالحة مُقارَنة بالفعل)',
+        )
+        await loadSpaceComparisonOnly()
+      }
+    } catch {
+      setComparisonRunMessage('تعذّر تشغيل المقارنة، تحقّق من الاتصال وحاول مجددًا')
+    } finally {
+      setRunningComparison(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -321,13 +365,32 @@ export function MonitoringSection() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Satellite className="h-4 w-4 text-blue-600" />
-            مقارنة البيانات الأرضية بالبيانات الفضائية
-          </CardTitle>
-          <CardDescription className="text-xs">
-            تقييم دقة القراءات الأرضية (بعد التحقق) مقارنةً بالإشعاع الشمسي الفعلي، وإصدار تنبيهات الجودة تلقائيًا
-          </CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Satellite className="h-4 w-4 text-blue-600" />
+                مقارنة البيانات الأرضية بالبيانات الفضائية
+              </CardTitle>
+              <CardDescription className="text-xs mt-1">
+                تقييم دقة القراءات الأرضية (بعد التحقق) مقارنةً بالإشعاع الشمسي الفعلي، وإصدار تنبيهات الجودة تلقائيًا
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunComparison}
+              disabled={runningComparison}
+              className="shrink-0"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ml-1.5 ${runningComparison ? 'animate-spin' : ''}`} />
+              {runningComparison ? 'جارٍ التشغيل...' : 'تشغيل المقارنة الآن'}
+            </Button>
+          </div>
+          {comparisonRunMessage && (
+            <p className="text-xs text-muted-foreground mt-2 rounded-md bg-muted/40 p-2">
+              {comparisonRunMessage}
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
