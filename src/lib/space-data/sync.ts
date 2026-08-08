@@ -10,6 +10,7 @@ import { fetchGeeObservations, GeeServiceAccount } from './google-earth-engine'
 import { fetchCamsLatest, CamsCredentials } from './cams'
 import { fetchCdseObservations, CdseCredentials } from './cdse'
 import { fetchLiveWeather } from '@/lib/weather'
+import { runGroundSpaceComparisonBatch } from '@/lib/space-comparison'
 
 // المرحلة الحالية: نعتمد فقط على Open-Meteo Solar وCDSE لسحب البيانات.
 // NASA POWER وGEE وCAMS مُعطَّلة مؤقتًا في دورة السحب (الكود موجود ومُبقى عليه
@@ -28,6 +29,10 @@ export interface SyncSummary {
   projectsFailed: number
   observationsCreated: number
   errors: Array<{ projectId: string; projectName: string; source: string; error: string }>
+  // نتيجة تشغيل مقارنة الأرض-الفضاء التلقائية التي تُنفَّذ فور انتهاء دورة السحب
+  // (راجع التعليق بالأسفل). null فقط إذا فشل تشغيلها بالكامل (انظر comparisonError).
+  comparisonRun: { processed: number } | null
+  comparisonError?: string
 }
 
 // أسماء مصادر البيانات المدعومة، متوافقة مع أسماء IntegrationConfig.name
@@ -426,6 +431,22 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     })
   }
 
+  // بعد كل دورة سحب (سواء نجحت كليًا أو جزئيًا)، نشغّل تلقائيًا مقارنة القراءات
+  // الأرضية الصالحة التي لم تُقارَن بعد بالبيانات الفضائية المتوفرة الآن. هذا يسدّ
+  // الفجوة التشغيلية التي كانت تجعل قسم إثبات الكربون يظهر "لا توجد مقارنة بعد"
+  // رغم توفر البيانات الفضائية والأرضية فعليًا — لأن خطوة المقارنة نفسها لم تكن
+  // تُستدعى إلا يدويًا. فشل هذه الخطوة لا يُفشل المزامنة الفضائية نفسها (مسجَّلة
+  // بالفعل في syncRun أعلاه بحالتها الخاصة)؛ يُكتفى بإرجاع الخطأ في comparisonError.
+  let comparisonRun: SyncSummary['comparisonRun'] = null
+  let comparisonError: string | undefined
+  try {
+    const comparisonResult = await runGroundSpaceComparisonBatch({ limit: 300 })
+    comparisonRun = { processed: comparisonResult.processed }
+  } catch (e: any) {
+    comparisonError = e?.message || 'خطأ غير معروف أثناء تشغيل مقارنة الأرض-الفضاء التلقائية'
+    console.error('[space-data-sync] auto comparison batch failed:', e)
+  }
+
   return {
     runId: syncRun.id,
     runLabel,
@@ -434,5 +455,7 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     projectsFailed,
     observationsCreated,
     errors,
+    comparisonRun,
+    comparisonError,
   }
 }
