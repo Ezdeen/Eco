@@ -79,7 +79,7 @@ interface Reading {
   auditedBy?: string | null
   auditAction?: string | null
   auditNote?: string | null
-  project: { name: string; nameAr?: string; code: string }
+  project: { name: string; nameAr?: string; code: string; timezone?: string }
   device?: { name: string; serialNumber: string }
   asset?: { name: string }
 }
@@ -328,7 +328,11 @@ export function DataCenterSection() {
                         <p className="text-xs tabular-nums">
                           {new Date(r.measuredAt).toLocaleString('ar-SA', {
                             month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                            timeZone: r.project.timezone || 'Asia/Riyadh',
                           })}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground">
+                          {(r.project.timezone || 'Asia/Riyadh').replace('_', ' ')}
                         </p>
                       </TableCell>
                       <TableCell>
