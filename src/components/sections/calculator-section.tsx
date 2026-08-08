@@ -41,7 +41,7 @@ const TERM_DEFINITIONS = {
   loanAmount: 'إجمالي قيمة القرض المستخدم لتمويل جزء من التكلفة الرأسمالية للمشروع، بناءً على نسبة التمويل المُحددة.',
   equityCapex: 'الجزء من التكلفة الرأسمالية الذي يُموَّل من حقوق الملكية (رأس المال الذاتي) دون اللجوء إلى القرض.',
   annualDebtService: 'القسط السنوي الثابت (أصل الدين + الفائدة) الذي يجب سداده لخدمة القرض خلال مدته.',
-  dscr: 'Debt Service Coverage Ratio — نسبة تغطية خدمة الدين، تقيس قدرة التدفقات النقدية التشغيلية على تغطية أقساط الدين السنوية؛ القيمة أعلى من 1.2 تُعتبر مريحة عادةً.',
+  dscr: 'Debt Service Coverage Ratio — نسبة تغطية خدمة الدين، تقيس قدرة التدفقات النقدية التشغيلية على تغطية أقساط الدين السنوية؛ القيمة أعلى من 1.2 تُعتبر مريحة عادةً. ملاحظة: هذا الرقم لا يشمل احتياطي خدمة الدين (DSRA) الذي قد يشترطه البنك.',
   cumulativeCashFlow: 'التدفق النقدي التراكمي منذ بداية المشروع، ونقطة تجاوزه للصفر تمثل لحظة استرداد رأس المال (Payback).',
   netCashFlow: 'صافي التدفق النقدي لسنة معينة، أي الفرق بين الإيرادات والتكاليف (بما فيها OPEX وخدمة الدين إن وُجدت) خلال تلك السنة.',
   sensitivity: 'تحليل الحساسية يوضح مدى تأثر صافي القيمة الحالية (NPV) بتغيّر أحد المدخلات الرئيسية (مثل CAPEX أو التعرفة أو الإنتاج) صعودًا أو هبوطًا.',
@@ -416,6 +416,9 @@ export function CalculatorSection() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">سيناريوهات</CardTitle>
+                <CardDescription className="text-xs">
+                  كل سيناريو يعيد حساب التدفق النقدي بالكامل بافتراضات مستقلة موثّقة (وليس ضرب النتيجة الأساسية بمعامل تقريبي)
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -424,12 +427,17 @@ export function CalculatorSection() {
                     { name: 'أساسي', data: result.scenarios.base, color: 'text-emerald-600' },
                     { name: 'متفائل', data: result.scenarios.optimistic, color: 'text-blue-600' },
                   ].map((s) => (
-                    <div key={s.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/40">
-                      <span className={`text-sm font-semibold ${s.color}`}>{s.name}</span>
-                      <div className="text-left text-xs">
-                        <p>NPV: <span className="font-bold tabular-nums">{fmtCurrency(s.data.npv)}</span></p>
-                        <p>IRR: <span className="font-bold tabular-nums">{(s.data.irr * 100).toFixed(1)}%</span> • Payback: <span className="tabular-nums">{s.data.paybackYears ? `${s.data.paybackYears.toFixed(1)}y` : '—'}</span></p>
+                    <div key={s.name} className="p-2 rounded-lg bg-muted/40">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-semibold ${s.color}`}>{s.name}</span>
+                        <div className="text-left text-xs">
+                          <p>NPV: <span className="font-bold tabular-nums">{fmtCurrency(s.data.npv)}</span></p>
+                          <p>IRR: <span className="font-bold tabular-nums">{(s.data.irr * 100).toFixed(1)}%</span> • Payback: <span className="tabular-nums">{s.data.paybackYears ? `${s.data.paybackYears.toFixed(1)}y` : '—'}</span></p>
+                        </div>
                       </div>
+                      {s.data.assumptions && (
+                        <p className="text-[10px] text-muted-foreground mt-1">{s.data.assumptions}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -479,6 +487,9 @@ export function CalculatorSection() {
                     </p>
                   </div>
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-3">
+                  DSCR أعلاه محسوب من التدفق التشغيلي ÷ قسط الدين فقط، ولا يشمل أي احتياطي لخدمة الدين (DSRA) قد يشترطه البنك المموِّل — يُرجى تطبيق سياسة البنك الخاصة بالاحتياطيات والتعهدات (Covenants) فوق هذا الرقم.
+                </p>
               </CardContent>
             </Card>
           )}
