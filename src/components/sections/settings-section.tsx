@@ -1,90 +1,222 @@
 'use client'
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { useEffect, useState, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Users, Building2, Globe, Clock, Bell, Shield, Key, Database, Webhook } from 'lucide-react'
+import { Users, Building2, Globe, Clock, Bell, Shield, Key, Database, Webhook, Loader2, Save } from 'lucide-react'
+import { toast } from 'sonner'
+
+interface OrganizationForm {
+  name: string
+  nameAr: string
+  code: string
+  country: string
+  currency: string
+  timezone: string
+  language: string
+}
+
+const EMPTY_ORG: OrganizationForm = {
+  name: '', nameAr: '', code: '', country: '', currency: 'SAR', timezone: 'Asia/Riyadh', language: 'ar',
+}
+
+function OrganizationSettingsCard() {
+  const [form, setForm] = useState<OrganizationForm>(EMPTY_ORG)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const fetchOrganization = useCallback(() => {
+    setLoading(true)
+    fetch('/api/organization')
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error || 'فشل تحميل بيانات المؤسسة')
+        return data
+      })
+      .then((d) => {
+        if (d?.organization) {
+          const org = d.organization
+          setForm({
+            name: org.name ?? '',
+            nameAr: org.nameAr ?? '',
+            code: org.code ?? '',
+            country: org.country ?? '',
+            currency: org.currency ?? 'SAR',
+            timezone: org.timezone ?? 'Asia/Riyadh',
+            language: org.language ?? 'ar',
+          })
+        }
+      })
+      .catch((err) => toast.error(err.message || 'حدث خطأ في الاتصال'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetchOrganization()
+  }, [fetchOrganization])
+
+  const update = (field: keyof OrganizationForm, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error('اسم المؤسسة مطلوب')
+      return
+    }
+    if (!form.code.trim()) {
+      toast.error('رمز المؤسسة مطلوب')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch('/api/organization', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'فشل حفظ إعدادات المؤسسة')
+        return
+      }
+      toast.success('تم حفظ إعدادات المؤسسة بنجاح')
+      if (data.organization) {
+        setForm((prev) => ({
+          ...prev,
+          name: data.organization.name ?? prev.name,
+          nameAr: data.organization.nameAr ?? prev.nameAr,
+          code: data.organization.code ?? prev.code,
+        }))
+      }
+    } catch {
+      toast.error('حدث خطأ في الاتصال')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Building2 className="h-5 w-5" />
+          معلومات المؤسسة
+        </CardTitle>
+        <CardDescription className="text-xs">إعدادات المؤسسة والعملة والمنطقة الزمنية</CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {loading ? (
+          <div className="col-span-full flex items-center justify-center py-6 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin ml-2" />
+            جارٍ التحميل...
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label className="text-xs">اسم المؤسسة</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => update('name', e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">الرمز</Label>
+              <Input
+                value={form.code}
+                onChange={(e) => update('code', e.target.value.toUpperCase())}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">الاسم بالعربية (اختياري)</Label>
+              <Input
+                value={form.nameAr}
+                onChange={(e) => update('nameAr', e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">البلد</Label>
+              <Select value={form.country} onValueChange={(v) => update('country', v)} disabled={saving}>
+                <SelectTrigger><SelectValue placeholder="اختر البلد" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PS">فلسطين</SelectItem>
+                  <SelectItem value="SA">السعودية</SelectItem>
+                  <SelectItem value="AE">الإمارات</SelectItem>
+                  <SelectItem value="QA">قطر</SelectItem>
+                  <SelectItem value="KW">الكويت</SelectItem>
+                  <SelectItem value="BH">البحرين</SelectItem>
+                  <SelectItem value="OM">عمان</SelectItem>
+                  <SelectItem value="EG">مصر</SelectItem>
+                  <SelectItem value="JO">الأردن</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">العملة</Label>
+              <Select value={form.currency} onValueChange={(v) => update('currency', v)} disabled={saving}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ILS">شيكل جديد (ILS)</SelectItem>
+                  <SelectItem value="JOD">دينار أردني (JOD)</SelectItem>
+                  <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
+                  <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
+                  <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">المنطقة الزمنية</Label>
+              <Select value={form.timezone} onValueChange={(v) => update('timezone', v)} disabled={saving}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Asia/Gaza">آسيا/غزة (UTC+2)</SelectItem>
+                  <SelectItem value="Asia/Hebron">آسيا/الخليل (UTC+2)</SelectItem>
+                  <SelectItem value="Asia/Amman">آسيا/عمّان (UTC+3)</SelectItem>
+                  <SelectItem value="Asia/Riyadh">آسيا/الرياض (UTC+3)</SelectItem>
+                  <SelectItem value="Asia/Dubai">آسيا/دبي (UTC+4)</SelectItem>
+                  <SelectItem value="Asia/Qatar">آسيا/الدوحة (UTC+3)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">اللغة الافتراضية</Label>
+              <Select value={form.language} onValueChange={(v) => update('language', v)} disabled={saving}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ar">العربية</SelectItem>
+                  <SelectItem value="en">English</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
+      </CardContent>
+      <CardFooter className="justify-end border-t pt-4">
+        <Button onClick={handleSave} disabled={loading || saving}>
+          {saving ? (
+            <><Loader2 className="h-4 w-4 animate-spin ml-2" /> جارٍ الحفظ...</>
+          ) : (
+            <><Save className="h-4 w-4 ml-2" /> حفظ التغييرات</>
+          )}
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}
 
 export function SettingsSection() {
   return (
     <div className="space-y-4">
-      {/* Organization */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            معلومات المؤسسة
-          </CardTitle>
-          <CardDescription className="text-xs">إعدادات المؤسسة والعملة والمنطقة الزمنية</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">اسم المؤسسة</Label>
-            <Input defaultValue="شركة مستقبل مشرق للطاقة" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">الرمز</Label>
-            <Input defaultValue="BFEC" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">البلد</Label>
-            <Select defaultValue="PS">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PS">فلسطين</SelectItem>
-                <SelectItem value="SA">السعودية</SelectItem>
-                <SelectItem value="AE">الإمارات</SelectItem>
-                <SelectItem value="QA">قطر</SelectItem>
-                <SelectItem value="KW">الكويت</SelectItem>
-                <SelectItem value="BH">البحرين</SelectItem>
-                <SelectItem value="OM">عمان</SelectItem>
-                <SelectItem value="EG">مصر</SelectItem>
-                <SelectItem value="JO">الأردن</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">العملة</Label>
-            <Select defaultValue="ILS">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ILS">شيكل جديد (ILS)</SelectItem>
-                <SelectItem value="JOD">دينار أردني (JOD)</SelectItem>
-                <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
-                <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
-                <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">المنطقة الزمنية</Label>
-            <Select defaultValue="Asia/Gaza">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Asia/Gaza">آسيا/غزة (UTC+2)</SelectItem>
-                <SelectItem value="Asia/Hebron">آسيا/الخليل (UTC+2)</SelectItem>
-                <SelectItem value="Asia/Amman">آسيا/عمّان (UTC+3)</SelectItem>
-                <SelectItem value="Asia/Riyadh">آسيا/الرياض (UTC+3)</SelectItem>
-                <SelectItem value="Asia/Dubai">آسيا/دبي (UTC+4)</SelectItem>
-                <SelectItem value="Asia/Qatar">آسيا/الدوحة (UTC+3)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">اللغة الافتراضية</Label>
-            <Select defaultValue="ar">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ar">العربية</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <OrganizationSettingsCard />
 
       {/* Members & Roles */}
       <Card>
