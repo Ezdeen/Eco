@@ -52,6 +52,8 @@ async function handleSync(request: NextRequest): Promise<NextResponse> {
       observationsCreated: summary.observationsCreated,
       errorsCount: summary.errors.length,
       errors: summary.errors.slice(0, 20), // تفصيل أول 20 خطأ فقط في الاستجابة المباشرة
+      comparisonRun: summary.comparisonRun, // نتيجة تشغيل مقارنة الأرض-الفضاء التلقائية بعد هذه المزامنة
+      comparisonError: summary.comparisonError,
     },
   })
 }
