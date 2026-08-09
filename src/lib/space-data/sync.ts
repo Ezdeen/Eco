@@ -9,7 +9,7 @@ import { fetchNasaPowerLatest } from './nasa-power'
 import { fetchGeeObservations, GeeServiceAccount } from './google-earth-engine'
 import { fetchCamsLatest, CamsCredentials } from './cams'
 import { fetchCdseObservations, CdseCredentials } from './cdse'
-import { fetchLiveWeather } from '@/lib/weather'
+import { fetchWeatherData } from '@/lib/weather'
 import { runGroundSpaceComparisonBatch } from '@/lib/space-comparison'
 
 // المرحلة الحالية: نعتمد فقط على Open-Meteo Solar وCDSE لسحب البيانات.
@@ -179,34 +179,48 @@ export async function runSpaceDataSync(runLabel: FetchRun, triggeredBy?: string)
     let anySuccessForProject = false
 
     // --- Open-Meteo Solar (مفعّل دائمًا في هذه المرحلة — لا يحتاج مفتاحًا) ---
+    // ملاحظة مهمة (إصلاح خطأ سابق): نستخدم هنا fetchWeatherData (اليومية المجمّعة،
+    // shortwave_radiation_sum بوحدة MJ/m²/day) وليس fetchLiveWeather (اللحظية،
+    // shortwave_radiation بوحدة W/m² لحظة الاستعلام). الفرق حرج: كود المقارنة
+    // بـ space-comparison.ts يفترض أن irradianceWm2 المخزَّنة هنا هي GHI يومي
+    // (MJ/m²/day) ليحوّله إلى PSH عبر (× 0.277778). كان الاستخدام السابق
+    // لـ fetchLiveWeather يخزّن قيمة لحظية (أحيانًا وقت ذروة الإشعاع الظهرية)
+    // في نفس الحقل، فكانت المقارنة تُضخّم "الطاقة المتوقعة" بشكل غير واقعي
+    // (PSH محسوبة تصل 100+ رغم أن القيمة الفيزيائية القصوى الممكنة ~12)، مما
+    // تسبّب في تصنيف كل القراءات الحقيقية كـ "نقص كفاءة" (efficiency_loss) رغم
+    // أن الأداء الفعلي طبيعي. راجع أيضًا SQL التصحيح المُرفَق لإعادة حساب
+    // السجلات القديمة المتأثرة بهذا الخطأ.
     try {
-      const live = await fetchLiveWeather(lat, lon)
-      if (live) {
+      const daily = await fetchWeatherData(lat, lon, new Date())
+      if (daily) {
+        const observedAt = new Date()
+        observedAt.setHours(12, 0, 0, 0) // منتصف اليوم كطابع زمني تمثيلي للقيمة اليومية المجمّعة
         await db.weatherObservation.upsert({
           where: {
             projectId_observedAt_sourceId: {
               projectId: project.id,
-              observedAt: new Date(live.observedAt),
+              observedAt,
               sourceId: openMeteoSource.id,
             },
           },
           update: {
-            temperatureC: live.temperatureC,
-            humidityPct: live.humidityPct,
-            irradianceWm2: live.irradianceWm2,
-            windSpeedMs: live.windSpeedMs,
-            cloudCoverPct: live.cloudCoverPct,
+            temperatureC: daily.temperatureC,
+            humidityPct: daily.humidityPct,
+            irradianceWm2: daily.irradianceWm2, // MJ/m²/day — يُحوَّل لاحقًا إلى PSH بمعامل صحيح
+            windSpeedMs: daily.windSpeedMs,
+            cloudCoverPct: daily.cloudCoverPct,
+            precipitationMm: daily.precipitationMm,
           },
           create: {
             projectId: project.id,
             sourceId: openMeteoSource.id,
-            observedAt: new Date(live.observedAt),
-            temperatureC: live.temperatureC,
-            humidityPct: live.humidityPct,
-            irradianceWm2: live.irradianceWm2,
-            windSpeedMs: live.windSpeedMs,
-            cloudCoverPct: live.cloudCoverPct,
-            precipitationMm: null,
+            observedAt,
+            temperatureC: daily.temperatureC,
+            humidityPct: daily.humidityPct,
+            irradianceWm2: daily.irradianceWm2,
+            windSpeedMs: daily.windSpeedMs,
+            cloudCoverPct: daily.cloudCoverPct,
+            precipitationMm: daily.precipitationMm,
             dataSource: 'Open-Meteo',
           },
         })
