@@ -98,6 +98,7 @@ export function DataCenterSection() {
   const [loading, setLoading] = useState(true)
   const [projectId, setProjectId] = useState<string>('all')
   const [qualityFilter, setQualityFilter] = useState<string>('all')
+  const [daysFilter, setDaysFilter] = useState<string>('7')
   const [search, setSearch] = useState('')
   const [projects, setProjects] = useState<{ id: string; name: string; nameAr?: string; code: string }[]>([])
   const [auditOpen, setAuditOpen] = useState(false)
@@ -109,7 +110,8 @@ export function DataCenterSection() {
     if (projectId !== 'all') params.set('projectId', projectId)
     if (qualityFilter !== 'all') params.set('qualityStatus', qualityFilter)
     params.set('limit', '200')
-    params.set('days', '7')
+    // '0' means "all time" — the API treats days<=0 as no date filter
+    params.set('days', daysFilter)
 
     fetch(`/api/readings?${params}`)
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
@@ -122,7 +124,7 @@ export function DataCenterSection() {
         setQuality(null)
       })
       .finally(() => setLoading(false))
-  }, [projectId, qualityFilter])
+  }, [projectId, qualityFilter, daysFilter])
 
   useEffect(() => {
     let cancelled = false
@@ -145,7 +147,8 @@ export function DataCenterSection() {
     if (projectId !== 'all') params.set('projectId', projectId)
     if (qualityFilter !== 'all') params.set('qualityStatus', qualityFilter)
     params.set('limit', '200')
-    params.set('days', '7')
+    // '0' means "all time" — the API treats days<=0 as no date filter
+    params.set('days', daysFilter)
 
     Promise.resolve().then(() => {
       if (!cancelled) setLoading(true)
@@ -169,7 +172,7 @@ export function DataCenterSection() {
     return () => {
       cancelled = true
     }
-  }, [projectId, qualityFilter])
+  }, [projectId, qualityFilter, daysFilter])
 
   const filtered = readings.filter(
     (r) =>
@@ -267,6 +270,18 @@ export function DataCenterSection() {
                 <SelectItem value="rejected">مرفوض</SelectItem>
                 <SelectItem value="corrected">مصحّح</SelectItem>
                 <SelectItem value="approved">معتمد</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={daysFilter} onValueChange={setDaysFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="المدى الزمني" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">آخر 7 أيام</SelectItem>
+                <SelectItem value="30">آخر 30 يومًا</SelectItem>
+                <SelectItem value="90">آخر 90 يومًا</SelectItem>
+                <SelectItem value="365">آخر سنة</SelectItem>
+                <SelectItem value="0">كل الفترات</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={fetchData}>
