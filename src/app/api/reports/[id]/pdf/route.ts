@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { spawn } from 'child_process'
+import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
 import { calculateFunderAttribution } from '@/lib/attribution'
@@ -7,7 +11,7 @@ interface Params {
   params: Promise<{ id: string }>
 }
 
-// Generate report data
+// Generate report data (reused from download route)
 async function generateReportData(reportId: string) {
   const report = await db.report.findUnique({
     where: { id: reportId },
@@ -18,9 +22,10 @@ async function generateReportData(reportId: string) {
           country: true, city: true, capacityKwp: true, currency: true,
           tariffRetail: true, tariffFeedIn: true, sponsorName: true, sponsorPhone: true,
           inverterSerial: true, inverterType: true, commissionedAt: true,
-          // Banking attribution (PCAF-aligned): see the pdf route for the full
-          // rationale — this list feeds fundingAttribution below and is only ever
-          // an additional, derived breakdown alongside the project's own totals.
+          // Banking attribution (PCAF-aligned): active funders + their attribution
+          // share, used below to show each funder's attributable slice of this
+          // report's total avoided emissions alongside (never instead of) the
+          // project's own full figure.
           funders: {
             where: { isActive: true },
             select: {
@@ -36,35 +41,25 @@ async function generateReportData(reportId: string) {
 
   if (!report) return null
 
-  // Get readings for the period
   const allReadings = await db.energyReading.findMany({
     where: {
       projectId: report.projectId,
       measuredAt: { gte: report.periodStart, lte: report.periodEnd },
     },
     select: {
-      measuredAt: true,
-      value: true,
-      unit: true,
-      qualityStatus: true,
-      validationStatus: true,
-      cumulativeValue: true,
-      suspectReason: true,
+      measuredAt: true, value: true, unit: true,
+      qualityStatus: true, validationStatus: true,
+      cumulativeValue: true, suspectReason: true,
     },
     orderBy: { measuredAt: 'asc' },
   })
 
   // Only verified/approved readings feed the actual calculations below (validated,
-  // approved, corrected). Suspect and rejected readings (and any still "received" and
-  // awaiting review) must never contribute to energy, CO2, savings, or any chart total —
-  // they are counted separately (summary.suspectReadings / rejectedReadings) so the report
-  // can show how much data was excluded, without that data ever entering a sum.
+  // approved, corrected). Suspect and rejected readings must never contribute to
+  // energy, CO2, savings, or any chart total — see the download route for the same rule.
   const verifiedStatuses = ['validated', 'approved', 'corrected']
   const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
 
-  console.info('generateReportData:', { reportId, readings: readings.length, totalReadings: allReadings.length, periodStart: report.periodStart, periodEnd: report.periodEnd })
-
-  // Get calculations
   const calcRuns = await db.calculationRun.findMany({
     where: {
       projectId: report.projectId,
@@ -74,7 +69,6 @@ async function generateReportData(reportId: string) {
     orderBy: { createdAt: 'desc' },
   })
 
-  // Get attestations
   const attestations = await db.attestationBatch.findMany({
     where: {
       projectId: report.projectId,
@@ -82,15 +76,11 @@ async function generateReportData(reportId: string) {
     },
   })
 
-  // Compute aggregations — totalEnergy and everything derived from it use only the
-  // verified `readings` (validated/approved/corrected). validReadings/suspectReadings/
-  // rejectedReadings/dataQualityRate are computed from allReadings so the report can show
-  // how much data was excluded, without that excluded data ever entering a sum below.
   const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
   const validReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected')
   const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect')
   const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected')
-  const emissionFactor = 0.432 // Saudi grid
+  const emissionFactor = 0.432
   const totalCo2Avoided = totalEnergy * emissionFactor
   const selfConsumed = totalEnergy * 0.7
   const exported = totalEnergy * 0.3
@@ -100,7 +90,6 @@ async function generateReportData(reportId: string) {
   const referenceYield = days * 5.5
   const performanceRatio = referenceYield > 0 && report.project.capacityKwp ? (totalEnergy / report.project.capacityKwp) / referenceYield : 0
 
-  // Daily aggregation
   const dailyData: { date: string; energy: number; co2: number; savings: number }[] = []
   const dailyMap = new Map<string, number>()
   for (const r of readings) {
@@ -109,29 +98,25 @@ async function generateReportData(reportId: string) {
   }
   for (const [date, energy] of dailyMap) {
     dailyData.push({
-      date,
-      energy: Math.round(energy * 100) / 100,
+      date, energy: Math.round(energy * 100) / 100,
       co2: Math.round(energy * emissionFactor * 100) / 100,
       savings: Math.round(energy * (report.project.tariffRetail || 0.18) * 100) / 100,
     })
   }
 
   // Banking attribution (PCAF-aligned): each active funder's attributable slice
-  // of this report's totalCo2Avoided. Never replaces summary.totalCo2Avoided /
-  // totalCo2AvoidedTons above, which always remain the project's full figure.
+  // of THIS report's totalCo2Avoided. summary.totalCo2Avoided/totalCo2AvoidedTons
+  // above always remain the project's own full (100%) figure for the period —
+  // this is a derived, display-only breakdown shown alongside them, never in
+  // place of them, so a reader can never mistake a bank's share for the whole.
   const fundingAttribution = calculateFunderAttribution(totalCo2Avoided, report.project.funders, totalEnergy)
 
   return {
-    report,
-    project: report.project,
-    fundingAttribution,
+    report, project: report.project,
     summary: {
-      periodStart: report.periodStart,
-      periodEnd: report.periodEnd,
-      totalReadings: allReadings.length,
-      validReadings: validReadings.length,
-      suspectReadings: suspectReadings.length,
-      rejectedReadings: rejectedReadings.length,
+      periodStart: report.periodStart, periodEnd: report.periodEnd,
+      totalReadings: allReadings.length, validReadings: validReadings.length,
+      suspectReadings: suspectReadings.length, rejectedReadings: rejectedReadings.length,
       includedInCalculations: readings.length,
       dataQualityRate: allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0,
       totalEnergy: Math.round(totalEnergy * 100) / 100,
@@ -144,127 +129,21 @@ async function generateReportData(reportId: string) {
       performanceRatio: Math.round(performanceRatio * 1000) / 10,
       treeEquivalent: Math.round(totalCo2Avoided / 21),
       carKmAvoided: Math.round(totalCo2Avoided / 0.12),
-      emissionFactor,
-      capacityKwp: report.project.capacityKwp,
+      emissionFactor, capacityKwp: report.project.capacityKwp,
     },
+    fundingAttribution,
     dailyData,
-    calculations: calcRuns.map((c) => ({
-      id: c.id,
-      type: c.runType,
-      status: c.status,
-      periodStart: c.periodStart,
-      periodEnd: c.periodEnd,
-      totalEnergyKwh: c.totalEnergyKwh,
-      totalCo2AvoidedKg: c.totalCo2AvoidedKg,
-      totalSavings: c.totalSavings,
-      performanceRatio: c.performanceRatio,
-      methodologyVersion: c.methodologyVersion,
-    })),
+    calculations: calcRuns,
     attestations: attestations.map((a) => ({
-      id: a.id,
-      status: a.status,
-      itemCount: a.itemCount,
+      id: a.id, status: a.status, itemCount: a.itemCount,
       hederaTransactionId: a.hederaTransactionId,
       consensusTimestamp: a.consensusTimestamp,
       batchHash: a.batchHash?.slice(0, 20) + '...',
       confirmedAt: a.confirmedAt,
     })),
     suspectReasons: suspectReadings.slice(0, 10).map((r) => ({
-      measuredAt: r.measuredAt,
-      value: r.value,
-      reason: r.suspectReason,
+      measuredAt: r.measuredAt, value: r.value, reason: r.suspectReason,
     })),
-  }
-}
-
-export async function GET(request: NextRequest, { params }: Params) {
-  try {
-    const { id } = await params
-    // Authorization: require report:download permission
-    const auth = await requirePermission('report:download')
-    if (!auth.authorized) return auth.response
-
-    const { searchParams } = new URL(request.url)
-    const format = searchParams.get('format') || 'json' // json, csv, html
-
-    const data = await generateReportData(id)
-    if (!data) {
-      return NextResponse.json({ error: 'التقرير غير موجود' }, { status: 404 })
-    }
-
-    const reportName = `${data.project.code}-report-${data.report.periodStart.toISOString().slice(0, 10)}`
-
-    if (format === 'csv') {
-      // Generate CSV
-      const rows: string[] = []
-      rows.push('# تقرير الأداء الشامل')
-      rows.push(`# المشروع,${data.project.nameAr || data.project.name}`)
-      rows.push(`# الرمز,${data.project.code}`)
-      rows.push(`# الفترة,${data.report.periodStart.toISOString().slice(0, 10)} إلى ${data.report.periodEnd.toISOString().slice(0, 10)}`)
-      rows.push('')
-      rows.push('# الملخص التنفيذي')
-      rows.push('المؤشر,القيمة,الوحدة')
-      rows.push(`إجمالي الطاقة,${data.summary.totalEnergy},kWh`)
-      rows.push(`الكربون المتجنب,${data.summary.totalCo2Avoided},kgCO2e`)
-      rows.push(`الكربون المتجنب,${data.summary.totalCo2AvoidedTons},tCO2e`)
-      rows.push(`الوفر المالي,${data.summary.totalSavings},${data.project.currency}`)
-      rows.push(`Specific Yield,${data.summary.specificYield},kWh/kWp`)
-      rows.push(`Performance Ratio,${data.summary.performanceRatio},%`)
-      rows.push(`القراءات الصحيحة,${data.summary.validReadings},قراءة`)
-      rows.push(`القراءات المشبوهة,${data.summary.suspectReadings},قراءة`)
-      rows.push(`القراءات المرفوضة,${data.summary.rejectedReadings},قراءة`)
-      rows.push(`نسبة جودة البيانات,${data.summary.dataQualityRate.toFixed(2)},%`)
-      rows.push(`أشجار مكافئة,${data.summary.treeEquivalent},شجرة`)
-      rows.push(`كم سيارة متجنّب,${data.summary.carKmAvoided},km`)
-      rows.push('')
-      rows.push('# البيانات اليومية')
-      rows.push('التاريخ,الطاقة (kWh),CO2 (kg),الوفر')
-      for (const d of data.dailyData) {
-        rows.push(`${d.date},${d.energy},${d.co2},${d.savings}`)
-      }
-      rows.push('')
-      rows.push('# التوثيقات على Hedera')
-      rows.push('الحالة,عدد العناصر,Transaction ID,Consensus Timestamp')
-      for (const a of data.attestations) {
-        rows.push(`${a.status},${a.itemCount},${a.hederaTransactionId},${a.consensusTimestamp}`)
-      }
-
-      if (data.fundingAttribution && data.fundingAttribution.length > 0) {
-        rows.push('')
-        rows.push('# نصيب الجهات الممولة من الأثر (PCAF Attribution)')
-        rows.push(`# إجمالي المشروع (100%),${data.summary.totalCo2AvoidedTons},tCO2e`)
-        rows.push('الجهة الممولة,نسبة الإسناد (%),طريقة الاحتساب,النصيب المُسنَد (tCO2e),النصيب المُسنَد (kgCO2e)')
-        for (const f of data.fundingAttribution) {
-          const method = f.attributionMethod === 'capital_share' ? 'نسبة رأس المال (PCAF)' : 'إدخال يدوي'
-          rows.push(`${f.funderNameAr || f.funderName},${f.attributionSharePct},${method},${f.attributableCo2AvoidedTons},${f.attributableCo2AvoidedKg}`)
-        }
-      }
-
-      const csv = '\uFEFF' + rows.join('\n') // BOM for Arabic
-      return new NextResponse(csv, {
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${reportName}.csv"`,
-        },
-      })
-    }
-
-    if (format === 'html') {
-      // Generate HTML report with charts (for PDF conversion)
-      const html = generateHTMLReport(data, reportName)
-      return new NextResponse(html, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${reportName}.html"`,
-        },
-      })
-    }
-
-    // Default: JSON
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('Report download error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -272,10 +151,9 @@ function generateHTMLReport(data: any, reportName: string): string {
   const fmt = (n: number) => n?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0'
   const fmtDate = (d: Date) => new Date(d).toLocaleDateString('ar-SA')
 
-  // Generate SVG charts (energy trend, quality pie)
   const maxEnergy = Math.max(...data.dailyData.map((d: any) => d.energy), 1)
-  const chartWidth = 600
-  const chartHeight = 200
+  const chartWidth = 580
+  const chartHeight = 180
   const barWidth = chartWidth / Math.max(data.dailyData.length, 1)
 
   const bars = data.dailyData.map((d: any, i: number) => {
@@ -297,38 +175,37 @@ function generateHTMLReport(data: any, reportName: string): string {
 <title>${reportName}</title>
 <style>
   @page { size: A4; margin: 1.5cm; }
-  body { font-family: 'Tajawal', 'Cairo', Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 20px; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Tajawal', 'Cairo', 'Noto Sans Arabic', Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 20px; }
   .header { background: linear-gradient(135deg, #16a34a, #0891b2); color: white; padding: 25px; border-radius: 12px; margin-bottom: 25px; }
-  .header h1 { margin: 0; font-size: 24px; }
-  .header .subtitle { font-size: 14px; opacity: 0.9; margin-top: 5px; }
-  .section { margin-bottom: 25px; page-break-inside: avoid; }
-  .section h2 { color: #16a34a; border-bottom: 2px solid #16a34a; padding-bottom: 8px; font-size: 18px; }
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
-  .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; }
-  .kpi-card .label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
-  .kpi-card .value { font-size: 22px; font-weight: 700; color: #16a34a; }
-  .kpi-card .unit { font-size: 11px; color: #64748b; }
+  .header h1 { margin: 0; font-size: 22px; }
+  .header .subtitle { font-size: 13px; opacity: 0.9; margin-top: 5px; }
+  .section { margin-bottom: 22px; page-break-inside: avoid; }
+  .section h2 { color: #16a34a; border-bottom: 2px solid #16a34a; padding-bottom: 6px; font-size: 17px; margin: 0 0 12px 0; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+  .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; }
+  .kpi-card .label { font-size: 10px; color: #64748b; margin-bottom: 3px; }
+  .kpi-card .value { font-size: 20px; font-weight: 700; color: #16a34a; }
+  .kpi-card .unit { font-size: 10px; color: #64748b; }
   .kpi-card.warn .value { color: #d97706; }
   .kpi-card.danger .value { color: #dc2626; }
   .kpi-card.info .value { color: #0891b2; }
-  table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 12px; }
-  th { background: #16a34a; color: white; padding: 8px; text-align: right; font-weight: 600; }
-  td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; }
+  th { background: #16a34a; color: white; padding: 6px; text-align: right; font-weight: 600; }
+  td { padding: 6px; border-bottom: 1px solid #e2e8f0; }
   tr:nth-child(even) { background: #f8fafc; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: 600; }
   .badge-success { background: #dcfce7; color: #166534; }
   .badge-warn { background: #fef3c7; color: #92400e; }
   .badge-danger { background: #fee2e2; color: #991b1b; }
-  .badge-info { background: #dbeafe; color: #1e40af; }
-  .info-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #e2e8f0; }
+  .info-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #e2e8f0; font-size: 12px; }
   .info-row .label { color: #64748b; }
   .info-row .value { font-weight: 600; }
-  .chart-container { background: #f8fafc; border-radius: 8px; padding: 15px; margin: 15px 0; text-align: center; }
-  .footer { margin-top: 30px; padding-top: 15px; border-top: 2px solid #16a34a; font-size: 11px; color: #64748b; text-align: center; }
-  .quality-bar { display: flex; height: 24px; border-radius: 12px; overflow: hidden; margin: 10px 0; }
-  .quality-bar div { display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 600; }
-  .two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media print { .no-print { display: none; } }
+  .chart-container { background: #f8fafc; border-radius: 8px; padding: 12px; margin: 12px 0; text-align: center; }
+  .footer { margin-top: 25px; padding-top: 12px; border-top: 2px solid #16a34a; font-size: 10px; color: #64748b; text-align: center; }
+  .quality-bar { display: flex; height: 22px; border-radius: 11px; overflow: hidden; margin: 8px 0; }
+  .quality-bar div { display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 600; }
+  .two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 </style>
 </head>
 <body>
@@ -340,87 +217,57 @@ function generateHTMLReport(data: any, reportName: string): string {
   </div>
 
   <div class="section">
-    <h2>📊 الملخص التنفيذي</h2>
+    <h2>الملخص التنفيذي</h2>
     <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="label">إجمالي الطاقة</div>
-        <div class="value">${fmt(data.summary.totalEnergy)}</div>
-        <div class="unit">kWh</div>
-      </div>
-      <div class="kpi-card info">
-        <div class="label">الكربون المتجنب</div>
-        <div class="value">${fmt(data.summary.totalCo2AvoidedTons)}</div>
-        <div class="unit">طن CO₂e</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">الوفر المالي</div>
-        <div class="value">${fmt(data.summary.totalSavings)}</div>
-        <div class="unit">${data.project.currency}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">Performance Ratio</div>
-        <div class="value">${data.summary.performanceRatio}</div>
-        <div class="unit">%</div>
-      </div>
+      <div class="kpi-card"><div class="label">إجمالي الطاقة</div><div class="value">${fmt(data.summary.totalEnergy)}</div><div class="unit">kWh</div></div>
+      <div class="kpi-card info"><div class="label">الكربون المتجنب</div><div class="value">${fmt(data.summary.totalCo2AvoidedTons)}</div><div class="unit">طن CO₂e</div></div>
+      <div class="kpi-card"><div class="label">الوفر المالي</div><div class="value">${fmt(data.summary.totalSavings)}</div><div class="unit">${data.project.currency}</div></div>
+      <div class="kpi-card"><div class="label">Performance Ratio</div><div class="value">${data.summary.performanceRatio}</div><div class="unit">%</div></div>
     </div>
   </div>
 
   <div class="section">
-    <h2>📈 اتجاه الإنتاج اليومي</h2>
+    <h2>اتجاه الإنتاج اليومي</h2>
     <div class="chart-container">
-      <svg width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}">
-        ${bars}
-      </svg>
+      <svg width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}">${bars}</svg>
     </div>
   </div>
 
   <div class="section">
-    <h2>✅ جودة البيانات</h2>
+    <h2>جودة البيانات</h2>
     <div class="quality-bar">
       <div style="background: #16a34a; width: ${validPct}%;">${validPct.toFixed(1)}% صحيحة</div>
       <div style="background: #d97706; width: ${suspectPct}%;">${suspectPct.toFixed(1)}% مشبوهة</div>
       <div style="background: #dc2626; width: ${rejectedPct}%;">${rejectedPct.toFixed(1)}% مرفوضة</div>
     </div>
     <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="label">إجمالي القراءات</div>
-        <div class="value">${fmt(data.summary.totalReadings)}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">قراءات صحيحة</div>
-        <div class="value">${fmt(data.summary.validReadings)}</div>
-      </div>
-      <div class="kpi-card warn">
-        <div class="label">قراءات مشبوهة</div>
-        <div class="value">${fmt(data.summary.suspectReadings)}</div>
-      </div>
-      <div class="kpi-card danger">
-        <div class="label">قراءات مرفوضة</div>
-        <div class="value">${fmt(data.summary.rejectedReadings)}</div>
-      </div>
+      <div class="kpi-card"><div class="label">إجمالي القراءات</div><div class="value">${fmt(data.summary.totalReadings)}</div></div>
+      <div class="kpi-card"><div class="label">صحيحة</div><div class="value">${fmt(data.summary.validReadings)}</div></div>
+      <div class="kpi-card warn"><div class="label">مشبوهة</div><div class="value">${fmt(data.summary.suspectReadings)}</div></div>
+      <div class="kpi-card danger"><div class="label">مرفوضة</div><div class="value">${fmt(data.summary.rejectedReadings)}</div></div>
     </div>
   </div>
 
   <div class="section">
-    <h2>🌱 الأثر البيئي المكافئ</h2>
+    <h2>الأثر البيئي المكافئ</h2>
     <div class="two-cols">
       <div>
-        <div class="info-row"><span class="label">🌳 أشجار مكافئة</span><span class="value">${fmt(data.summary.treeEquivalent)} شجرة/سنة</span></div>
-        <div class="info-row"><span class="label">🚗 كم سيارة متجنّب</span><span class="value">${fmt(data.summary.carKmAvoided)} km</span></div>
-        <div class="info-row"><span class="label">⚡ استهلاك ذاتي</span><span class="value">${fmt(data.summary.selfConsumed)} kWh</span></div>
-        <div class="info-row"><span class="label">📤 طاقة مُصدَّرة</span><span class="value">${fmt(data.summary.exported)} kWh</span></div>
+        <div class="info-row"><span class="label">أشجار مكافئة</span><span class="value">${fmt(data.summary.treeEquivalent)} شجرة/سنة</span></div>
+        <div class="info-row"><span class="label">كم سيارة متجنّب</span><span class="value">${fmt(data.summary.carKmAvoided)} km</span></div>
+        <div class="info-row"><span class="label">استهلاك ذاتي</span><span class="value">${fmt(data.summary.selfConsumed)} kWh</span></div>
+        <div class="info-row"><span class="label">طاقة مُصدَّرة</span><span class="value">${fmt(data.summary.exported)} kWh</span></div>
       </div>
       <div>
-        <div class="info-row"><span class="label">📐 Specific Yield</span><span class="value">${fmt(data.summary.specificYield)} kWh/kWp</span></div>
-        <div class="info-row"><span class="label">🔋 القدرة المنصوبة</span><span class="value">${fmt(data.summary.capacityKwp)} kWp</span></div>
-        <div class="info-row"><span class="label">🌍 معامل الانبعاث</span><span class="value">${data.summary.emissionFactor} kgCO₂e/kWh</span></div>
-        <div class="info-row"><span class="label">📅 عدد الأيام</span><span class="value">${data.dailyData.length} يوم</span></div>
+        <div class="info-row"><span class="label">Specific Yield</span><span class="value">${fmt(data.summary.specificYield)} kWh/kWp</span></div>
+        <div class="info-row"><span class="label">القدرة المنصوبة</span><span class="value">${fmt(data.summary.capacityKwp)} kWp</span></div>
+        <div class="info-row"><span class="label">معامل الانبعاث</span><span class="value">${data.summary.emissionFactor} kgCO₂e/kWh</span></div>
+        <div class="info-row"><span class="label">عدد الأيام</span><span class="value">${data.dailyData.length} يوم</span></div>
       </div>
     </div>
   </div>
 
   <div class="section">
-    <h2>📋 معلومات المشروع</h2>
+    <h2>معلومات المشروع</h2>
     <div class="two-cols">
       <div>
         <div class="info-row"><span class="label">اسم المشروع</span><span class="value">${data.project.nameAr || data.project.name}</span></div>
@@ -430,26 +277,26 @@ function generateHTMLReport(data: any, reportName: string): string {
         <div class="info-row"><span class="label">تاريخ التشغيل</span><span class="value">${data.project.commissionedAt ? fmtDate(data.project.commissionedAt) : '—'}</span></div>
       </div>
       <div>
-        <div class="info-row"><span class="label">🔌 نوع الإنفرتر</span><span class="value">${data.project.inverterType || '—'}</span></div>
-        <div class="info-row"><span class="label">🔢 سيريال الإنفرتر</span><span class="value" style="font-family: monospace;">${data.project.inverterSerial || '—'}</span></div>
-        <div class="info-row"><span class="label">💰 العملة</span><span class="value">${data.project.currency}</span></div>
-        <div class="info-row"><span class="label">⚡ تعرفة البيع</span><span class="value">${data.project.tariffRetail || '—'} ${data.project.currency}/kWh</span></div>
-        <div class="info-row"><span class="label">📤 تعرفة Feed-in</span><span class="value">${data.project.tariffFeedIn || '—'} ${data.project.currency}/kWh</span></div>
+        <div class="info-row"><span class="label">نوع الإنفرتر</span><span class="value">${data.project.inverterType || '—'}</span></div>
+        <div class="info-row"><span class="label">سيريال الإنفرتر</span><span class="value">${data.project.inverterSerial || '—'}</span></div>
+        <div class="info-row"><span class="label">العملة</span><span class="value">${data.project.currency}</span></div>
+        <div class="info-row"><span class="label">تعرفة البيع</span><span class="value">${data.project.tariffRetail || '—'} ${data.project.currency}/kWh</span></div>
+        <div class="info-row"><span class="label">تعرفة Feed-in</span><span class="value">${data.project.tariffFeedIn || '—'} ${data.project.currency}/kWh</span></div>
       </div>
     </div>
   </div>
 
   ${data.project.sponsorName ? `
   <div class="section">
-    <h2>🏦 المراقب / الممول</h2>
+    <h2>المراقب / الممول</h2>
     <div class="info-row"><span class="label">اسم الممول</span><span class="value">${data.project.sponsorName}</span></div>
-    <div class="info-row"><span class="label">رقم الاتصال</span><span class="value" style="font-family: monospace; direction: ltr;">${data.project.sponsorPhone || '—'}</span></div>
+    <div class="info-row"><span class="label">رقم الاتصال</span><span class="value">${data.project.sponsorPhone || '—'}</span></div>
   </div>
   ` : ''}
 
   ${data.fundingAttribution && data.fundingAttribution.length > 0 ? `
   <div class="section">
-    <h2>🏦 نصيب الجهات الممولة من الأثر (PCAF Attribution)</h2>
+    <h2>نصيب الجهات الممولة من الأثر (PCAF Attribution)</h2>
     <div class="info-row"><span class="label">إجمالي المشروع (100%)</span><span class="value">${fmt(data.summary.totalCo2AvoidedTons)} طن CO₂e</span></div>
     <table>
       <thead><tr><th>الجهة الممولة</th><th>نسبة الإسناد</th><th>طريقة الاحتساب</th><th>النصيب المُسنَد (طن CO₂e)</th></tr></thead>
@@ -463,27 +310,18 @@ function generateHTMLReport(data: any, reportName: string): string {
       </tbody>
     </table>
     <p style="font-size:10px;color:#64748b;margin-top:6px;">
-      النصيب المُسنَد لكل ممول مُشتق من إجمالي أثر المشروع أعلاه بحسب نسبة مساهمة كل جهة، وفق منهجية PCAF لتمويل المشاريع (Project Finance). رقم المشروع الكلي لا يُستبدل بهذه الأنصبة في أي مكان من هذا التقرير.
+      النصيب المُسنَد لكل ممول مُشتق من إجمالي أثر المشروع أعلاه بحسب نسبة مساهمة كل جهة (Attribution Factor = Outstanding Amount / Total Project Value)، وفق منهجية PCAF لتمويل المشاريع. لا يُستبدل رقم المشروع الكلي بهذه الأنصبة في أي مكان من هذا التقرير.
     </p>
   </div>
   ` : ''}
 
   ${data.attestations.length > 0 ? `
   <div class="section">
-    <h2>🔗 التوثيقات على Hedera</h2>
+    <h2>التوثيقات على Hedera</h2>
     <table>
-      <thead>
-        <tr><th>الحالة</th><th>عدد العناصر</th><th>Transaction ID</th><th>Consensus Timestamp</th></tr>
-      </thead>
+      <thead><tr><th>الحالة</th><th>عدد العناصر</th><th>Transaction ID</th><th>Consensus Timestamp</th></tr></thead>
       <tbody>
-        ${data.attestations.map((a: any) => `
-          <tr>
-            <td><span class="badge badge-success">${a.status}</span></td>
-            <td>${a.itemCount}</td>
-            <td style="font-family: monospace; font-size: 10px;">${a.hederaTransactionId}</td>
-            <td style="font-family: monospace; font-size: 10px;">${a.consensusTimestamp}</td>
-          </tr>
-        `).join('')}
+        ${data.attestations.map((a: any) => `<tr><td><span class="badge badge-success">${a.status}</span></td><td>${a.itemCount}</td><td style="font-family: monospace; font-size: 9px;">${a.hederaTransactionId}</td><td style="font-family: monospace; font-size: 9px;">${a.consensusTimestamp}</td></tr>`).join('')}
       </tbody>
     </table>
   </div>
@@ -491,19 +329,11 @@ function generateHTMLReport(data: any, reportName: string): string {
 
   ${data.suspectReasons.length > 0 ? `
   <div class="section">
-    <h2>⚠️ القراءات المشبوهة (آخر 10)</h2>
+    <h2>القراءات المشبوهة (آخر 10)</h2>
     <table>
-      <thead>
-        <tr><th>وقت القياس</th><th>القيمة</th><th>سبب الاشتباه</th></tr>
-      </thead>
+      <thead><tr><th>وقت القياس</th><th>القيمة</th><th>سبب الاشتباه</th></tr></thead>
       <tbody>
-        ${data.suspectReasons.map((s: any) => `
-          <tr>
-            <td>${fmtDate(s.measuredAt)}</td>
-            <td>${fmt(s.value)} kWh</td>
-            <td>${s.reason || '—'}</td>
-          </tr>
-        `).join('')}
+        ${data.suspectReasons.map((s: any) => `<tr><td>${fmtDate(s.measuredAt)}</td><td>${fmt(s.value)} kWh</td><td>${s.reason || '—'}</td></tr>`).join('')}
       </tbody>
     </table>
   </div>
@@ -516,4 +346,136 @@ function generateHTMLReport(data: any, reportName: string): string {
   </div>
 </body>
 </html>`
+}
+
+export async function GET(request: NextRequest, { params }: Params) {
+  let htmlPath: string | null = null
+  let pdfPath: string | null = null
+
+  try {
+    const { id } = await params
+    // Authorization: require report:download permission
+    const auth = await requirePermission('report:download')
+    if (!auth.authorized) return auth.response
+
+    const data = await generateReportData(id)
+    if (!data) {
+      return NextResponse.json({ error: 'التقرير غير موجود' }, { status: 404 })
+    }
+
+    const reportName = `${data.project.code}-report-${data.report.periodStart.toISOString().slice(0, 10)}`
+
+    console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
+
+    // If no readings, return friendly HTML explaining empty data
+    if (!data.dailyData || data.dailyData.length === 0 || (data.summary && data.summary.totalReadings === 0)) {
+      const msgHtml = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${reportName}</title></head><body><div style="font-family:Arial,Helvetica,sans-serif;padding:30px;text-align:center;"><h2>لا توجد بيانات للتقرير في الفترة المحددة</h2><p>لا توجد قراءات للطاقة ضمن الفترة ${new Date(data.report.periodStart).toLocaleDateString('ar-SA')} إلى ${new Date(data.report.periodEnd).toLocaleDateString('ar-SA')}.</p></div></body></html>`
+      return new NextResponse(msgHtml, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${reportName}.html"`,
+        },
+      })
+    }
+
+    const html = generateHTMLReport(data, reportName)
+
+    console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
+
+    // Save HTML to temp file
+    const tmpDir = path.join(process.cwd(), 'tmp', 'report-pdfs')
+    if (!existsSync(tmpDir)) {
+      await mkdir(tmpDir, { recursive: true })
+    }
+    htmlPath = path.join(tmpDir, `${reportName}-${Date.now()}.html`)
+    pdfPath = htmlPath.replace('.html', '.pdf')
+    await writeFile(htmlPath, html, 'utf-8')
+
+    // Use project-local script path so it works on developers' machines
+    const scriptPath = path.join(process.cwd(), 'scripts', 'html-to-pdf.js')
+
+    if (!existsSync(scriptPath)) {
+      console.error('PDF script not found at:', scriptPath)
+      // Fallback: return HTML
+      return new NextResponse(html, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${reportName}.html"`,
+        },
+      })
+    }
+
+    // Run Playwright conversion with timeout
+    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        try {
+          proc.kill('SIGKILL')
+        } catch (e) {}
+        reject(new Error('PDF generation timeout after 30 seconds'))
+      }, 30000)
+
+      const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+        },
+      })
+
+      let stdout = ''
+      let stderr = ''
+      proc.stdout.on('data', (chunk) => {
+        stdout += chunk.toString()
+      })
+      proc.stderr.on('data', (chunk) => {
+        stderr += chunk.toString()
+      })
+      proc.on('close', async (code) => {
+        clearTimeout(timeout)
+        if (code !== 0) {
+          console.error('Playwright exit code:', code, 'stderr:', stderr)
+          reject(new Error(`Playwright failed (exit ${code}): ${stderr || stdout}`))
+          return
+        }
+        try {
+          const pdf = await readFile(pdfPath!)
+          resolve(pdf)
+        } catch (e: any) {
+          console.error('Failed to read PDF file:', e.message)
+          reject(new Error(`Failed to read generated PDF: ${e.message}`))
+        }
+      })
+      proc.on('error', (err) => {
+        clearTimeout(timeout)
+        console.error('Process spawn error:', err)
+        reject(err)
+      })
+    })
+
+    // Cleanup temp files
+    await unlink(htmlPath).catch(() => {})
+    await unlink(pdfPath).catch(() => {})
+
+    return new NextResponse(new Uint8Array(pdfBuffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${reportName}.pdf"`,
+        'Content-Length': pdfBuffer.length.toString(),
+        'Cache-Control': 'no-cache',
+      },
+    })
+  } catch (error: any) {
+    console.error('PDF generation error:', error.message || error)
+    // Cleanup on error
+    if (htmlPath) await unlink(htmlPath).catch(() => {})
+    if (pdfPath) await unlink(pdfPath).catch(() => {})
+
+    return NextResponse.json(
+      {
+        error: 'فشل توليد ملف PDF',
+        details: error.message || String(error),
+      },
+      { status: 500 },
+    )
+  }
 }
