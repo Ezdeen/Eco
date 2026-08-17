@@ -169,6 +169,11 @@ export async function GET(
           },
         },
         devices: true,
+        // Banking attribution (PCAF-aligned): funders + their attribution share.
+        // Ordered so the most recently added/edited funder appears first.
+        funders: {
+          orderBy: { createdAt: 'desc' },
+        },
         _count: {
           select: {
             readings: true,
