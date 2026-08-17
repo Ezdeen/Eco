@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } from '@/lib/reference-data'
 import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
 import { calculationSchema } from '@/lib/validation'
+import { calculateFunderAttribution } from '@/lib/attribution'
 
 // Legacy constants removed - now using reference-data.ts library
 
@@ -56,6 +57,23 @@ export async function GET(request: NextRequest) {
         plantedAreaM2: true,
         survivalRateTarget: true,
         plantingDate: true,
+        // Banking attribution (PCAF): only needed/populated when a single
+        // project is in scope (projectId query param) — see carbon.fundingAttribution
+        // below. Harmless (empty relation fetch) for the org-wide, multi-project case.
+        funders: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            funderName: true,
+            funderNameAr: true,
+            fundingAmount: true,
+            projectTotalValue: true,
+            attributionShare: true,
+            attributionMethod: true,
+            currency: true,
+            isActive: true,
+          },
+        },
       },
     })
 
@@ -245,6 +263,13 @@ export async function GET(request: NextRequest) {
         // country's factor — this is not a single factor applied uniformly).
         blendedEmissionFactor,
         emissionFactorsUsed,
+        // Banking attribution (PCAF-aligned): only computed when a single project is
+        // scoped (projectId query param), since attribution is meaningless summed
+        // across projects with different funders. co2Avoided above always remains
+        // the project's own 100% total; this is a derived, additional breakdown.
+        fundingAttribution: projectId && allProjects.length === 1
+          ? calculateFunderAttribution(co2Avoided, allProjects[0].funders, totalEnergy)
+          : [],
       },
       water: {
         waterSaved,
@@ -321,7 +346,10 @@ export async function POST(request: NextRequest) {
 
     const project = await db.project.findUnique({
       where: { id: projectId },
-      include: { assets: { include: { solarProfile: true } } },
+      include: {
+        assets: { include: { solarProfile: true } },
+        funders: { where: { isActive: true } },
+      },
     })
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
@@ -442,6 +470,13 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Banking attribution (PCAF-aligned): each active funder's attributable slice
+    // of THIS run's totalCo2AvoidedKg/totalEnergyKwh. totalCo2AvoidedKg saved on
+    // the CalculationRun row above is never altered — it always represents the
+    // project's full, 100% avoided-emissions figure for the period. This is a
+    // derived, display-only breakdown returned alongside it.
+    const fundingAttribution = calculateFunderAttribution(totalCo2AvoidedKg, project.funders, totalEnergyKwh)
+
     return NextResponse.json({
       success: true,
       run,
@@ -469,6 +504,10 @@ export async function POST(request: NextRequest) {
           carFactorFromDb: carFactorData.fromDb,
           methodologyFromDb: methodology?.fromDb ?? false,
         },
+        // Project avoided emissions above (totalCo2AvoidedKg) is always the full
+        // 100% figure. fundingAttribution breaks that same number down by each
+        // active funder's PCAF attribution share — empty array if none registered.
+        fundingAttribution,
       },
     })
   } catch (error) {
