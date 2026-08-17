@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: false,
-  serverExternalPackages: ["bcryptjs", "jose", "@prisma/client", "@hashgraph/sdk"],
+  serverExternalPackages: ["bcryptjs", "jose", "@prisma/client", "@hashgraph/sdk", "playwright"],
   // scripts/html-to-pdf.js is spawned at runtime as a separate `node` process
   // (see src/app/api/reports/[id]/pdf/route.ts), not imported as a module.
   // Next's output-file-tracing can't follow that dynamic `spawn(scriptPath)`
