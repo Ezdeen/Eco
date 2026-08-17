@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi } from 'lucide-react'
 import { toast } from 'sonner'
+import { ProjectFundersManager } from './project-funders-manager'
 
 interface ProjectFormData {
   name: string
@@ -946,6 +947,13 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
               </div>
             </div>
           </div>
+
+          {isEditMode && initialData?.id && (
+            <>
+              <Separator />
+              <ProjectFundersManager projectId={initialData.id} projectCurrency={form.currency} />
+            </>
+          )}
 
           <Separator />
 
