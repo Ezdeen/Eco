@@ -141,8 +141,62 @@ model Project {
   expectedYieldModels ExpectedYieldModel[]
   reconciliationRuns  ReconciliationRun[]
   groundSpaceComparisons GroundSpaceComparison[]
+  funders        ProjectFunder[]
 
   @@unique([organizationId, code])
+}
+
+// ============== نسب التمويل والإسناد (Financed Emissions Attribution) ==============
+//
+// يمثّل كل سجل جهة ممولة واحدة لمشروع معيّن (بنك، جهة إقراض، مستثمر مؤسسي) مع نسبة
+// إسنادها (attribution share) المستخدمة لحساب "نصيب الممول" من الأثر الكلي للمشروع.
+// هذا الجدول لا يُغيّر أبدًا الأثر الفيزيائي الموثّق في CalculationRun / ImpactUnit —
+// تلك تبقى دائمًا تمثّل 100% من أثر المشروع كما هو موثّق على Hedera. الإسناد يُحسب
+// كطبقة عرض/تقرير مشتقة (derived) فوق تلك الأرقام، تمامًا كما توصي منهجية PCAF
+// (Partnership for Carbon Accounting Financials) لتمويل المشاريع (Project Finance):
+//
+//   Attribution Factor = Outstanding Amount / (Total Equity + Debt) لتمويل المشروع
+//   Financed Emissions (or Avoided Emissions) = Attribution Factor × Project Emissions
+//
+// راجع PCAF Global GHG Accounting and Reporting Standard, Part A, Project Finance
+// asset class، وGHG Protocol Scope 3 Category 15 (Investments) لمزيد من التفاصيل.
+model ProjectFunder {
+  id                String   @id @default(cuid())
+  projectId         String
+
+  // اسم الجهة الممولة (بنك، جهة إقراض، مستثمر). لا يوجد ربط إلزامي بـ Organization
+  // لأن الممول غالبًا جهة خارجية لا تملك حسابًا على المنصة.
+  funderName        String
+  funderNameAr      String?
+
+  // القيمة الإجمالية للمشروع (رأس المال + الدين)، ونصيب هذا الممول منها. تُستخدم
+  // لحساب attributionShare تلقائيًا عندما تتوفر (المنهج الافتراضي في PCAF)، لكن
+  // يمكن أيضًا إدخال attributionShare يدويًا مباشرة (attributionMethod = 'manual').
+  fundingAmount     Float?   // المبلغ الذي ساهم به هذا الممول (بعملة المشروع)
+  projectTotalValue Float?   // القيمة الإجمالية للمشروع وقت هذا السجل (بعملة المشروع)
+
+  // النسبة الفعلية المستخدمة في الحساب (0-1)، سواء أتت من fundingAmount/projectTotalValue
+  // أو أُدخلت يدويًا. هذا هو "Attribution Factor" حسب مصطلح PCAF.
+  attributionShare  Float
+
+  // كيف اشتُقت attributionShare:
+  //   capital_share : fundingAmount / projectTotalValue (منهج PCAF القياسي لتمويل المشاريع)
+  //   manual        : أُدخلت يدويًا من قبل مستخدم مخوّل، مع سبب في attributionNote
+  attributionMethod String   @default("capital_share")
+  attributionNote   String?  // ملاحظة توضيحية، إلزامية عمليًا عند attributionMethod = 'manual'
+
+  currency          String?  // عملة fundingAmount / projectTotalValue، افتراضيًا عملة المشروع
+  isActive          Boolean  @default(true) // يسمح بإيقاف ممول دون حذف السجل (سجل تاريخي)
+  effectiveFrom     DateTime?
+  effectiveTo       DateTime?
+
+  createdBy         String?  // userId
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 model Site {
