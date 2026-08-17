@@ -97,6 +97,92 @@ export const updateProjectSchema = createProjectSchema.partial().extend({
   commissionedAt: nullableString,
 })
 
+// ============== نسب التمويل والإسناد (Project Funders / Attribution) ==============
+
+export const createProjectFunderSchema = z.object({
+  funderName: z.string().trim().min(1, 'اسم الممول مطلوب'),
+  funderNameAr: nullableString,
+  fundingAmount: numericOrNull,
+  projectTotalValue: numericOrNull,
+  // attributionShare is optional on input: when fundingAmount + projectTotalValue
+  // are both provided and attributionMethod is 'capital_share' (the default), the
+  // server computes it via PCAF's capital-share formula instead of trusting a
+  // client-supplied number. It is required when attributionMethod is 'manual'.
+  attributionShare: z.preprocess((value) => {
+    if (value === undefined || value === null || value === '') return undefined
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed === '') return undefined
+      const parsed = Number(trimmed)
+      return Number.isFinite(parsed) ? parsed : value
+    }
+    return value
+  }, z.number().min(0, 'النسبة يجب أن تكون بين 0 و1').max(1, 'النسبة يجب أن تكون بين 0 و1').optional()),
+  attributionMethod: z.enum(['capital_share', 'manual']).default('capital_share'),
+  attributionNote: nullableString,
+  currency: nullableString,
+  isActive: z.boolean().default(true),
+  effectiveFrom: nullableString,
+  effectiveTo: nullableString,
+}).strict().superRefine((data, ctx) => {
+  if (data.attributionMethod === 'manual') {
+    if (data.attributionShare === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['attributionShare'],
+        message: 'نسبة الإسناد مطلوبة عند اختيار الإدخال اليدوي',
+      })
+    }
+    if (!data.attributionNote || data.attributionNote.trim() === '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['attributionNote'],
+        message: 'يجب توضيح سبب الإدخال اليدوي لنسبة الإسناد',
+      })
+    }
+  } else {
+    // capital_share
+    const hasAmounts = data.fundingAmount != null && data.projectTotalValue != null
+    if (!hasAmounts && data.attributionShare === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fundingAmount'],
+        message: 'أدخل مبلغ التمويل وقيمة المشروع الإجمالية، أو أدخل نسبة الإسناد يدويًا',
+      })
+    }
+    if (data.projectTotalValue != null && data.projectTotalValue <= 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['projectTotalValue'],
+        message: 'القيمة الإجمالية للمشروع يجب أن تكون أكبر من صفر',
+      })
+    }
+  }
+})
+
+export const updateProjectFunderSchema = z.object({
+  funderName: z.string().trim().min(1).optional(),
+  funderNameAr: nullableString,
+  fundingAmount: numericOrNull,
+  projectTotalValue: numericOrNull,
+  attributionShare: z.preprocess((value) => {
+    if (value === undefined || value === null || value === '') return undefined
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed === '') return undefined
+      const parsed = Number(trimmed)
+      return Number.isFinite(parsed) ? parsed : value
+    }
+    return value
+  }, z.number().min(0).max(1).optional()),
+  attributionMethod: z.enum(['capital_share', 'manual']).optional(),
+  attributionNote: nullableString,
+  currency: nullableString,
+  isActive: z.boolean().optional(),
+  effectiveFrom: nullableString,
+  effectiveTo: nullableString,
+}).strict()
+
 export const ingestionSchema = z.object({
   projectId: z.string().min(1, 'projectId مطلوب'),
   readings: z.array(z.object({
