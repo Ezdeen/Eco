@@ -329,7 +329,7 @@ export function CalculationsSection() {
                   <p className="font-bold tabular-nums">{fmt(result.details.totalEnergyKwh)} kWh</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">CO₂e متجنب</p>
+                  <p className="text-xs text-muted-foreground">CO₂e متجنب (100% المشروع)</p>
                   <p className="font-bold tabular-nums">{fmt(result.details.totalCo2AvoidedKg)} kg</p>
                 </div>
                 <div>
@@ -343,6 +343,22 @@ export function CalculationsSection() {
                   <p className="font-bold tabular-nums">{(result.details.performanceRatio * 100).toFixed(1)}%</p>
                 </div>
               </div>
+
+              {result.details.fundingAttribution && result.details.fundingAttribution.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-emerald-200">
+                  <p className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+                    نصيب الجهات الممولة (PCAF Attribution)
+                  </p>
+                  <div className="space-y-1.5">
+                    {result.details.fundingAttribution.map((f: any) => (
+                      <div key={f.funderId} className="flex items-center justify-between text-xs bg-white/60 dark:bg-black/20 rounded-lg px-3 py-1.5">
+                        <span>{f.funderNameAr || f.funderName} <span className="text-muted-foreground">({f.attributionSharePct}%)</span></span>
+                        <span className="font-bold tabular-nums">{fmt(f.attributableCo2AvoidedKg)} kg CO₂e</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {result.details.currencyMismatchWarning && (
                 <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
                   ⚠️ تعرفة الدولة المرجعية بعملة مختلفة عن عملة المشروع؛ تم استخدام تعرفة المشروع الاحتياطية بدلاً منها.
