@@ -346,6 +346,7 @@ export function ImpactSection() {
                       <th className="p-2 text-center">ديزل مستبدل</th>
                       <th className="p-2 text-center">غاز مستبدل</th>
                       <th className="p-2 text-center">كثافة الكربون</th>
+                      <th className="p-2 text-center">نصيب الممولين</th>
                       <th className="p-2 text-center">إثبات الكربون</th>
                     </tr>
                   </thead>
@@ -370,6 +371,19 @@ export function ImpactSection() {
                         <td className="p-2 text-center tabular-nums text-blue-600">{fmt(p.fossilFuelReplaced.naturalGasM3)} m³</td>
                         <td className="p-2 text-center tabular-nums text-violet-600">{p.carbonIntensity}</td>
                         <td className="p-2 text-center">
+                          {p.fundingAttribution && p.fundingAttribution.length > 0 ? (
+                            <div className="flex flex-col gap-0.5 items-center">
+                              {p.fundingAttribution.map((f: any) => (
+                                <Badge key={f.funderId} variant="outline" className="text-[9px] bg-cyan-50 text-cyan-700 whitespace-nowrap">
+                                  {(f.funderNameAr || f.funderName)} {f.attributionSharePct}%
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-center">
                           <IssueAttestationButton projectId={p.projectId} />
                         </td>
                       </tr>
@@ -379,6 +393,65 @@ export function ImpactSection() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Banking attribution detail — only rendered when at least one solar
+              project has registered funders. Each project's own lifetime figure
+              (shown above) always stays the full 100%; this card is the derived,
+              PCAF-aligned breakdown by funder, shown alongside it. */}
+          {solarProjects.some((p: any) => p.fundingAttribution && p.fundingAttribution.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Coins className="h-5 w-5 text-cyan-600" />
+                  نصيب الجهات الممولة من الأثر (PCAF Attribution)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  النصيب المُسنَد لكل ممول مُشتق من إجمالي أثر المشروع (100%) بحسب نسبة مساهمته — لا يستبدل رقم المشروع الكلي، بل يُعرض بجانبه
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="p-2 text-right">المشروع</th>
+                        <th className="p-2 text-right">الجهة الممولة</th>
+                        <th className="p-2 text-center">نسبة الإسناد</th>
+                        <th className="p-2 text-center">طريقة الاحتساب</th>
+                        <th className="p-2 text-center">إجمالي المشروع (100%)</th>
+                        <th className="p-2 text-center">النصيب المُسنَد</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {solarProjects.flatMap((p: any) =>
+                        (p.fundingAttribution || []).map((f: any) => (
+                          <tr key={`${p.projectId}-${f.funderId}`} className="border-b hover:bg-muted/30">
+                            <td className="p-2">
+                              <p className="font-medium">{p.projectName}</p>
+                              <p className="text-[10px] text-muted-foreground">{p.projectCode}</p>
+                            </td>
+                            <td className="p-2">{f.funderNameAr || f.funderName}</td>
+                            <td className="p-2 text-center tabular-nums font-semibold">{f.attributionSharePct}%</td>
+                            <td className="p-2 text-center">
+                              <Badge variant="outline" className="text-[10px]">
+                                {f.attributionMethod === 'capital_share' ? 'رأس المال (PCAF)' : 'يدوي'}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-center tabular-nums text-muted-foreground">
+                              {fmt(p.carbonAvoided.lifetime.tCO2e)} tCO₂e
+                            </td>
+                            <td className="p-2 text-center tabular-nums font-bold text-cyan-700">
+                              {fmt(f.attributableCo2AvoidedTons)} tCO₂e
+                            </td>
+                          </tr>
+                        )),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* ===================== AFFORESTATION TAB ===================== */}
