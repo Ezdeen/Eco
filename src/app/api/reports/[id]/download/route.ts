@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
+import { calculateFunderAttribution } from '@/lib/attribution'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -17,6 +18,17 @@ async function generateReportData(reportId: string) {
           country: true, city: true, capacityKwp: true, currency: true,
           tariffRetail: true, tariffFeedIn: true, sponsorName: true, sponsorPhone: true,
           inverterSerial: true, inverterType: true, commissionedAt: true,
+          // Banking attribution (PCAF-aligned): see the pdf route for the full
+          // rationale — this list feeds fundingAttribution below and is only ever
+          // an additional, derived breakdown alongside the project's own totals.
+          funders: {
+            where: { isActive: true },
+            select: {
+              id: true, funderName: true, funderNameAr: true,
+              fundingAmount: true, projectTotalValue: true,
+              attributionShare: true, attributionMethod: true, currency: true, isActive: true,
+            },
+          },
         },
       },
     },
@@ -104,9 +116,15 @@ async function generateReportData(reportId: string) {
     })
   }
 
+  // Banking attribution (PCAF-aligned): each active funder's attributable slice
+  // of this report's totalCo2Avoided. Never replaces summary.totalCo2Avoided /
+  // totalCo2AvoidedTons above, which always remain the project's full figure.
+  const fundingAttribution = calculateFunderAttribution(totalCo2Avoided, report.project.funders, totalEnergy)
+
   return {
     report,
     project: report.project,
+    fundingAttribution,
     summary: {
       periodStart: report.periodStart,
       periodEnd: report.periodEnd,
@@ -209,6 +227,17 @@ export async function GET(request: NextRequest, { params }: Params) {
       rows.push('الحالة,عدد العناصر,Transaction ID,Consensus Timestamp')
       for (const a of data.attestations) {
         rows.push(`${a.status},${a.itemCount},${a.hederaTransactionId},${a.consensusTimestamp}`)
+      }
+
+      if (data.fundingAttribution && data.fundingAttribution.length > 0) {
+        rows.push('')
+        rows.push('# نصيب الجهات الممولة من الأثر (PCAF Attribution)')
+        rows.push(`# إجمالي المشروع (100%),${data.summary.totalCo2AvoidedTons},tCO2e`)
+        rows.push('الجهة الممولة,نسبة الإسناد (%),طريقة الاحتساب,النصيب المُسنَد (tCO2e),النصيب المُسنَد (kgCO2e)')
+        for (const f of data.fundingAttribution) {
+          const method = f.attributionMethod === 'capital_share' ? 'نسبة رأس المال (PCAF)' : 'إدخال يدوي'
+          rows.push(`${f.funderNameAr || f.funderName},${f.attributionSharePct},${method},${f.attributableCo2AvoidedTons},${f.attributableCo2AvoidedKg}`)
+        }
       }
 
       const csv = '\uFEFF' + rows.join('\n') // BOM for Arabic
@@ -415,6 +444,27 @@ function generateHTMLReport(data: any, reportName: string): string {
     <h2>🏦 المراقب / الممول</h2>
     <div class="info-row"><span class="label">اسم الممول</span><span class="value">${data.project.sponsorName}</span></div>
     <div class="info-row"><span class="label">رقم الاتصال</span><span class="value" style="font-family: monospace; direction: ltr;">${data.project.sponsorPhone || '—'}</span></div>
+  </div>
+  ` : ''}
+
+  ${data.fundingAttribution && data.fundingAttribution.length > 0 ? `
+  <div class="section">
+    <h2>🏦 نصيب الجهات الممولة من الأثر (PCAF Attribution)</h2>
+    <div class="info-row"><span class="label">إجمالي المشروع (100%)</span><span class="value">${fmt(data.summary.totalCo2AvoidedTons)} طن CO₂e</span></div>
+    <table>
+      <thead><tr><th>الجهة الممولة</th><th>نسبة الإسناد</th><th>طريقة الاحتساب</th><th>النصيب المُسنَد (طن CO₂e)</th></tr></thead>
+      <tbody>
+        ${data.fundingAttribution.map((f: any) => `<tr>
+          <td>${f.funderNameAr || f.funderName}</td>
+          <td>${f.attributionSharePct}%</td>
+          <td>${f.attributionMethod === 'capital_share' ? 'نسبة رأس المال (PCAF)' : 'إدخال يدوي'}</td>
+          <td style="font-weight:700;">${fmt(f.attributableCo2AvoidedTons)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <p style="font-size:10px;color:#64748b;margin-top:6px;">
+      النصيب المُسنَد لكل ممول مُشتق من إجمالي أثر المشروع أعلاه بحسب نسبة مساهمة كل جهة، وفق منهجية PCAF لتمويل المشاريع (Project Finance). رقم المشروع الكلي لا يُستبدل بهذه الأنصبة في أي مكان من هذا التقرير.
+    </p>
   </div>
   ` : ''}
 
