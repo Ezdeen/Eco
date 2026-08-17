@@ -179,7 +179,19 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [managers, setManagers] = useState<{ id: string; name: string; email: string }[]>([])
-  const isEditMode = !!initialData
+  // بعد إنشاء مشروع جديد بنجاح، نحتفظ بمعرّفه هنا بدل إغلاق النافذة مباشرة،
+  // حتى يظهر قسم "إدارة الممولين" (Attribution) فورًا للمشروع حديث الإنشاء
+  // بدل إجبار المستخدم على إعادة فتح المشروع للتعديل لإضافة الممولين.
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
+  const isEditMode = !!initialData || !!createdProjectId
+  const activeProjectId = initialData?.id || createdProjectId || undefined
+
+  // إعادة ضبط حالة "المشروع المُنشأ حديثًا" عند فتح/إغلاق النافذة أو تبديل initialData
+  useEffect(() => {
+    if (!open) {
+      setCreatedProjectId(null)
+    }
+  }, [open])
 
   useEffect(() => {
     if (open) {
@@ -312,7 +324,7 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
     setLoading(true)
 
     try {
-      const url = isEditMode ? `/api/projects/${initialData.id}` : '/api/projects'
+      const url = isEditMode ? `/api/projects/${activeProjectId}` : '/api/projects'
       const method = isEditMode ? 'PATCH' : 'POST'
 
       // Resolve final city value
@@ -398,9 +410,25 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         return
       }
 
-      toast.success(isEditMode ? 'تم تحديث المشروع بنجاح' : 'تم إنشاء المشروع بنجاح')
-      onOpenChange(false)
       onSaved()
+
+      if (isEditMode) {
+        toast.success('تم تحديث المشروع بنجاح')
+        onOpenChange(false)
+      } else {
+        // لا نغلق النافذة بعد إنشاء مشروع جديد: نبقيها مفتوحة وننتقل لوضع
+        // التعديل داخليًا حتى يظهر قسم "إدارة الممولين" فورًا، فيتمكن المستخدم
+        // من إضافة نسبة تمويل البنك (Attribution) لهذا المشروع مباشرة.
+        const newId = data?.project?.id || data?.id
+        if (newId) {
+          setCreatedProjectId(newId)
+          toast.success('تم إنشاء المشروع بنجاح — يمكنك الآن إضافة الممولين ونسبة التمويل')
+        } else {
+          // احتياطي: إذا لم يرجع الخادم المعرّف لأي سبب، نغلق كالمعتاد
+          toast.success('تم إنشاء المشروع بنجاح')
+          onOpenChange(false)
+        }
+      }
     } catch (err) {
       toast.error('حدث خطأ في الاتصال بالخادم')
     } finally {
@@ -948,10 +976,10 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
             </div>
           </div>
 
-          {isEditMode && initialData?.id && (
+          {isEditMode && activeProjectId && (
             <>
               <Separator />
-              <ProjectFundersManager projectId={initialData.id} projectCurrency={form.currency} />
+              <ProjectFundersManager projectId={activeProjectId} projectCurrency={form.currency} />
             </>
           )}
 
