@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, projectScopeFilter } from '@/lib/authorization'
 import { getEmissionFactor, getConversionFactor } from '@/lib/reference-data'
+import { calculateFunderAttribution } from '@/lib/attribution'
 
 // Tree absorption factors (kg CO2 per tree per year), by species.
 // IMPORTANT: unlike the grid emission factor above, there is currently no
@@ -73,6 +74,24 @@ export async function GET() {
         iotSensorType: true,
         iotSensorSerial: true,
         _count: { select: { readings: true, devices: true } },
+        // Banking attribution: active funders + their attribution share, used
+        // below to derive each funder's attributable slice of this project's
+        // lifetime avoided emissions (PCAF capital-share method). The project's
+        // own totals are never altered by this — only echoed alongside them.
+        funders: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            funderName: true,
+            funderNameAr: true,
+            fundingAmount: true,
+            projectTotalValue: true,
+            attributionShare: true,
+            attributionMethod: true,
+            currency: true,
+            isActive: true,
+          },
+        },
       },
     })
 
@@ -328,6 +347,11 @@ export async function GET() {
         },
         // Afforestation metrics (null for non-afforestation projects)
         afforestation: afforestationMetrics,
+        // Banking attribution (PCAF-aligned): each active funder's attributable
+        // slice of this project's LIFETIME avoided emissions. Empty array when
+        // the project has no registered funders — the project's own lifetime
+        // figure above is always the full 100% regardless of this list.
+        fundingAttribution: calculateFunderAttribution(totalCo2AvoidedKg, project.funders, totalEnergy),
       })
     }
 
