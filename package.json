@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build --webpack && node scripts/prepare-standalone.mjs && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
+    "build": "next build --webpack && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
+    "postinstall": "node scripts/install-playwright-browser.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
