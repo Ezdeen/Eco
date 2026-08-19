@@ -96,7 +96,10 @@ function SavedReportsList({ refreshKey }: { refreshKey: number }) {
       const res = await fetch(`/api/portfolio-reports/${id}/pdf`)
       if (!res.ok) {
         const d = await res.json().catch(() => null)
-        throw new Error(d?.error || 'فشل توليد الملف')
+        // details يحتوي السبب التقني الفعلي (خطأ Playwright، حقل ناقص في اللقطة...)
+        // بينما error رسالة عامة — نعرض الاثنين معًا كي لا يختفي التشخيص الحقيقي.
+        const message = d?.details ? `${d?.error || 'فشل توليد الملف'}: ${d.details}` : (d?.error || 'فشل توليد الملف')
+        throw new Error(message)
       }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
