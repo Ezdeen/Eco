@@ -14,6 +14,7 @@ import { MonitoringSection } from '@/components/sections/monitoring-section'
 import { CalculationsSection } from '@/components/sections/calculations-section'
 import { AttestationsSection } from '@/components/sections/attestations-section'
 import { ReportsSection } from '@/components/sections/reports-section'
+import { PortfolioSection } from '@/components/sections/portfolio-section'
 import { ImpactSection } from '@/components/sections/impact-section'
 import { CalculatorSection } from '@/components/sections/calculator-section'
 import { NotificationsSection } from '@/components/sections/notifications-section'
@@ -36,6 +37,7 @@ const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   calculations: { title: 'الحسابات (KPI Catalog)', subtitle: 'Environmental KPI Catalog - جميع المؤشرات البيئية بشكل موحد' },
   attestations: { title: 'التوثيق والمطابقة', subtitle: 'توثيق حزم البيانات على شبكة Hedera' },
   reports: { title: 'التقارير', subtitle: 'تقارير معتمدة قابلة للتحميل بصيغ متعددة مع رسوم بيانية' },
+  portfolio: { title: 'محفظة التمويل الأخضر', subtitle: 'إفصاح على مستوى المحفظة الكاملة — سعة ممولة، انبعاثات مُتجنَّبة بنصيب الممول، ونسب التحقق الفضائي والدفتري' },
   impact: { title: 'سجل وحدات الأثر', subtitle: 'حسابات وأرصدة وحركات غير قابلة للتعديل' },
   calculator: { title: 'الحاسبة الاستثمارية', subtitle: 'NPV, IRR, Payback, LCOE مع سيناريوهات وتحليل حساسية' },
   notifications: { title: 'الإشعارات', subtitle: 'مركز الإشعارات والأحداث المهمة' },
@@ -172,6 +174,7 @@ export default function Home() {
           {section === 'calculations' && <CalculationsSection />}
           {section === 'attestations' && <AttestationsSection />}
           {section === 'reports' && <ReportsSection />}
+          {section === 'portfolio' && <PortfolioSection />}
           {section === 'impact' && <ImpactSection />}
           {section === 'calculator' && <CalculatorSection />}
           {section === 'notifications' && <NotificationsSection />}
