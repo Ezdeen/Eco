@@ -414,11 +414,16 @@ export async function GET(request: NextRequest, { params }: Params) {
         reject(new Error('PDF generation timeout after 30 seconds'))
       }, 30000)
 
+      // PLAYWRIGHT_BROWSERS_PATH=0 يجبر Playwright على البحث عن المتصفح داخل
+      // node_modules/playwright-core بدل المسار الافتراضي (~/.cache/ms-playwright)
+      // الذي لا ينتقل مع .next/standalone على Render — انظر نفس الشرح المفصّل في
+      // src/app/api/portfolio-reports/[id]/pdf/route.ts
       const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: process.cwd(),
         env: {
           ...process.env,
+          PLAYWRIGHT_BROWSERS_PATH: '0',
         },
       })
 
