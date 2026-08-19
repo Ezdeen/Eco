@@ -29,20 +29,30 @@ function fmtDate(d: Date | string): string {
 // حفاظًا على هوية بصرية موحّدة عبر كل مخرجات المنصة القابلة للتحميل. لا يُعاد حساب أي
 // رقم هنا — كل شيء مقروء حرفيًا من PortfolioReport.metrics كما جُمِّد وقت الإصدار،
 // بنفس مبدأ عدم تعديل AttestationBatch بعد التوثيق.
+//
+// ملاحظة دفاعية: metrics قادم من حقل JSON حر في قاعدة البيانات (لا Prisma type يفرضه)،
+// لذا نتعامل مع كل حقل بحذر (?? قيمة افتراضية) بدل الافتراض أن شكله مثالي دائمًا —
+// لقطة قديمة أُنشئت بنسخة سابقة من الكود، أو أُدخلت يدويًا، لا يجب أن تُسقط توليد PDF
+// بالكامل، بل تُعرض بأفضل شكل ممكن مع الإفصاح عن أي جزء ناقص.
 function generatePortfolioHTML(report: any, metrics: any, org: any, projectCount: number): string {
+  const safeMetrics = metrics || {}
+  const confidenceBreakdown = safeMetrics.confidenceBreakdown || {}
+  const confidenceComponents = confidenceBreakdown.components || {}
+  const confidenceWeights = confidenceBreakdown.weights || {}
+
   const confidenceRows = [
-    { label: 'جودة البيانات (قراءات مُدقَّقة)', value: metrics.confidenceBreakdown.components.dataQualityPct, weight: metrics.confidenceBreakdown.weights.dataQuality },
-    { label: 'المطابقة الفضائية-الأرضية', value: metrics.confidenceBreakdown.components.satelliteVerificationPct, weight: metrics.confidenceBreakdown.weights.satelliteVerification },
-    { label: 'التوثيق على Hedera', value: metrics.confidenceBreakdown.components.ledgerAttestationPct, weight: metrics.confidenceBreakdown.weights.ledgerAttestation },
+    { label: 'جودة البيانات (قراءات مُدقَّقة)', value: confidenceComponents.dataQualityPct ?? 0, weight: confidenceWeights.dataQuality ?? 0 },
+    { label: 'المطابقة الفضائية-الأرضية', value: confidenceComponents.satelliteVerificationPct ?? 0, weight: confidenceWeights.satelliteVerification ?? 0 },
+    { label: 'التوثيق على Hedera', value: confidenceComponents.ledgerAttestationPct ?? 0, weight: confidenceWeights.ledgerAttestation ?? 0 },
   ]
 
-  const definitionsHtml = Object.values(metrics.definitions as Record<string, string>)
+  const definitionsHtml = Object.values((safeMetrics.definitions || {}) as Record<string, string>)
     .map((text) => `<p style="margin:0 0 8px 0;">${text}</p>`)
-    .join('')
+    .join('') || '<p style="color:#94a3b8;">لا توجد تعريفات محفوظة لهذه اللقطة.</p>'
 
-  const limitationsHtml = (metrics.limitations as string[])
+  const limitationsHtml = ((safeMetrics.limitations || []) as string[])
     .map((l) => `<li>${l}</li>`)
-    .join('')
+    .join('') || '<li style="color:#94a3b8;">لا توجد قيود مُسجَّلة لهذه اللقطة.</li>'
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -90,7 +100,7 @@ function generatePortfolioHTML(report: any, metrics: any, org: any, projectCount
 </head>
 <body>
   <div class="header">
-    <h1>إفصاح محفظة التمويل الأخضر — ${org.nameAr || org.name}</h1>
+    <h1>إفصاح محفظة التمويل الأخضر — ${org?.nameAr || org?.name || 'منظمة غير معروفة'}</h1>
     <div class="subtitle">
       ${report.title} • الفترة: ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)} • ${projectCount} مشروعًا
     </div>
@@ -114,7 +124,7 @@ function generatePortfolioHTML(report: any, metrics: any, org: any, projectCount
 
   <div class="section">
     <h2>تفكيك مؤشر "ثقة البيانات البيئية"</h2>
-    <div class="formula">${metrics.confidenceBreakdown.formula}</div>
+    <div class="formula">${confidenceBreakdown.formula || 'confidence = dataQuality% × 0.35 + satelliteVerified% × 0.35 + ledgerAttestation% × 0.30'}</div>
     ${confidenceRows.map((c) => `
       <div class="conf-row">
         <div class="top"><span>${c.label} (وزن ${Math.round(c.weight * 100)}%)</span><span><strong>${fmt(c.value)}%</strong></span></div>
