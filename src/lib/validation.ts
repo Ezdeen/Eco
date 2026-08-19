@@ -214,3 +214,11 @@ export const calculationSchema = z.object({
   periodEnd: z.string().min(1, 'periodEnd مطلوب'),
   methodologyVersion: z.string().optional(),
 })
+
+export const portfolioReportSchema = z.object({
+  title: z.string().min(1, 'العنوان مطلوب'),
+  periodStart: z.string().min(1, 'periodStart مطلوب'),
+  periodEnd: z.string().min(1, 'periodEnd مطلوب'),
+  projectIds: z.array(z.string()).optional(), // فارغة/غائبة = كل مشاريع المنظمة
+  methodologyNote: z.string().optional(),
+})
