@@ -242,10 +242,17 @@ export async function GET(request: NextRequest, { params }: Params) {
         reject(new Error('PDF generation timeout after 30 seconds'))
       }, 30000)
 
+      // PLAYWRIGHT_BROWSERS_PATH=0 يجبر Playwright على البحث عن المتصفح داخل
+      // node_modules/playwright-core (حيث ثبّتناه فعليًا وقت البناء، انظر
+      // package.json → build)، بدل المسار الافتراضي خارج node_modules
+      // (~/.cache/ms-playwright) الذي لا ينتقل مع .next/standalone على Render.
+      // نضبطها هنا صراحة بدل الاعتماد فقط على متغير بيئة على لوحة تحكم Render،
+      // لأن غيابه هناك هو بالضبط ما ينتج رسالة "Executable doesn't exist at
+      // /opt/render/.cache/ms-playwright/..." التي شُوهدت فعليًا في الإنتاج.
       const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: process.cwd(),
-        env: { ...process.env },
+        env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '0' },
       })
 
       let stdout = ''
