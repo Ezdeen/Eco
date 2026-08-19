@@ -21,6 +21,7 @@ export type Permission =
   | 'audit:read'
   | 'user:manage'
   | 'settings:manage'
+  | 'portfolio:read'
 
 // Role-based permission matrix — enforced on every requirePermission/requireProjectAccess call.
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
@@ -29,7 +30,7 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'project:read', 'project:create', 'project:update', 'project:delete',
     'reading:read', 'reading:audit', 'calculation:run', 'attestation:submit',
     'report:create', 'report:approve', 'report:download', 'report:delete', 'impact:manage',
-    'audit:read', 'user:manage', 'settings:manage',
+    'audit:read', 'user:manage', 'settings:manage', 'portfolio:read',
   ],
   // مدير المشروع: مراقبة فقط (قراءة)، محصور بمشاريعه المرتبط بها فقط (يُفرض بـ requireProjectAccess)
   project_manager: [
