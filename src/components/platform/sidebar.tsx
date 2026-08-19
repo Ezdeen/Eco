@@ -23,6 +23,7 @@ import {
   Users,
   Plug,
   Satellite,
+  Landmark,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ export type Section =
   | 'calculations'
   | 'attestations'
   | 'reports'
+  | 'portfolio'
   | 'impact'
   | 'calculator'
   | 'notifications'
@@ -68,6 +70,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'attestations', label: 'التوثيق', labelEn: 'Attestation', icon: ShieldCheck, group: 'attestation' },
   { id: 'impact', label: 'وحدات الأثر', labelEn: 'Impact Ledger', icon: Coins, group: 'attestation' },
   { id: 'reports', label: 'التقارير', labelEn: 'Reports', icon: FileBarChart, group: 'output' },
+  { id: 'portfolio', label: 'محفظة التمويل الأخضر', labelEn: 'Green Finance Portfolio', icon: Landmark, group: 'output' },
   { id: 'calculator', label: 'الحاسبة الاستثمارية', labelEn: 'Calculator', icon: Calculator, group: 'output' },
   { id: 'notifications', label: 'الإشعارات', labelEn: 'Notifications', icon: Bell, group: 'system' },
   { id: 'audit', label: 'سجل التدقيق', labelEn: 'Audit Log', icon: ScrollText, group: 'system' },
@@ -116,6 +119,9 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
     // dashboard, projects, data, monitoring, calculations, attestations, reports, impact —
     // scoped server-side to their own assigned projects.
     .filter((item) => !(user?.role === 'project_manager' && item.group === 'system'))
+    // portfolio:read محصورة على org_admin فقط في authorization.ts — نُخفي عنصر التنقل
+    // بنفس المنطق بدل الاعتماد على 403 من الخادم فقط.
+    .filter((item) => !(item.id === 'portfolio' && user?.role !== 'org_admin'))
     .reduce(
       (acc, item) => {
         if (!acc[item.group]) acc[item.group] = []
