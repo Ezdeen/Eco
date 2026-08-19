@@ -37,6 +37,7 @@ model Organization {
   auditEvents AuditEvent[]
   subscriptions  Subscription[]
   apiKeys        ApiKey[]
+  portfolioReports PortfolioReport[]
 }
 
 model User {
@@ -751,6 +752,41 @@ model ReconciliationRun {
   completedAt     DateTime?
 
   project         Project? @relation(fields: [projectId], references: [id])
+}
+
+// ============== الإفصاح على مستوى المحفظة (Green Finance Portfolio Disclosure) ==============
+//
+// لماذا نموذج منفصل عن Report وليس تعديلاً عليه:
+//   Report.projectId إلزامي (غير nullable) ومرتبط بعلاقة onDelete: Cascade مع مشروع واحد —
+//   هذا مقصود لتقارير مشروع بعينه (energy, carbon, attestation...). محفظة تمويل أخضر
+//   تجمّع عدة مشاريع معًا لجهة ممولة واحدة (بنك)، وهو غرض مختلف بنيويًا: لا "مشروع واحد"
+//   يملك هذا التقرير، بل مجموعة مشاريع قد تتغيّر عضويتها بين إصدار وآخر. تعديل Report
+//   لجعل projectId اختياريًا كان سيكسر دلالة كل تقرير موجود ("undefined" project = ماذا؟)
+//   ويُضعف الـ Cascade delete الحالي. لذلك PortfolioReport نموذج مستقل، بعلاقة مع
+//   Organization (الجهة التي تملك/تدير هذا الإفصاح — قد تكون البنك نفسه إن كان له حساب،
+//   أو مؤسسة إدارة المحفظة)، ومصفوفة projectIds صريحة (JSON) بدل علاقة Prisma للسماح
+//   بعضوية مرنة دون جداول ربط إضافية لنموذج لا يزال أولياً.
+//
+// كل تقرير محفظة هو "لقطة" (snapshot) مجمَّدة وقت الإصدار — أرقامه لا تتغيّر تلقائيًا مع
+// تحديث بيانات المشاريع لاحقًا، تمامًا كمبدأ AttestationBatch (تجميد المدخلات وقت الإصدار).
+// إعادة توليد الأرقام الحالية تتم عبر GET /api/portfolio (بدون حفظ)، والحفظ الدائم
+// (لمرفق يُرسَل للبنك أو المدقق) عبر POST /api/portfolio-reports.
+model PortfolioReport {
+  id              String   @id @default(cuid())
+  organizationId  String
+  title           String
+  periodStart     DateTime
+  periodEnd       DateTime
+  projectIds      String   // JSON: مصفوفة معرّفات المشاريع المشمولة وقت الإصدار
+  metrics         String   // JSON: PortfolioMetrics + حقل projects (تفصيل كل مشروع) مجمَّدين معًا — انظر portfolio-aggregation.ts
+  methodologyNote String?  // ملاحظة منهجية حرة (مثلاً: استثناءات، تحفظات المدقق)
+  status          String   @default("draft") // draft, published
+  createdBy       String?  // userId
+  createdAt       DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, periodStart, periodEnd])
 }
 
 // ============== SaaS: Integration Config & Secrets ==============
