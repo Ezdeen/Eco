@@ -47,6 +47,31 @@ async function loadHederaConfig(): Promise<HederaConfig> {
   }
 }
 
+// === Explorer link helpers (for reports/attestation UI) ===
+// Reads the same config source (DB IntegrationConfig, falling back to env vars) used
+// for actually submitting attestations, so the link always matches the network a
+// transaction was really submitted to.
+export async function getHederaNetwork(): Promise<'simulation' | 'testnet' | 'mainnet'> {
+  const config = await loadHederaConfig()
+  return config.network
+}
+
+// HashScan is Hedera's public block explorer. No link is returned for 'simulation'
+// (no real transaction exists) or when the transaction id itself is absent.
+export function getHashscanUrl(
+  network: 'simulation' | 'testnet' | 'mainnet',
+  hederaTransactionId: string | null | undefined,
+): string | null {
+  if (!hederaTransactionId || network === 'simulation') return null
+  const subdomain = network === 'mainnet' ? 'mainnet' : 'testnet'
+  // Hedera tx ids are stored as "0.0.x@seconds.nanos" — HashScan's URL form uses
+  // "0.0.x-seconds-nanos" (account id keeps its two dots as-is, only the "@" and the
+  // dot separating seconds/nanos become dashes).
+  const [accountPart, timePart] = hederaTransactionId.split('@')
+  const urlSafeId = timePart ? `${accountPart}-${timePart.replace('.', '-')}` : hederaTransactionId
+  return `https://hashscan.io/${subdomain}/transaction/${urlSafeId}`
+}
+
 // === PRIORITY 6: Block simulation in production ===
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 // During build, Next.js runs in production mode but we shouldn't throw
