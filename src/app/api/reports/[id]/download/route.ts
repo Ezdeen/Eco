@@ -1,181 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
-import { calculateFunderAttribution } from '@/lib/attribution'
+import { generateReportData, fmtReportDate, fmtReportDateTime } from '@/lib/report-data'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-// Generate report data
-async function generateReportData(reportId: string) {
-  const report = await db.report.findUnique({
-    where: { id: reportId },
-    include: {
-      project: {
-        select: {
-          id: true, name: true, nameAr: true, code: true,
-          country: true, city: true, capacityKwp: true, currency: true,
-          tariffRetail: true, tariffFeedIn: true, sponsorName: true, sponsorPhone: true,
-          inverterSerial: true, inverterType: true, commissionedAt: true,
-          // Banking attribution (PCAF-aligned): see the pdf route for the full
-          // rationale — this list feeds fundingAttribution below and is only ever
-          // an additional, derived breakdown alongside the project's own totals.
-          funders: {
-            where: { isActive: true },
-            select: {
-              id: true, funderName: true, funderNameAr: true,
-              fundingAmount: true, projectTotalValue: true,
-              attributionShare: true, attributionMethod: true, currency: true, isActive: true,
-            },
-          },
-        },
-      },
-    },
-  })
-
-  if (!report) return null
-
-  // Get readings for the period
-  const allReadings = await db.energyReading.findMany({
-    where: {
-      projectId: report.projectId,
-      measuredAt: { gte: report.periodStart, lte: report.periodEnd },
-    },
-    select: {
-      measuredAt: true,
-      value: true,
-      unit: true,
-      qualityStatus: true,
-      validationStatus: true,
-      cumulativeValue: true,
-      suspectReason: true,
-    },
-    orderBy: { measuredAt: 'asc' },
-  })
-
-  // Only verified/approved readings feed the actual calculations below (validated,
-  // approved, corrected). Suspect and rejected readings (and any still "received" and
-  // awaiting review) must never contribute to energy, CO2, savings, or any chart total —
-  // they are counted separately (summary.suspectReadings / rejectedReadings) so the report
-  // can show how much data was excluded, without that data ever entering a sum.
-  const verifiedStatuses = ['validated', 'approved', 'corrected']
-  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
-
-  console.info('generateReportData:', { reportId, readings: readings.length, totalReadings: allReadings.length, periodStart: report.periodStart, periodEnd: report.periodEnd })
-
-  // Get calculations
-  const calcRuns = await db.calculationRun.findMany({
-    where: {
-      projectId: report.projectId,
-      periodStart: { gte: report.periodStart },
-      periodEnd: { lte: report.periodEnd },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-
-  // Get attestations
-  const attestations = await db.attestationBatch.findMany({
-    where: {
-      projectId: report.projectId,
-      createdAt: { gte: report.periodStart, lte: report.periodEnd },
-    },
-  })
-
-  // Compute aggregations — totalEnergy and everything derived from it use only the
-  // verified `readings` (validated/approved/corrected). validReadings/suspectReadings/
-  // rejectedReadings/dataQualityRate are computed from allReadings so the report can show
-  // how much data was excluded, without that excluded data ever entering a sum below.
-  const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
-  const validReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected')
-  const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect')
-  const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected')
-  const emissionFactor = 0.432 // Saudi grid
-  const totalCo2Avoided = totalEnergy * emissionFactor
-  const selfConsumed = totalEnergy * 0.7
-  const exported = totalEnergy * 0.3
-  const totalSavings = selfConsumed * (report.project.tariffRetail || 0.18) + exported * (report.project.tariffFeedIn || 0.10)
-  const specificYield = report.project.capacityKwp ? totalEnergy / report.project.capacityKwp : 0
-  const days = (report.periodEnd.getTime() - report.periodStart.getTime()) / (1000 * 60 * 60 * 24)
-  const referenceYield = days * 5.5
-  const performanceRatio = referenceYield > 0 && report.project.capacityKwp ? (totalEnergy / report.project.capacityKwp) / referenceYield : 0
-
-  // Daily aggregation
-  const dailyData: { date: string; energy: number; co2: number; savings: number }[] = []
-  const dailyMap = new Map<string, number>()
-  for (const r of readings) {
-    const date = new Date(r.measuredAt).toISOString().slice(0, 10)
-    dailyMap.set(date, (dailyMap.get(date) || 0) + r.value)
-  }
-  for (const [date, energy] of dailyMap) {
-    dailyData.push({
-      date,
-      energy: Math.round(energy * 100) / 100,
-      co2: Math.round(energy * emissionFactor * 100) / 100,
-      savings: Math.round(energy * (report.project.tariffRetail || 0.18) * 100) / 100,
-    })
-  }
-
-  // Banking attribution (PCAF-aligned): each active funder's attributable slice
-  // of this report's totalCo2Avoided. Never replaces summary.totalCo2Avoided /
-  // totalCo2AvoidedTons above, which always remain the project's full figure.
-  const fundingAttribution = calculateFunderAttribution(totalCo2Avoided, report.project.funders, totalEnergy)
-
-  return {
-    report,
-    project: report.project,
-    fundingAttribution,
-    summary: {
-      periodStart: report.periodStart,
-      periodEnd: report.periodEnd,
-      totalReadings: allReadings.length,
-      validReadings: validReadings.length,
-      suspectReadings: suspectReadings.length,
-      rejectedReadings: rejectedReadings.length,
-      includedInCalculations: readings.length,
-      dataQualityRate: allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0,
-      totalEnergy: Math.round(totalEnergy * 100) / 100,
-      totalCo2Avoided: Math.round(totalCo2Avoided * 100) / 100,
-      totalCo2AvoidedTons: Math.round((totalCo2Avoided / 1000) * 100) / 100,
-      totalSavings: Math.round(totalSavings * 100) / 100,
-      selfConsumed: Math.round(selfConsumed * 100) / 100,
-      exported: Math.round(exported * 100) / 100,
-      specificYield: Math.round(specificYield * 100) / 100,
-      performanceRatio: Math.round(performanceRatio * 1000) / 10,
-      treeEquivalent: Math.round(totalCo2Avoided / 21),
-      carKmAvoided: Math.round(totalCo2Avoided / 0.12),
-      emissionFactor,
-      capacityKwp: report.project.capacityKwp,
-    },
-    dailyData,
-    calculations: calcRuns.map((c) => ({
-      id: c.id,
-      type: c.runType,
-      status: c.status,
-      periodStart: c.periodStart,
-      periodEnd: c.periodEnd,
-      totalEnergyKwh: c.totalEnergyKwh,
-      totalCo2AvoidedKg: c.totalCo2AvoidedKg,
-      totalSavings: c.totalSavings,
-      performanceRatio: c.performanceRatio,
-      methodologyVersion: c.methodologyVersion,
-    })),
-    attestations: attestations.map((a) => ({
-      id: a.id,
-      status: a.status,
-      itemCount: a.itemCount,
-      hederaTransactionId: a.hederaTransactionId,
-      consensusTimestamp: a.consensusTimestamp,
-      batchHash: a.batchHash?.slice(0, 20) + '...',
-      confirmedAt: a.confirmedAt,
-    })),
-    suspectReasons: suspectReadings.slice(0, 10).map((r) => ({
-      measuredAt: r.measuredAt,
-      value: r.value,
-      reason: r.suspectReason,
-    })),
-  }
-}
+// generateReportData lives in @/lib/report-data — shared with the PDF route so both
+// always compute the exact same figures from the exact same logic.
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
@@ -200,7 +32,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       rows.push('# تقرير الأداء الشامل')
       rows.push(`# المشروع,${data.project.nameAr || data.project.name}`)
       rows.push(`# الرمز,${data.project.code}`)
-      rows.push(`# الفترة,${data.report.periodStart.toISOString().slice(0, 10)} إلى ${data.report.periodEnd.toISOString().slice(0, 10)}`)
+      rows.push(`# الفترة,${fmtReportDate(data.report.periodStart)} إلى ${fmtReportDate(data.report.periodEnd)}`)
       rows.push('')
       rows.push('# الملخص التنفيذي')
       rows.push('المؤشر,القيمة,الوحدة')
@@ -217,6 +49,39 @@ export async function GET(request: NextRequest, { params }: Params) {
       rows.push(`أشجار مكافئة,${data.summary.treeEquivalent},شجرة`)
       rows.push(`كم سيارة متجنّب,${data.summary.carKmAvoided},km`)
       rows.push('')
+      rows.push('# الحسابات البيئية الشاملة (Environmental KPI Catalog)')
+      rows.push('الفئة,المؤشر,القيمة,الوحدة')
+      const kpi = data.kpiCatalog
+      rows.push(`الطاقة,الطاقة المُولّدة,${kpi.energy.energyGenerated.toFixed(2)},kWh`)
+      rows.push(`الطاقة,الطاقة المُصدَّرة,${kpi.energy.energyExported.toFixed(2)},kWh`)
+      rows.push(`الطاقة,الاستهلاك الذاتي,${kpi.energy.selfConsumption.toFixed(2)},kWh`)
+      rows.push(`الطاقة,نسبة الطاقة المتجددة,${kpi.energy.renewableFraction.toFixed(1)},%`)
+      rows.push(`الكربون,CO2e متجنب,${kpi.carbon.co2Avoided.toFixed(2)},kg`)
+      rows.push(`الكربون,CO2e ممتص (تشجير),${kpi.carbon.co2Sequestered.toFixed(2)},kg`)
+      rows.push(`الكربون,كثافة الكربون,${kpi.carbon.carbonIntensity.toFixed(4)},kgCO2e/kWh`)
+      rows.push(`الكربون,معامل الانبعاث المُستخدم,${kpi.carbon.blendedEmissionFactor.toFixed(4)},kgCO2e/kWh`)
+      rows.push(`المياه,مياه موفّرة,${kpi.water.waterSaved.toFixed(2)},لتر`)
+      rows.push(`المياه,مياه مستهلكة (تنظيف الألواح),${kpi.water.waterConsumed.toFixed(2)},لتر`)
+      rows.push(`النفايات,نفايات مُحوّلة,${kpi.waste.wasteDiverted.toFixed(2)},kg`)
+      rows.push(`النفايات,نفايات مُعاد تدويرها,${kpi.waste.wasteRecycled.toFixed(2)},kg`)
+      if (kpi.afforestation.treesPlanted > 0) {
+        rows.push(`التشجير,أشجار مزروعة,${kpi.afforestation.treesPlanted},شجرة`)
+        rows.push(`التشجير,معدل البقاء,${(kpi.afforestation.survivalRate * 100).toFixed(1)},%`)
+        rows.push(`التشجير,الكتلة الحيوية,${kpi.afforestation.biomass.toFixed(2)},kg`)
+        rows.push(`التشجير,الكربون المخزن,${kpi.afforestation.carbonStock.toFixed(2)},kgCO2e`)
+        rows.push(`التنوع الحيوي,مساحة مُستعادة,${kpi.biodiversity.restoredArea.toFixed(2)},ha`)
+        rows.push(`التنوع الحيوي,مؤشر الموئل,${kpi.biodiversity.habitatIndex.toFixed(1)},/100`)
+      }
+      rows.push(`الاقتصاد,وفر تكاليف,${kpi.economy.costSavings.toFixed(2)},${kpi.economy.currency}`)
+      rows.push(`الاقتصاد,استثمار أخضر,${kpi.economy.greenInvestment.toFixed(2)},${kpi.economy.currency}`)
+      if (kpi.economy.costPerTCo2e !== null) rows.push(`الاقتصاد,تكلفة لكل طن CO2e,${kpi.economy.costPerTCo2e.toFixed(2)},${kpi.economy.currency}/tCO2e`)
+      rows.push(`جودة البيانات,الاكتمال,${kpi.dataQuality.completeness.toFixed(1)},%`)
+      rows.push(`جودة البيانات,الدقة,${kpi.dataQuality.accuracy.toFixed(1)},%`)
+      rows.push(`جودة البيانات,نسبة التحقق,${kpi.dataQuality.validationRate.toFixed(1)},%`)
+      rows.push(`التوثيق,بيانات موثقة على Hedera,${kpi.attestation.verifiedDataPercent.toFixed(1)},%`)
+      rows.push(`التوثيق,قابلية التتبع,${kpi.attestation.traceabilityPercent.toFixed(1)},%`)
+      rows.push(`التوثيق,عدد دفعات التوثيق المؤكدة,${kpi.attestation.attestationCount},دفعة`)
+      rows.push('')
       rows.push('# البيانات اليومية')
       rows.push('التاريخ,الطاقة (kWh),CO2 (kg),الوفر')
       for (const d of data.dailyData) {
@@ -224,9 +89,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       }
       rows.push('')
       rows.push('# التوثيقات على Hedera')
-      rows.push('الحالة,عدد العناصر,Transaction ID,Consensus Timestamp')
+      rows.push('الحالة,عدد العناصر,Transaction ID,Consensus Timestamp,رابط التحقق')
       for (const a of data.attestations) {
-        rows.push(`${a.status},${a.itemCount},${a.hederaTransactionId},${a.consensusTimestamp}`)
+        rows.push(`${a.status},${a.itemCount},${a.hederaTransactionId || '—'},${a.consensusTimestamp || '—'},${a.explorerUrl || '—'}`)
       }
 
       if (data.fundingAttribution && data.fundingAttribution.length > 0) {
@@ -270,7 +135,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 function generateHTMLReport(data: any, reportName: string): string {
   const fmt = (n: number) => n?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0'
-  const fmtDate = (d: Date) => new Date(d).toLocaleDateString('ar-SA')
+  const fmtDate = fmtReportDate
 
   // Generate SVG charts (energy trend, quality pie)
   const maxEnergy = Math.max(...data.dailyData.map((d: any) => d.energy), 1)
@@ -360,6 +225,65 @@ function generateHTMLReport(data: any, reportName: string): string {
       <div class="kpi-card">
         <div class="label">Performance Ratio</div>
         <div class="value">${data.summary.performanceRatio}</div>
+        <div class="unit">%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>🌍 الحسابات البيئية الشاملة (Environmental KPI Catalog)</h2>
+    <p style="font-size:11px;color:#64748b;margin:0 0 10px;">نفس فئات ومنهجية قسم "الحسابات" في المنصة، محسوبة لهذا المشروع وهذه الفترة تحديدًا.</p>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="label">الطاقة المُصدَّرة</div>
+        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.energyExported)}</div>
+        <div class="unit">kWh</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">الاستهلاك الذاتي</div>
+        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.selfConsumption)}</div>
+        <div class="unit">kWh</div>
+      </div>
+      <div class="kpi-card info">
+        <div class="label">كثافة الكربون</div>
+        <div class="value" style="font-size:16px;">${data.kpiCatalog.carbon.carbonIntensity.toFixed(3)}</div>
+        <div class="unit">kgCO₂e/kWh</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">مياه موفّرة</div>
+        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.water.waterSaved)}</div>
+        <div class="unit">لتر</div>
+      </div>
+      ${data.kpiCatalog.afforestation.treesPlanted > 0 ? `
+      <div class="kpi-card">
+        <div class="label">أشجار مزروعة</div>
+        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.afforestation.treesPlanted)}</div>
+        <div class="unit">شجرة</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">مساحة مُستعادة</div>
+        <div class="value" style="font-size:16px;">${data.kpiCatalog.biodiversity.restoredArea.toFixed(2)}</div>
+        <div class="unit">هكتار</div>
+      </div>
+      ` : ''}
+      <div class="kpi-card">
+        <div class="label">استثمار أخضر</div>
+        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.economy.greenInvestment)}</div>
+        <div class="unit">${data.kpiCatalog.economy.currency}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">تكلفة لكل طن CO₂e</div>
+        <div class="value" style="font-size:16px;">${data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(data.kpiCatalog.economy.costPerTCo2e) : '—'}</div>
+        <div class="unit">${data.kpiCatalog.economy.currency}/tCO₂e</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">اكتمال البيانات</div>
+        <div class="value" style="font-size:16px;">${data.kpiCatalog.dataQuality.completeness.toFixed(1)}</div>
+        <div class="unit">%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">بيانات موثقة على Hedera</div>
+        <div class="value" style="font-size:16px;">${data.kpiCatalog.attestation.verifiedDataPercent.toFixed(1)}</div>
         <div class="unit">%</div>
       </div>
     </div>
@@ -471,21 +395,32 @@ function generateHTMLReport(data: any, reportName: string): string {
   ${data.attestations.length > 0 ? `
   <div class="section">
     <h2>🔗 التوثيقات على Hedera</h2>
+    <p style="font-size:11px;color:#64748b;margin:0 0 10px;">شبكة Hedera: <b>${data.hederaNetwork}</b> — كل دفعة تمثّل تجزئة (hash) غير قابلة للتعديل لبيانات هذه الفترة، مسجّلة على سلسلة الكتل.</p>
     <table>
       <thead>
-        <tr><th>الحالة</th><th>عدد العناصر</th><th>Transaction ID</th><th>Consensus Timestamp</th></tr>
+        <tr><th>الحالة</th><th>الأهلية</th><th>عدد العناصر</th><th>Transaction ID</th><th>التحقق</th></tr>
       </thead>
       <tbody>
         ${data.attestations.map((a: any) => `
           <tr>
-            <td><span class="badge badge-success">${a.status}</span></td>
+            <td><span class="badge ${a.status === 'confirmed' ? 'badge-success' : a.status === 'failed' || a.status === 'mismatch' ? 'badge-danger' : 'badge-warn'}">${a.status}</span></td>
+            <td>${a.eligibilityStatus ? `<span class="badge ${a.eligibilityStatus === 'eligible' ? 'badge-success' : a.eligibilityStatus === 'ineligible' ? 'badge-danger' : 'badge-warn'}">${a.eligibilityStatus}</span>` : '—'}</td>
             <td>${a.itemCount}</td>
-            <td style="font-family: monospace; font-size: 10px;">${a.hederaTransactionId}</td>
-            <td style="font-family: monospace; font-size: 10px;">${a.consensusTimestamp}</td>
+            <td style="font-family: monospace; font-size: 10px;">${a.hederaTransactionId || '—'}</td>
+            <td>${a.explorerUrl ? `<a href="${a.explorerUrl}" style="color:#0891b2;">فتح في HashScan ↗</a>` : '—'}</td>
           </tr>
         `).join('')}
       </tbody>
     </table>
+    <div class="two-cols" style="margin-top:12px;">
+      ${data.attestations.filter((a: any) => a.qrCodeDataUrl).map((a: any) => `
+        <div style="text-align:center; padding:10px; background:#f8fafc; border-radius:8px;">
+          <img src="${a.qrCodeDataUrl}" width="120" height="120" alt="QR للتحقق من دفعة التوثيق" />
+          <p style="font-size:10px;color:#64748b;margin:6px 0 0;">امسح للتحقق المباشر على HashScan</p>
+          <p style="font-size:9px;color:#94a3b8;font-family:monospace;word-break:break-all;">Batch: ${a.batchHash?.slice(0, 24)}…</p>
+        </div>
+      `).join('')}
+    </div>
   </div>
   ` : ''}
 
@@ -511,8 +446,8 @@ function generateHTMLReport(data: any, reportName: string): string {
 
   <div class="footer">
     <p>© 2026 BrightFuture Energy Co. • منصة ESG للطاقة الشمسية</p>
-    <p>تقرير مُولّد آليًا في ${new Date().toLocaleString('ar-SA')} • GHG Protocol Scope 2 • Methodology v1.2</p>
-    <p>معامل الانبعاث: ${data.summary.emissionFactor} kgCO₂e/kWh (Saudi Electricity Company - 2024)</p>
+    <p>تقرير مُولّد آليًا في ${fmtReportDateTime(new Date())} • GHG Protocol Scope 2 • Methodology v1.2</p>
+    <p>معامل الانبعاث المُستخدم لهذه الفترة: ${data.summary.emissionFactor} kgCO₂e/kWh (بحسب دولة المشروع وتاريخ كل قراءة)</p>
   </div>
 </body>
 </html>`
