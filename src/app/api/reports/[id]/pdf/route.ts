@@ -3,153 +3,19 @@ import { spawn } from 'child_process'
 import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
-import { db } from '@/lib/db'
 import { requirePermission } from '@/lib/authorization'
-import { calculateFunderAttribution } from '@/lib/attribution'
+import { generateReportData, fmtReportDate, fmtReportDateTime } from '@/lib/report-data'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-// Generate report data (reused from download route)
-async function generateReportData(reportId: string) {
-  const report = await db.report.findUnique({
-    where: { id: reportId },
-    include: {
-      project: {
-        select: {
-          id: true, name: true, nameAr: true, code: true,
-          country: true, city: true, capacityKwp: true, currency: true,
-          tariffRetail: true, tariffFeedIn: true, sponsorName: true, sponsorPhone: true,
-          inverterSerial: true, inverterType: true, commissionedAt: true,
-          // Banking attribution (PCAF-aligned): active funders + their attribution
-          // share, used below to show each funder's attributable slice of this
-          // report's total avoided emissions alongside (never instead of) the
-          // project's own full figure.
-          funders: {
-            where: { isActive: true },
-            select: {
-              id: true, funderName: true, funderNameAr: true,
-              fundingAmount: true, projectTotalValue: true,
-              attributionShare: true, attributionMethod: true, currency: true, isActive: true,
-            },
-          },
-        },
-      },
-    },
-  })
-
-  if (!report) return null
-
-  const allReadings = await db.energyReading.findMany({
-    where: {
-      projectId: report.projectId,
-      measuredAt: { gte: report.periodStart, lte: report.periodEnd },
-    },
-    select: {
-      measuredAt: true, value: true, unit: true,
-      qualityStatus: true, validationStatus: true,
-      cumulativeValue: true, suspectReason: true,
-    },
-    orderBy: { measuredAt: 'asc' },
-  })
-
-  // Only verified/approved readings feed the actual calculations below (validated,
-  // approved, corrected). Suspect and rejected readings must never contribute to
-  // energy, CO2, savings, or any chart total — see the download route for the same rule.
-  const verifiedStatuses = ['validated', 'approved', 'corrected']
-  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
-
-  const calcRuns = await db.calculationRun.findMany({
-    where: {
-      projectId: report.projectId,
-      periodStart: { gte: report.periodStart },
-      periodEnd: { lte: report.periodEnd },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-
-  const attestations = await db.attestationBatch.findMany({
-    where: {
-      projectId: report.projectId,
-      createdAt: { gte: report.periodStart, lte: report.periodEnd },
-    },
-  })
-
-  const totalEnergy = readings.reduce((s, r) => s + r.value, 0)
-  const validReadings = allReadings.filter((r) => r.qualityStatus === 'validated' || r.qualityStatus === 'approved' || r.qualityStatus === 'corrected')
-  const suspectReadings = allReadings.filter((r) => r.qualityStatus === 'suspect')
-  const rejectedReadings = allReadings.filter((r) => r.qualityStatus === 'rejected')
-  const emissionFactor = 0.432
-  const totalCo2Avoided = totalEnergy * emissionFactor
-  const selfConsumed = totalEnergy * 0.7
-  const exported = totalEnergy * 0.3
-  const totalSavings = selfConsumed * (report.project.tariffRetail || 0.18) + exported * (report.project.tariffFeedIn || 0.10)
-  const specificYield = report.project.capacityKwp ? totalEnergy / report.project.capacityKwp : 0
-  const days = (report.periodEnd.getTime() - report.periodStart.getTime()) / (1000 * 60 * 60 * 24)
-  const referenceYield = days * 5.5
-  const performanceRatio = referenceYield > 0 && report.project.capacityKwp ? (totalEnergy / report.project.capacityKwp) / referenceYield : 0
-
-  const dailyData: { date: string; energy: number; co2: number; savings: number }[] = []
-  const dailyMap = new Map<string, number>()
-  for (const r of readings) {
-    const date = new Date(r.measuredAt).toISOString().slice(0, 10)
-    dailyMap.set(date, (dailyMap.get(date) || 0) + r.value)
-  }
-  for (const [date, energy] of dailyMap) {
-    dailyData.push({
-      date, energy: Math.round(energy * 100) / 100,
-      co2: Math.round(energy * emissionFactor * 100) / 100,
-      savings: Math.round(energy * (report.project.tariffRetail || 0.18) * 100) / 100,
-    })
-  }
-
-  // Banking attribution (PCAF-aligned): each active funder's attributable slice
-  // of THIS report's totalCo2Avoided. summary.totalCo2Avoided/totalCo2AvoidedTons
-  // above always remain the project's own full (100%) figure for the period —
-  // this is a derived, display-only breakdown shown alongside them, never in
-  // place of them, so a reader can never mistake a bank's share for the whole.
-  const fundingAttribution = calculateFunderAttribution(totalCo2Avoided, report.project.funders, totalEnergy)
-
-  return {
-    report, project: report.project,
-    summary: {
-      periodStart: report.periodStart, periodEnd: report.periodEnd,
-      totalReadings: allReadings.length, validReadings: validReadings.length,
-      suspectReadings: suspectReadings.length, rejectedReadings: rejectedReadings.length,
-      includedInCalculations: readings.length,
-      dataQualityRate: allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0,
-      totalEnergy: Math.round(totalEnergy * 100) / 100,
-      totalCo2Avoided: Math.round(totalCo2Avoided * 100) / 100,
-      totalCo2AvoidedTons: Math.round((totalCo2Avoided / 1000) * 100) / 100,
-      totalSavings: Math.round(totalSavings * 100) / 100,
-      selfConsumed: Math.round(selfConsumed * 100) / 100,
-      exported: Math.round(exported * 100) / 100,
-      specificYield: Math.round(specificYield * 100) / 100,
-      performanceRatio: Math.round(performanceRatio * 1000) / 10,
-      treeEquivalent: Math.round(totalCo2Avoided / 21),
-      carKmAvoided: Math.round(totalCo2Avoided / 0.12),
-      emissionFactor, capacityKwp: report.project.capacityKwp,
-    },
-    fundingAttribution,
-    dailyData,
-    calculations: calcRuns,
-    attestations: attestations.map((a) => ({
-      id: a.id, status: a.status, itemCount: a.itemCount,
-      hederaTransactionId: a.hederaTransactionId,
-      consensusTimestamp: a.consensusTimestamp,
-      batchHash: a.batchHash?.slice(0, 20) + '...',
-      confirmedAt: a.confirmedAt,
-    })),
-    suspectReasons: suspectReadings.slice(0, 10).map((r) => ({
-      measuredAt: r.measuredAt, value: r.value, reason: r.suspectReason,
-    })),
-  }
-}
+// generateReportData lives in @/lib/report-data — shared with the download route so both
+// always compute the exact same figures (dates, KPI catalog, attestations) from the same logic.
 
 function generateHTMLReport(data: any, reportName: string): string {
   const fmt = (n: number) => n?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0'
-  const fmtDate = (d: Date) => new Date(d).toLocaleDateString('ar-SA')
+  const fmtDate = fmtReportDate
 
   const maxEnergy = Math.max(...data.dailyData.map((d: any) => d.energy), 1)
   const chartWidth = 580
@@ -223,6 +89,25 @@ function generateHTMLReport(data: any, reportName: string): string {
       <div class="kpi-card info"><div class="label">الكربون المتجنب</div><div class="value">${fmt(data.summary.totalCo2AvoidedTons)}</div><div class="unit">طن CO₂e</div></div>
       <div class="kpi-card"><div class="label">الوفر المالي</div><div class="value">${fmt(data.summary.totalSavings)}</div><div class="unit">${data.project.currency}</div></div>
       <div class="kpi-card"><div class="label">Performance Ratio</div><div class="value">${data.summary.performanceRatio}</div><div class="unit">%</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>الحسابات البيئية الشاملة (Environmental KPI Catalog)</h2>
+    <p style="font-size:10px;color:#64748b;margin:0 0 10px;">نفس فئات ومنهجية قسم "الحسابات" في المنصة، محسوبة لهذا المشروع وهذه الفترة تحديدًا.</p>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="label">الطاقة المُصدَّرة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.energyExported)}</div><div class="unit">kWh</div></div>
+      <div class="kpi-card"><div class="label">الاستهلاك الذاتي</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.selfConsumption)}</div><div class="unit">kWh</div></div>
+      <div class="kpi-card info"><div class="label">كثافة الكربون</div><div class="value" style="font-size:16px;">${data.kpiCatalog.carbon.carbonIntensity.toFixed(3)}</div><div class="unit">kgCO₂e/kWh</div></div>
+      <div class="kpi-card"><div class="label">مياه موفّرة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.water.waterSaved)}</div><div class="unit">لتر</div></div>
+      ${data.kpiCatalog.afforestation.treesPlanted > 0 ? `
+      <div class="kpi-card"><div class="label">أشجار مزروعة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.afforestation.treesPlanted)}</div><div class="unit">شجرة</div></div>
+      <div class="kpi-card"><div class="label">مساحة مُستعادة</div><div class="value" style="font-size:16px;">${data.kpiCatalog.biodiversity.restoredArea.toFixed(2)}</div><div class="unit">هكتار</div></div>
+      ` : ''}
+      <div class="kpi-card"><div class="label">استثمار أخضر</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.economy.greenInvestment)}</div><div class="unit">${data.kpiCatalog.economy.currency}</div></div>
+      <div class="kpi-card"><div class="label">تكلفة لكل طن CO₂e</div><div class="value" style="font-size:16px;">${data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(data.kpiCatalog.economy.costPerTCo2e) : '—'}</div><div class="unit">${data.kpiCatalog.economy.currency}/tCO₂e</div></div>
+      <div class="kpi-card"><div class="label">اكتمال البيانات</div><div class="value" style="font-size:16px;">${data.kpiCatalog.dataQuality.completeness.toFixed(1)}</div><div class="unit">%</div></div>
+      <div class="kpi-card"><div class="label">بيانات موثقة على Hedera</div><div class="value" style="font-size:16px;">${data.kpiCatalog.attestation.verifiedDataPercent.toFixed(1)}</div><div class="unit">%</div></div>
     </div>
   </div>
 
@@ -318,12 +203,27 @@ function generateHTMLReport(data: any, reportName: string): string {
   ${data.attestations.length > 0 ? `
   <div class="section">
     <h2>التوثيقات على Hedera</h2>
+    <p style="font-size:10px;color:#64748b;margin:0 0 10px;">شبكة Hedera: <b>${data.hederaNetwork}</b> — كل دفعة تمثّل تجزئة (hash) غير قابلة للتعديل لبيانات هذه الفترة، مسجّلة على سلسلة الكتل.</p>
     <table>
-      <thead><tr><th>الحالة</th><th>عدد العناصر</th><th>Transaction ID</th><th>Consensus Timestamp</th></tr></thead>
+      <thead><tr><th>الحالة</th><th>الأهلية</th><th>عدد العناصر</th><th>Transaction ID</th><th>التحقق</th></tr></thead>
       <tbody>
-        ${data.attestations.map((a: any) => `<tr><td><span class="badge badge-success">${a.status}</span></td><td>${a.itemCount}</td><td style="font-family: monospace; font-size: 9px;">${a.hederaTransactionId}</td><td style="font-family: monospace; font-size: 9px;">${a.consensusTimestamp}</td></tr>`).join('')}
+        ${data.attestations.map((a: any) => `<tr>
+          <td><span class="badge ${a.status === 'confirmed' ? 'badge-success' : a.status === 'failed' || a.status === 'mismatch' ? 'badge-danger' : 'badge-warn'}">${a.status}</span></td>
+          <td>${a.eligibilityStatus ? `<span class="badge ${a.eligibilityStatus === 'eligible' ? 'badge-success' : a.eligibilityStatus === 'ineligible' ? 'badge-danger' : 'badge-warn'}">${a.eligibilityStatus}</span>` : '—'}</td>
+          <td>${a.itemCount}</td>
+          <td style="font-family: monospace; font-size: 9px;">${a.hederaTransactionId || '—'}</td>
+          <td>${a.explorerUrl ? `<a href="${a.explorerUrl}" style="color:#0891b2;">HashScan ↗</a>` : '—'}</td>
+        </tr>`).join('')}
       </tbody>
     </table>
+    <div class="two-cols" style="margin-top:10px;">
+      ${data.attestations.filter((a: any) => a.qrCodeDataUrl).map((a: any) => `
+        <div style="text-align:center; padding:8px; background:#f8fafc; border-radius:8px;">
+          <img src="${a.qrCodeDataUrl}" width="100" height="100" alt="QR للتحقق" />
+          <p style="font-size:9px;color:#64748b;margin:4px 0 0;">امسح للتحقق المباشر على HashScan</p>
+        </div>
+      `).join('')}
+    </div>
   </div>
   ` : ''}
 
@@ -341,8 +241,8 @@ function generateHTMLReport(data: any, reportName: string): string {
 
   <div class="footer">
     <p>© 2026 BrightFuture Energy Co. • منصة ESG للطاقة الشمسية</p>
-    <p>تقرير مُولّد آليًا في ${new Date().toLocaleString('ar-SA')} • GHG Protocol Scope 2 • Methodology v1.2</p>
-    <p>معامل الانبعاث: ${data.summary.emissionFactor} kgCO₂e/kWh (Saudi Electricity Company - 2024)</p>
+    <p>تقرير مُولّد آليًا في ${fmtReportDateTime(new Date())} • GHG Protocol Scope 2 • Methodology v1.2</p>
+    <p>معامل الانبعاث المُستخدم لهذه الفترة: ${data.summary.emissionFactor} kgCO₂e/kWh (بحسب دولة المشروع وتاريخ كل قراءة)</p>
   </div>
 </body>
 </html>`
@@ -369,7 +269,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     // If no readings, return friendly HTML explaining empty data
     if (!data.dailyData || data.dailyData.length === 0 || (data.summary && data.summary.totalReadings === 0)) {
-      const msgHtml = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${reportName}</title></head><body><div style="font-family:Arial,Helvetica,sans-serif;padding:30px;text-align:center;"><h2>لا توجد بيانات للتقرير في الفترة المحددة</h2><p>لا توجد قراءات للطاقة ضمن الفترة ${new Date(data.report.periodStart).toLocaleDateString('ar-SA')} إلى ${new Date(data.report.periodEnd).toLocaleDateString('ar-SA')}.</p></div></body></html>`
+      const msgHtml = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${reportName}</title></head><body><div style="font-family:Arial,Helvetica,sans-serif;padding:30px;text-align:center;"><h2>لا توجد بيانات للتقرير في الفترة المحددة</h2><p>لا توجد قراءات للطاقة ضمن الفترة ${fmtReportDate(data.report.periodStart)} إلى ${fmtReportDate(data.report.periodEnd)}.</p></div></body></html>`
       return new NextResponse(msgHtml, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
