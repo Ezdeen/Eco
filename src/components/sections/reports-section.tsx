@@ -331,6 +331,10 @@ export function ReportsSection() {
   }
 
   const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  // 'ar-SA' defaults to the Hijri (Umm al-Qura) calendar in JS's Intl — '-u-ca-gregory'
+  // pins the calendar to Gregorian explicitly, matching the same fix applied to the
+  // downloaded PDF/CSV/HTML reports (see lib/report-data.ts).
+  const fmtDate = (d: string | Date) => new Date(d).toLocaleDateString('en-GB-u-ca-gregory', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
   return (
     <div className="space-y-4">
@@ -493,7 +497,7 @@ export function ReportsSection() {
                 <div className="p-2 rounded-lg bg-muted/40">
                   <p className="text-muted-foreground">الفترة</p>
                   <p className="font-medium tabular-nums">
-                    {new Date(r.periodStart).toLocaleDateString('ar-SA')} → {new Date(r.periodEnd).toLocaleDateString('ar-SA')}
+                    {fmtDate(r.periodStart)} → {fmtDate(r.periodEnd)}
                   </p>
                 </div>
                 <div className="p-2 rounded-lg bg-muted/40">
@@ -505,7 +509,7 @@ export function ReportsSection() {
               <div className="flex items-center justify-between pt-2 border-t">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
-                  {new Date(r.createdAt).toLocaleDateString('ar-SA')}
+                  {fmtDate(r.createdAt)}
                   <Badge variant="outline" className="text-xs">v{r.version}</Badge>
                 </div>
               </div>
@@ -627,7 +631,7 @@ export function ReportsSection() {
               <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
                 <h3 className="font-cairo text-xl font-bold">{previewReport.data.project.nameAr || previewReport.data.project.name}</h3>
                 <p className="text-sm opacity-90 mt-1">
-                  {previewReport.data.project.code} • {previewReport.data.project.city} • الفترة: {new Date(previewReport.data.summary.periodStart).toLocaleDateString('ar-SA')} → {new Date(previewReport.data.summary.periodEnd).toLocaleDateString('ar-SA')}
+                  {previewReport.data.project.code} • {previewReport.data.project.city} • الفترة: {fmtDate(previewReport.data.summary.periodStart)} → {fmtDate(previewReport.data.summary.periodEnd)}
                 </p>
               </div>
 
@@ -716,6 +720,95 @@ export function ReportsSection() {
                   </div>
                 </div>
               </Card>
+
+              {/* Full environmental KPI catalog — same categories as the Calculations section */}
+              {previewReport.data.kpiCatalog && (
+                <Card className="p-4">
+                  <p className="text-sm font-semibold mb-1">الحسابات البيئية الشاملة</p>
+                  <p className="text-[10px] text-muted-foreground mb-3">نفس فئات ومنهجية قسم "الحسابات"، محسوبة لهذا المشروع وهذه الفترة.</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">طاقة مُصدَّرة</p>
+                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.energy.energyExported)} kWh</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">استهلاك ذاتي</p>
+                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.energy.selfConsumption)} kWh</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">كثافة الكربون</p>
+                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.carbon.carbonIntensity.toFixed(3)} kgCO₂e/kWh</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">مياه موفّرة</p>
+                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.water.waterSaved)} لتر</p>
+                    </div>
+                    {previewReport.data.kpiCatalog.afforestation.treesPlanted > 0 && (
+                      <>
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <p className="text-muted-foreground">أشجار مزروعة</p>
+                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.afforestation.treesPlanted)}</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <p className="text-muted-foreground">مساحة مُستعادة</p>
+                          <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.biodiversity.restoredArea.toFixed(2)} ha</p>
+                        </div>
+                      </>
+                    )}
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">استثمار أخضر</p>
+                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.economy.greenInvestment)} {previewReport.data.kpiCatalog.economy.currency}</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">تكلفة/طن CO₂e</p>
+                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(previewReport.data.kpiCatalog.economy.costPerTCo2e) : '—'}</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <p className="text-muted-foreground">اكتمال البيانات</p>
+                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.dataQuality.completeness.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* Hedera attestation / verification */}
+              {previewReport.data.attestations && previewReport.data.attestations.length > 0 && (
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-semibold">التوثيق على Hedera</p>
+                    <Badge variant="outline" className="text-[10px]">{previewReport.data.hederaNetwork}</Badge>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mb-3">
+                    كل دفعة تمثّل تجزئة (hash) غير قابلة للتعديل لبيانات هذه الفترة، مسجّلة على سلسلة الكتل.
+                  </p>
+                  <div className="space-y-2">
+                    {previewReport.data.attestations.map((a: any) => (
+                      <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg border">
+                        {a.qrCodeDataUrl && (
+                          <img src={a.qrCodeDataUrl} alt="QR للتحقق" className="w-14 h-14 rounded shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0 text-xs">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge className={a.status === 'confirmed' ? 'bg-emerald-600' : a.status === 'failed' || a.status === 'mismatch' ? 'bg-red-600' : 'bg-amber-600'}>
+                              {a.status}
+                            </Badge>
+                            {a.eligibilityStatus && (
+                              <Badge variant="outline" className="text-[10px]">{a.eligibilityStatus}</Badge>
+                            )}
+                            <span className="text-muted-foreground">{a.itemCount} عنصر</span>
+                          </div>
+                          <p className="font-mono text-[10px] truncate text-muted-foreground">{a.hederaTransactionId || '—'}</p>
+                          {a.explorerUrl && (
+                            <a href={a.explorerUrl} target="_blank" rel="noreferrer" className="text-cyan-600 hover:underline text-[11px] inline-flex items-center gap-1 mt-1">
+                              فتح في HashScan ↗
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
 
               {/* Project info */}
               <Card className="p-4">
