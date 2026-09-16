@@ -21,7 +21,7 @@ const DEMO_ACCOUNTS = [
   {
     email: 'admin@bfec.sa',
     password: 'Admin@123456',
-    role: 'مدير المؤسسة',
+    role: 'organizationAdmin',
     icon: '👨‍💼',
     ring: 'ring-emerald-200 dark:ring-emerald-800',
     chip: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300',
@@ -29,12 +29,12 @@ const DEMO_ACCOUNTS = [
   {
     email: 'project@bfec.sa',
     password: 'Project@123456',
-    role: 'مدير المشروع',
+    role: 'projectManager',
     icon: '📋',
     ring: 'ring-violet-200 dark:ring-violet-800',
     chip: 'bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300',
   },
-]
+] as const
 
 export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSectionProps) {
   const [email, setEmail] = useState('')
@@ -112,23 +112,23 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
         {/* Left: Branding */}
         <div className="hidden lg:flex flex-col gap-6 p-8">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="شعار المنصة" className="h-14 w-14 rounded-2xl shrink-0 object-contain shadow-lg ring-1 ring-black/5" />
+            <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-14 w-14 rounded-2xl shrink-0 object-contain shadow-lg ring-1 ring-black/5" />
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">Eco Ledger</h1>
-              <p className="text-sm text-muted-foreground">منصة dMRV للمنشآت الصغيرة والمتوسطة</p>
+              <p className="text-sm text-muted-foreground">{loginCopy[locale].platformDescription}</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <h2 className="font-cairo text-3xl font-bold leading-tight text-foreground">
-              قِس أثر منشأتك البيئي
+              {loginCopy[locale].headline}
               <br />
               <span className="bg-gradient-to-l from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                وافتح باب التمويل الأخضر
+                {loginCopy[locale].headlineHighlight}
               </span>
             </h2>
             <p className="text-muted-foreground leading-relaxed">
-              منصة SaaS متعددة المؤسسات تساعد المنشآت الصغيرة والمتوسطة على قياس أثرها البيئي وإصدار تقارير استدامة ESG موثوقة، بدعم توثيق Hedera وحسابات الكربون المتجنب وفق GHG Protocol.
+              {loginCopy[locale].description}
             </p>
           </div>
 
@@ -137,22 +137,22 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/70 text-emerald-600 dark:text-emerald-400 mb-2">
                 <Zap className="h-4 w-4" />
               </div>
-              <p className="text-sm font-semibold text-foreground">بيانات موثّقة</p>
-              <p className="text-xs text-muted-foreground">قياس بيئي في الوقت الفعلي</p>
+              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].verifiedData}</p>
+              <p className="text-xs text-muted-foreground">{loginCopy[locale].realTimeMeasurement}</p>
             </div>
             <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/70 text-teal-600 dark:text-teal-400 mb-2">
                 <Leaf className="h-4 w-4" />
               </div>
-              <p className="text-sm font-semibold text-foreground">كربون متجنب</p>
-              <p className="text-xs text-muted-foreground">وفق GHG Protocol</p>
+              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].avoidedCarbon}</p>
+              <p className="text-xs text-muted-foreground">{loginCopy[locale].ghgProtocol}</p>
             </div>
             <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/70 text-blue-600 dark:text-blue-400 mb-2">
                 <ShieldCheck className="h-4 w-4" />
               </div>
-              <p className="text-sm font-semibold text-foreground">توثيق Hedera</p>
-              <p className="text-xs text-muted-foreground">سجل غير قابل للتعديل</p>
+              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].hederaAttestation}</p>
+              <p className="text-xs text-muted-foreground">{loginCopy[locale].immutableRecord}</p>
             </div>
           </div>
 
@@ -176,7 +176,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
         <Card className="w-full shadow-2xl shadow-emerald-950/5 border-border/60 backdrop-blur">
           <CardHeader className="space-y-3 pb-4">
             <div className="flex items-center gap-3 lg:hidden">
-              <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
+              <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-11 w-11 rounded-xl shrink-0 object-contain" />
               <div>
                 <CardTitle className="text-lg">Eco Ledger</CardTitle>
                 <CardDescription className="text-xs">{loginCopy[locale].platformDescription}</CardDescription>
@@ -290,7 +290,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
             <div className="relative my-5">
               <Separator />
               <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-                حسابات تجريبية
+                {loginCopy[locale].demoAccounts}
               </span>
             </div>
 
@@ -300,13 +300,13 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                   key={acc.email}
                   type="button"
                   onClick={() => fillDemo(acc)}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg border bg-card hover:bg-muted/50 hover:ring-2 ${acc.ring} transition-all text-right group`}
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border bg-card hover:bg-muted/50 hover:ring-2 ${acc.ring} transition-all text-start group`}
                 >
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${acc.chip}`}>
                     {acc.icon}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate text-foreground">{acc.role}</p>
+                    <p className="text-xs font-medium truncate text-foreground">{loginCopy[locale][acc.role]}</p>
                     <p className="text-[10px] text-muted-foreground truncate" dir="ltr">{acc.email}</p>
                   </div>
                 </button>
@@ -314,14 +314,14 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
             </div>
 
             <p className="text-[10px] text-muted-foreground text-center mt-3">
-              اضغط على حساب لتعبئة البيانات تلقائيًا
+              {loginCopy[locale].demoHint}
             </p>
           </CardContent>
         </Card>
       </div>
 
       <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-muted-foreground">
-        © 2026 Eco Ledger • منصة dMRV للمنشآت الصغيرة والمتوسطة
+        © 2026 Eco Ledger • {loginCopy[locale].platformDescription}
       </div>
     </div>
   )
