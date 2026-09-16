@@ -1,6 +1,7 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
+  "name": "eco-ledger",
   "version": "0.2.0",
+  "description": "Eco Ledger — منصة dMRV رقمية تساعد المنشآت الصغيرة والمتوسطة على قياس أثرها البيئي وإصدار تقارير استدامة ESG موثوقة، لتسهيل وصولها إلى التمويل الأخضر من القطاع المصرفي.",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
