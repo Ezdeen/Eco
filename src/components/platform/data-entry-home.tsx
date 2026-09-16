@@ -42,7 +42,7 @@ export function DataEntryHome({ user, onLogout }: DataEntryHomeProps) {
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="شعار المنصة" className="h-9 w-9 rounded-lg object-contain" />
             <div>
-              <p className="text-sm font-semibold">منصة ESG الشمسية</p>
+              <p className="text-sm font-semibold">منصة ESG</p>
               <p className="text-xs text-muted-foreground">مدخل بيانات</p>
             </div>
           </div>
