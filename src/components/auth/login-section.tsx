@@ -81,7 +81,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
     }
   }
 
-  const fillDemo = (account: typeof DEMO_ACCOUNTS[0]) => {
+  const fillDemo = (account: (typeof DEMO_ACCOUNTS)[number]) => {
     setEmail(account.email)
     setPassword(account.password)
     setError('')
