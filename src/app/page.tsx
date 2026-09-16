@@ -155,10 +155,9 @@ export default function Home() {
     return <DataEntryHome user={user} onLogout={handleLogout} locale={locale} onLocaleChange={setLocale} />
   }
 
-  // Keep the shell renderable if a stale client value is ever passed during an
-  // update. The navigation state is typed, but browser state can outlive a
-  // deployed bundle.
-  const meta = SECTION_META[section]?.[locale] ?? SECTION_META.dashboard[defaultLocale]
+  const meta = SECTION_META[section] ?? SECTION_META.dashboard
+  const title = meta.title[locale] ?? meta.title[defaultLocale]
+  const subtitle = meta.subtitle[locale] ?? meta.subtitle[defaultLocale]
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -175,8 +174,8 @@ export default function Home() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <Header
-          title={meta.title}
-          subtitle={meta.subtitle}
+          title={title}
+          subtitle={subtitle}
           unreadNotifications={unread}
           lastUpdated={lastUpdated}
           locale={locale}
