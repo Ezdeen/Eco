@@ -17,19 +17,22 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
-  title: "منصة ESG للطاقة الشمسية | BrightFuture Energy",
+  title: "Eco Ledger | منصة dMRV لقياس الأثر البيئي وتقارير ESG",
   description:
-    "منصة SaaS ذكية متعددة المؤسسات لقياس الأثر البيئي والاستدامة لمشاريع الطاقة الشمسية، بدعم توثيق Hedera وحسابات الكربون المتجنب وفق GHG Protocol.",
+    "Eco Ledger منصة dMRV رقمية تساعد المنشآت الصغيرة والمتوسطة على قياس أثرها البيئي وإصدار تقارير استدامة ESG موثوقة، بدعم توثيق Hedera وحسابات الكربون وفق GHG Protocol، لتسهيل وصولها إلى التمويل الأخضر من القطاع المصرفي.",
   keywords: [
     "ESG",
-    "الطاقة الشمسية",
+    "dMRV",
+    "الأثر البيئي",
+    "الاستدامة",
+    "التمويل الأخضر",
+    "المنشآت الصغيرة والمتوسطة",
     "الكربون المتجنب",
     "Hedera",
     "GHG Protocol",
-    "الاستدامة",
     "SaaS",
   ],
-  authors: [{ name: "BrightFuture Energy Co." }],
+  authors: [{ name: "Eco Ledger" }],
   icons: {
     icon: "/logo.svg",
     apple: "/logo.svg",
