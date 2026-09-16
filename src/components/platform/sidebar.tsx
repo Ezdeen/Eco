@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
+import { appCopy, type Locale } from '@/lib/i18n'
 
 export type Section =
   | 'dashboard'
@@ -79,12 +80,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'settings', label: 'الإعدادات', labelEn: 'Settings', icon: Settings, group: 'system' },
 ]
 
-const GROUP_LABELS: Record<string, string> = {
-  main: 'الرئيسية',
-  data: 'البيانات والمراقبة',
-  attestation: 'التوثيق والتحقق',
-  output: 'المخرجات',
-  system: 'النظام',
+const GROUP_LABELS: Record<string, Record<Locale, string>> = {
+  main: { ar: 'الرئيسية', en: 'Main' },
+  data: { ar: 'البيانات والمراقبة', en: 'Data & Monitoring' },
+  attestation: { ar: 'التوثيق والتحقق', en: 'Verification' },
+  output: { ar: 'المخرجات', en: 'Outputs' },
+  system: { ar: 'النظام', en: 'System' },
 }
 
 interface SidebarProps {
@@ -94,9 +95,11 @@ interface SidebarProps {
   openCases?: number
   user?: { name?: string; email?: string; role?: string; nameAr?: string } | null
   onLogout?: () => void
+  locale: Locale
+  onLocaleChange: (next: Locale) => void
 }
 
-export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCases = 0, user, onLogout }: SidebarProps) {
+export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCases = 0, user, onLogout, locale, onLocaleChange }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
@@ -165,8 +168,17 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
         <div className="flex items-center gap-3 p-5 border-b border-sidebar-border">
           <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
           <div className="flex-1 min-w-0">
-            <h1 className="font-cairo text-base font-bold leading-tight truncate">منصة ESG</h1>
-            <p className="text-xs text-muted-foreground truncate">Eco Ledger</p>
+            <h1 className="font-cairo text-base font-bold leading-tight truncate">{appCopy[locale].appName}</h1>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground truncate">Eco Ledger</p>
+              <button
+                type="button"
+                onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}
+                className="rounded-md border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted"
+              >
+                {locale === 'ar' ? 'EN' : 'AR'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -174,7 +186,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
           {Object.entries(grouped).map(([group, items]) => (
             <div key={group}>
               <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {GROUP_LABELS[group]}
+                {GROUP_LABELS[group][locale]}
               </p>
               <div className="space-y-1">
                 {items.map((item) => {
@@ -186,6 +198,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
                       : item.id === 'monitoring' && openCases > 0
                         ? openCases
                         : undefined
+                  const label = locale === 'ar' ? item.label : item.labelEn
                   return (
                     <button
                       key={item.id}
@@ -199,7 +212,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span className="flex-1 text-right truncate">{item.label}</span>
+                      <span className="flex-1 text-right truncate">{label}</span>
                       {badge !== undefined && (
                         <Badge
                           variant={active ? 'secondary' : 'destructive'}
@@ -228,7 +241,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              title="تسجيل الخروج"
+              title={appCopy[locale].logout}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
             >
               <LogOut className="h-4 w-4" />
