@@ -166,7 +166,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
           <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
           <div className="flex-1 min-w-0">
             <h1 className="font-cairo text-base font-bold leading-tight truncate">منصة ESG الشمسية</h1>
-            <p className="text-xs text-muted-foreground truncate">BrightFuture Energy</p>
+            <p className="text-xs text-muted-foreground truncate">Eco Ledger</p>
           </div>
         </div>
 
