@@ -23,7 +23,7 @@ import { UserManagementSection } from '@/components/sections/user-management-sec
 import { IntegrationsSection } from '@/components/sections/integrations-section'
 import { SettingsSection } from '@/components/sections/settings-section'
 import { DataEntryHome } from '@/components/platform/data-entry-home'
-import { Loader2, Sun, Shield } from 'lucide-react'
+import { Loader2, Shield } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { appCopy, defaultLocale, type Locale } from '@/lib/i18n'
 
@@ -201,7 +201,7 @@ export default function Home() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <Shield className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                <p className="text-muted-foreground">هذا القسم متاح فقط لمدير المؤسسة</p>
+                <p className="text-muted-foreground">{appCopy[locale].accessDenied}</p>
               </CardContent>
             </Card>
           )}
@@ -214,7 +214,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <span>© 2026 Eco Ledger</span>
               <span>•</span>
-              <span>{locale === 'ar' ? 'منصة dMRV للمنشآت الصغيرة والمتوسطة' : 'dMRV platform for SMEs'}</span>
+              <span>{appCopy[locale].platformDescription}</span>
             </div>
             <div className="flex items-center gap-3">
               <span>{appCopy[locale].user} {user?.name || user?.email}</span>

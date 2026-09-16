@@ -26,10 +26,10 @@ export function DataEntryHome({ user, onLogout, locale, onLocaleChange }: DataEn
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
-      toast.success('تم تسجيل الخروج بنجاح')
+      toast.success(appCopy[locale].logoutSuccess)
       onLogout()
     } catch {
-      toast.error('فشل تسجيل الخروج')
+      toast.error(appCopy[locale].logoutError)
     }
   }
 
@@ -53,11 +53,15 @@ export function DataEntryHome({ user, onLogout, locale, onLocaleChange }: DataEn
             {locale === 'ar' ? 'EN' : 'AR'}
           </Button>
           <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium">{user?.nameAr || user?.name || 'مستخدم'}</p>
+            <div className="text-start hidden sm:block">
+              <p className="text-sm font-medium">
+                {locale === 'ar'
+                  ? user?.nameAr || user?.name || appCopy.ar.userLabel
+                  : user?.name || user?.nameAr || appCopy.en.userLabel}
+              </p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} title="تسجيل الخروج">
+            <Button variant="ghost" size="icon" onClick={handleLogout} title={appCopy[locale].logout}>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -72,15 +76,14 @@ export function DataEntryHome({ user, onLogout, locale, onLocaleChange }: DataEn
                 <PlusCircle className="h-7 w-7 text-primary" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold">إنشاء مشروع جديد</h2>
+                <h2 className="text-lg font-semibold">{appCopy[locale].createProject}</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  صلاحية حسابك تقتصر على إدخال بيانات مشروع جديد فقط. لا يمكنك الوصول
-                  لأقسام أخرى بالمنصة.
+                  {appCopy[locale].dataEntryDescription}
                 </p>
               </div>
-              <Button size="lg" className="w-full" onClick={() => setModalOpen(true)}>
-                <PlusCircle className="h-4 w-4 ml-2" />
-                إنشاء مشروع جديد
+              <Button size="lg" className="w-full gap-2" onClick={() => setModalOpen(true)}>
+                <PlusCircle className="h-4 w-4" />
+                {appCopy[locale].createProject}
               </Button>
             </CardContent>
           </Card>
@@ -90,7 +93,7 @@ export function DataEntryHome({ user, onLogout, locale, onLocaleChange }: DataEn
               <CardContent className="p-4 flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
                 <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                  تم إنشاء المشروع بنجاح
+                  {appCopy[locale].projectCreated}
                 </p>
               </CardContent>
             </Card>

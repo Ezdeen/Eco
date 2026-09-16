@@ -14,7 +14,6 @@ import {
   Bell,
   ScrollText,
   Settings,
-  Sun,
   Menu,
   X,
   LogOut,
@@ -107,10 +106,10 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
     setLoggingOut(true)
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
-      toast.success('تم تسجيل الخروج بنجاح')
+      toast.success(appCopy[locale].logoutSuccess)
       onLogout?.()
     } catch {
-      toast.error('فشل تسجيل الخروج')
+      toast.error(appCopy[locale].logoutError)
     } finally {
       setLoggingOut(false)
     }
@@ -212,7 +211,7 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span className="flex-1 text-right truncate">{label}</span>
+                      <span className="flex-1 text-start truncate">{label}</span>
                       {badge !== undefined && (
                         <Badge
                           variant={active ? 'secondary' : 'destructive'}
@@ -235,7 +234,11 @@ export function Sidebar({ current, onNavigate, unreadNotifications = 0, openCase
               {(user?.nameAr || user?.name || user?.email || '؟').charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.nameAr || user?.name || 'مستخدم'}</p>
+              <p className="text-sm font-medium truncate">
+                {locale === 'ar'
+                  ? user?.nameAr || user?.name || appCopy.ar.userLabel
+                  : user?.name || user?.nameAr || appCopy.en.userLabel}
+              </p>
               <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
             </div>
             <button
