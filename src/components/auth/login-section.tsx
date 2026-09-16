@@ -7,11 +7,14 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Sun, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle } from 'lucide-react'
+import { Globe, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { appCopy, loginCopy, type Locale } from '@/lib/i18n'
 
 interface LoginSectionProps {
   onLoginSuccess: (user: any) => void
+  locale: Locale
+  onLocaleChange: (next: Locale) => void
 }
 
 const DEMO_ACCOUNTS = [
@@ -33,7 +36,7 @@ const DEMO_ACCOUNTS = [
   },
 ]
 
-export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
+export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSectionProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -50,7 +53,7 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
     setTouched({ email: true, password: true })
 
     if (!email || !password) {
-      setError('يرجى إدخال البريد الإلكتروني وكلمة المرور')
+      setError(loginCopy[locale].enterCredentials)
       return
     }
 
@@ -65,14 +68,14 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'فشل تسجيل الدخول')
+        setError(data.error || loginCopy[locale].loginFailed)
         return
       }
 
-      toast.success(`أهلاً ${data.user.name}! تم تسجيل الدخول بنجاح`)
+      toast.success(loginCopy[locale].loginSuccess.replace('{name}', data.user.name))
       onLoginSuccess(data.user)
     } catch (err) {
-      setError('حدث خطأ في الاتصال، يرجى المحاولة مرة أخرى')
+      setError(loginCopy[locale].connectionError)
     } finally {
       setLoading(false)
     }
@@ -87,6 +90,17 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
 
   return (
     <div className="min-h-screen relative flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 via-background to-teal-50 dark:from-emerald-950/30 dark:via-background dark:to-teal-950/20">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="absolute top-4 end-4 z-10 gap-2"
+        onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}
+        title={appCopy[locale].language}
+      >
+        <Globe className="h-4 w-4" />
+        {locale === 'ar' ? 'English' : 'العربية'}
+      </Button>
       {/* Ambient background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-emerald-300/25 dark:bg-emerald-900/20 blur-3xl" />
@@ -165,14 +179,14 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
               <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
               <div>
                 <CardTitle className="text-lg">Eco Ledger</CardTitle>
-                <CardDescription className="text-xs">منصة dMRV للمنشآت الصغيرة والمتوسطة</CardDescription>
+                <CardDescription className="text-xs">{loginCopy[locale].platformDescription}</CardDescription>
               </div>
             </div>
 
             <div className="hidden lg:block">
-              <CardTitle className="text-2xl font-cairo">تسجيل الدخول</CardTitle>
+              <CardTitle className="text-2xl font-cairo">{loginCopy[locale].login}</CardTitle>
               <CardDescription className="mt-1">
-                سجّل دخولك للوصول إلى لوحة القيادة
+                {loginCopy[locale].loginDescription}
               </CardDescription>
             </div>
           </CardHeader>
@@ -180,7 +194,7 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-xs font-medium">البريد الإلكتروني</Label>
+                <Label htmlFor="email" className="text-xs font-medium">{loginCopy[locale].email}</Label>
                 <div className="relative">
                   <Mail className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors ${emailInvalid ? 'text-destructive' : 'text-muted-foreground'}`} />
                   <Input
@@ -202,19 +216,19 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
                   />
                 </div>
                 {emailInvalid && (
-                  <p className="text-xs text-destructive">هذا الحقل مطلوب</p>
+                  <p className="text-xs text-destructive">{loginCopy[locale].required}</p>
                 )}
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-medium">كلمة المرور</Label>
+                  <Label htmlFor="password" className="text-xs font-medium">{loginCopy[locale].password}</Label>
                   <button
                     type="button"
                     className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline underline-offset-2 transition-colors"
-                    onClick={() => toast.info('تواصل مع مدير النظام لإعادة تعيين كلمة المرور')}
+                    onClick={() => toast.info(loginCopy[locale].forgotPasswordMessage)}
                   >
-                    نسيت كلمة المرور؟
+                    {loginCopy[locale].forgotPassword}
                   </button>
                 </div>
                 <div className="relative">
@@ -239,14 +253,14 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                    aria-label={showPassword ? loginCopy[locale].hidePassword : loginCopy[locale].showPassword}
                     tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {passwordInvalid && (
-                  <p className="text-xs text-destructive">هذا الحقل مطلوب</p>
+                  <p className="text-xs text-destructive">{loginCopy[locale].required}</p>
                 )}
               </div>
 
@@ -265,10 +279,10 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                    جاري تسجيل الدخول...
+                    {loginCopy[locale].loggingIn}
                   </>
                 ) : (
-                  <>تسجيل الدخول</>
+                  <>{loginCopy[locale].login}</>
                 )}
               </Button>
             </form>

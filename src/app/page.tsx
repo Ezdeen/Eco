@@ -145,7 +145,7 @@ export default function Home() {
 
   // Not authenticated → show login
   if (!user) {
-    return <LoginSection onLoginSuccess={handleLoginSuccess} />
+    return <LoginSection onLoginSuccess={handleLoginSuccess} locale={locale} onLocaleChange={setLocale} />
   }
 
   // data_entry role: dedicated minimal screen, no sidebar, no access to any other section —
