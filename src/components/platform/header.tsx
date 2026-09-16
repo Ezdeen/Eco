@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useState, useEffect } from 'react'
+import { appCopy, type Locale } from '@/lib/i18n'
 
 interface HeaderProps {
   title: string
@@ -12,9 +13,11 @@ interface HeaderProps {
   unreadNotifications?: number
   lastUpdated?: string
   onRefresh?: () => void
+  locale: Locale
+  onLocaleChange: (next: Locale) => void
 }
 
-export function Header({ title, subtitle, unreadNotifications = 0, lastUpdated, onRefresh }: HeaderProps) {
+export function Header({ title, subtitle, unreadNotifications = 0, lastUpdated, onRefresh, locale, onLocaleChange }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState('')
 
   useEffect(() => {
@@ -51,14 +54,20 @@ export function Header({ title, subtitle, unreadNotifications = 0, lastUpdated, 
           <div className="relative w-full">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="بحث..."
+              placeholder={appCopy[locale].search}
               className="pr-9 h-9 bg-muted/50 border-0 focus-visible:ring-1"
             />
           </div>
         </div>
 
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="icon" className="h-9 w-9" title="اللغة">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            title={appCopy[locale].language}
+            onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}
+          >
             <Globe className="h-4 w-4" />
           </Button>
 
@@ -89,7 +98,7 @@ export function Header({ title, subtitle, unreadNotifications = 0, lastUpdated, 
 
       {lastUpdated && (
         <div className="px-4 md:px-6 pb-2 text-xs text-muted-foreground">
-          <span>آخر تحديث: </span>
+          <span>{appCopy[locale].lastUpdated} </span>
           <span className="tabular-nums">{lastUpdated}</span>
         </div>
       )}
