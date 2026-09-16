@@ -445,7 +445,7 @@ function generateHTMLReport(data: any, reportName: string): string {
   ` : ''}
 
   <div class="footer">
-    <p>© 2026 BrightFuture Energy Co. • منصة ESG للطاقة الشمسية</p>
+    <p>© 2026 Eco Ledger • منصة dMRV للمنشآت الصغيرة والمتوسطة</p>
     <p>تقرير مُولّد آليًا في ${fmtReportDateTime(new Date())} • GHG Protocol Scope 2 • Methodology v1.2</p>
     <p>معامل الانبعاث المُستخدم لهذه الفترة: ${data.summary.emissionFactor} kgCO₂e/kWh (بحسب دولة المشروع وتاريخ كل قراءة)</p>
   </div>
