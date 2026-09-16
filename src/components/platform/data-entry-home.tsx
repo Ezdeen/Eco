@@ -6,17 +6,20 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, PlusCircle, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
+import { appCopy, type Locale } from '@/lib/i18n'
 
 interface DataEntryHomeProps {
   user: { name?: string; nameAr?: string; email?: string } | null
   onLogout: () => void
+  locale: Locale
+  onLocaleChange: (next: Locale) => void
 }
 
 // Dedicated, minimal home screen for the "مدخل البيانات" role: they can only ever create
 // a new project, with no sidebar, no navigation, and no visibility into any other part
 // of the platform. This is enforced here at the UI level, and separately (more importantly)
 // at the API level via the 'project:create'-only permission set for this role.
-export function DataEntryHome({ user, onLogout }: DataEntryHomeProps) {
+export function DataEntryHome({ user, onLogout, locale, onLocaleChange }: DataEntryHomeProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const [justCreated, setJustCreated] = useState(false)
 
@@ -42,10 +45,13 @@ export function DataEntryHome({ user, onLogout }: DataEntryHomeProps) {
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="شعار المنصة" className="h-9 w-9 rounded-lg object-contain" />
             <div>
-              <p className="text-sm font-semibold">منصة ESG</p>
-              <p className="text-xs text-muted-foreground">مدخل بيانات</p>
+              <p className="text-sm font-semibold">{appCopy[locale].appName}</p>
+              <p className="text-xs text-muted-foreground">{appCopy[locale].dataEntry}</p>
             </div>
           </div>
+          <Button variant="ghost" size="sm" onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}>
+            {locale === 'ar' ? 'EN' : 'AR'}
+          </Button>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium">{user?.nameAr || user?.name || 'مستخدم'}</p>
