@@ -195,9 +195,9 @@ export default function Home() {
         <footer className="mt-auto border-t bg-card py-4 px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
-              <span>© 2026 BrightFuture Energy Co.</span>
+              <span>© 2026 Eco Ledger</span>
               <span>•</span>
-              <span>منصة ESG للطاقة الشمسية</span>
+              <span>منصة dMRV للمنشآت الصغيرة والمتوسطة</span>
             </div>
             <div className="flex items-center gap-3">
               <span>المستخدم: {user?.name || user?.email}</span>
