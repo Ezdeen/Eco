@@ -100,21 +100,21 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="شعار المنصة" className="h-14 w-14 rounded-2xl shrink-0 object-contain shadow-lg ring-1 ring-black/5" />
             <div>
-              <h1 className="font-cairo text-2xl font-bold text-foreground">منصة ESG الشمسية</h1>
-              <p className="text-sm text-muted-foreground">BrightFuture Energy Platform</p>
+              <h1 className="font-cairo text-2xl font-bold text-foreground">Eco Ledger</h1>
+              <p className="text-sm text-muted-foreground">منصة dMRV للمنشآت الصغيرة والمتوسطة</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <h2 className="font-cairo text-3xl font-bold leading-tight text-foreground">
-              قِس أثر مشاريعك الشمسية
+              قِس أثر منشأتك البيئي
               <br />
               <span className="bg-gradient-to-l from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                بشفافية وموثوقية
+                وافتح باب التمويل الأخضر
               </span>
             </h2>
             <p className="text-muted-foreground leading-relaxed">
-              منصة SaaS متعددة المؤسسات لقياس الأثر البيئي والاستدامة، بدعم توثيق Hedera وحسابات الكربون المتجنب وفق GHG Protocol.
+              منصة SaaS متعددة المؤسسات تساعد المنشآت الصغيرة والمتوسطة على قياس أثرها البيئي وإصدار تقارير استدامة ESG موثوقة، بدعم توثيق Hedera وحسابات الكربون المتجنب وفق GHG Protocol.
             </p>
           </div>
 
@@ -123,8 +123,8 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/70 text-emerald-600 dark:text-emerald-400 mb-2">
                 <Zap className="h-4 w-4" />
               </div>
-              <p className="text-sm font-semibold text-foreground">طاقة موثّقة</p>
-              <p className="text-xs text-muted-foreground">قراءات في الوقت الفعلي</p>
+              <p className="text-sm font-semibold text-foreground">بيانات موثّقة</p>
+              <p className="text-xs text-muted-foreground">قياس بيئي في الوقت الفعلي</p>
             </div>
             <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/70 text-teal-600 dark:text-teal-400 mb-2">
@@ -164,8 +164,8 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
             <div className="flex items-center gap-3 lg:hidden">
               <img src="/logo.svg" alt="شعار المنصة" className="h-11 w-11 rounded-xl shrink-0 object-contain" />
               <div>
-                <CardTitle className="text-lg">منصة ESG الشمسية</CardTitle>
-                <CardDescription className="text-xs">BrightFuture Energy</CardDescription>
+                <CardTitle className="text-lg">Eco Ledger</CardTitle>
+                <CardDescription className="text-xs">منصة dMRV للمنشآت الصغيرة والمتوسطة</CardDescription>
               </div>
             </div>
 
@@ -307,7 +307,7 @@ export function LoginSection({ onLoginSuccess }: LoginSectionProps) {
       </div>
 
       <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-muted-foreground">
-        © 2026 BrightFuture Energy Co. • منصة ESG للطاقة الشمسية
+        © 2026 Eco Ledger • منصة dMRV للمنشآت الصغيرة والمتوسطة
       </div>
     </div>
   )
