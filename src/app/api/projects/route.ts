@@ -224,6 +224,23 @@ export async function POST(request: NextRequest) {
             },
           })
         }
+
+        // بقية مستشعرات الشبكة المُدخلة دفعة واحدة عند الإنشاء
+        for (const [index, sensor] of (data.additionalIotSensors ?? []).entries()) {
+          await tx.device.create({
+            data: {
+              projectId: createdProject.id,
+              siteId: site.id,
+              assetId: asset.id,
+              name: `${data.code}-IOT-${String(index + 2).padStart(2, '0')}-${sensor.sensorType || 'sensor'}`,
+              manufacturer: sensor.model ? sensor.model.split(' ')[0] : 'Generic',
+              model: sensor.model || 'IoT Sensor',
+              serialNumber: sensor.serial,
+              protocol: sensor.protocol || 'lora',
+              status: 'registered',
+            },
+          })
+        }
       } else if (isSmartIrrigation) {
         // مشروع ري ذكي: أصل واحد يمثل الحقل/المساحة المروية، وجهاز IoT اختياري
         // يمثل المجس الأول في شبكة مجسات الرطوبة (يمكن إضافة بقية المجسات وعداد
@@ -249,6 +266,23 @@ export async function POST(request: NextRequest) {
               model: data.iotSensorModel || 'Soil Moisture Sensor',
               serialNumber: data.iotSensorSerial,
               protocol: data.iotProtocol || 'lora',
+              status: 'registered',
+            },
+          })
+        }
+
+        // بقية عُقد شبكة مجسات الرطوبة المُدخلة دفعة واحدة عند الإنشاء
+        for (const [index, sensor] of (data.additionalIotSensors ?? []).entries()) {
+          await tx.device.create({
+            data: {
+              projectId: createdProject.id,
+              siteId: site.id,
+              assetId: asset.id,
+              name: `${data.code}-MOIST-${String(index + 2).padStart(2, '0')}-${sensor.sensorType || 'sensor'}`,
+              manufacturer: sensor.model ? sensor.model.split(' ')[0] : 'Generic',
+              model: sensor.model || 'Soil Moisture Sensor',
+              serialNumber: sensor.serial,
+              protocol: sensor.protocol || 'lora',
               status: 'registered',
             },
           })
