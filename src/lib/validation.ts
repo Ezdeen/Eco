@@ -91,6 +91,18 @@ export const createProjectSchema = z.object({
   iotProtocol: nullableString,
   iotDataFrequency: nullableString,
 
+  // أجهزة/مجسات إضافية تُنشأ دفعة واحدة عند إنشاء المشروع (مثال: بقية عقد
+  // شبكة مجسات الرطوبة لمشروع الري الذكي، أو مستشعرات إضافية لمشروع تشجير).
+  // كل عنصر يُنشئ سجل Device مستقل مرتبط بأصل المشروع.
+  additionalIotSensors: z.array(z.object({
+    sensorType: nullableString,
+    model: nullableString,
+    serial: z.string().trim().min(1, 'سيريال المستشعر مطلوب'),
+    gatewayId: nullableString,
+    protocol: nullableString,
+    dataFrequency: nullableString,
+  })).optional().default([]),
+
   // Smart irrigation fields (projectType = 'smart_irrigation')
   cropType: nullableString,
   irrigatedAreaM2: numericOrNull,
