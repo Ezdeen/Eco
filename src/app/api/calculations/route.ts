@@ -4,6 +4,7 @@ import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } fro
 import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
 import { calculationSchema } from '@/lib/validation'
 import { calculateFunderAttribution } from '@/lib/attribution'
+import { calculateWaterSavings, estimateBaselineWaterUseM3 } from '@/lib/irrigation'
 
 // Legacy constants removed - now using reference-data.ts library
 
@@ -57,6 +58,12 @@ export async function GET(request: NextRequest) {
         plantedAreaM2: true,
         survivalRateTarget: true,
         plantingDate: true,
+        irrigatedAreaM2: true,
+        cropType: true,
+        dailyWaterBudgetM3: true,
+        baselineWaterUseLM2Day: true,
+        waterTariffPerM3: true,
+        pumpEnergyKwhPerM3: true,
         // Banking attribution (PCAF): only needed/populated when a single
         // project is in scope (projectId query param) — see carbon.fundingAttribution
         // below. Harmless (empty relation fetch) for the org-wide, multi-project case.
@@ -77,13 +84,39 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // ملاحظة: نُقيّد metricType صراحة بـ energy_export_kwh هنا حتى لا تُخلَط قراءات
+    // مستشعرات أخرى (رطوبة تربة/ماء لمشاريع التشجير والري الذكي) بحساب الطاقة.
     const allReadings = await db.energyReading.findMany({
       where: {
+        metricType: 'energy_export_kwh',
         qualityStatus: { in: ['validated', 'approved', 'corrected'] },
         projectId: { in: allProjects.map((p) => p.id) },
       },
       select: { value: true, measuredAt: true, projectId: true, qualityStatus: true, validationStatus: true },
     })
+
+    // قراءات الري الذكي: عدادات المياه الذكية (تدفق تراكمي أو لحظي)
+    const irrigationProjectIds = allProjects.filter((p) => p.projectType === 'smart_irrigation').map((p) => p.id)
+    const waterReadings = irrigationProjectIds.length > 0
+      ? await db.energyReading.findMany({
+          where: {
+            projectId: { in: irrigationProjectIds },
+            metricType: { in: ['water_meter_m3', 'water_flow_m3h'] },
+            qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+          },
+          select: { value: true, projectId: true, measuredAt: true },
+        })
+      : []
+    const soilMoistureReadings = irrigationProjectIds.length > 0
+      ? await db.energyReading.findMany({
+          where: {
+            projectId: { in: irrigationProjectIds },
+            metricType: 'soil_moisture_pct',
+            qualityStatus: { in: ['received', 'validated', 'approved', 'corrected'] },
+          },
+          select: { value: true, projectId: true },
+        })
+      : []
 
     // Calculate KPIs by category
     const totalEnergy = allReadings.reduce((s, r) => s + r.value, 0)
@@ -198,6 +231,44 @@ export async function GET(request: NextRequest) {
         .filter(Boolean),
     ).size
 
+    // Irrigation KPIs (مشاريع الري الذكي) — مبنية على قراءات فعلية من عدادات المياه
+    // ومجسات الرطوبة، وليست تقديرات ثابتة كالحالة الشمسية أعلاه.
+    const irrigationProjects = allProjects.filter((p) => p.projectType === 'smart_irrigation')
+    let irrigationWaterUsedM3 = 0
+    let irrigationWaterSavedM3 = 0
+    let irrigationWaterSavedPct = 0
+    let irrigationAvgSoilMoisturePct = 0
+    let irrigationEfficiencyScore = 0
+    if (irrigationProjects.length > 0) {
+      // نطاق زمني تقديري لتقدير خط الأساس عند عدم تمرير فترة محددة: من أول قراءة مياه إلى اليوم
+      const allWaterMeasuredDates = waterReadings.map((r) => r.measuredAt.getTime())
+      const periodDays = allWaterMeasuredDates.length > 0
+        ? Math.max(1, (Date.now() - Math.min(...allWaterMeasuredDates)) / (1000 * 60 * 60 * 24))
+        : 30
+
+      let totalBaselineM3 = 0
+      for (const p of irrigationProjects) {
+        const projectWater = waterReadings.filter((r) => r.projectId === p.id).reduce((s, r) => s + r.value, 0)
+        irrigationWaterUsedM3 += projectWater
+        totalBaselineM3 += estimateBaselineWaterUseM3({
+          irrigatedAreaM2: p.irrigatedAreaM2 || 0,
+          days: periodDays,
+          dailyWaterBudgetM3: p.dailyWaterBudgetM3,
+          baselineWaterUseLM2Day: p.baselineWaterUseLM2Day,
+        })
+      }
+      const savings = calculateWaterSavings({ actualM3: irrigationWaterUsedM3, baselineM3: totalBaselineM3 })
+      irrigationWaterSavedM3 = savings.savedM3
+      irrigationWaterSavedPct = savings.savedPct
+
+      const projectMoistureValues = soilMoistureReadings.map((r) => r.value)
+      irrigationAvgSoilMoisturePct = projectMoistureValues.length > 0
+        ? projectMoistureValues.reduce((s, v) => s + v, 0) / projectMoistureValues.length
+        : 0
+      // مؤشر كفاءة مبسّط: نسبة التوفير مقابل الأساس (0-100)، يُقيَّد عند 0
+      irrigationEfficiencyScore = Math.max(0, Math.min(100, irrigationWaterSavedPct))
+    }
+
     // Economy KPIs
     // IMPORTANT: projects can have different currencies (Project.currency). Summing
     // costSavings/greenInvestment across all projects into one number - as before -
@@ -272,8 +343,8 @@ export async function GET(request: NextRequest) {
           : [],
       },
       water: {
-        waterSaved,
-        waterConsumed,
+        waterSaved: waterSaved + irrigationWaterSavedM3 * 1000, // + توفير الري الذكي محوَّلاً إلى لتر لتوحيد الوحدة مع تقدير الطاقة الشمسية
+        waterConsumed: waterConsumed + irrigationWaterUsedM3 * 1000,
       },
       waste: {
         wasteDiverted,
@@ -285,6 +356,13 @@ export async function GET(request: NextRequest) {
         biomass,
         carbonStock,
         carbonSequestration,
+      },
+      irrigation: {
+        waterUsedM3: Math.round(irrigationWaterUsedM3 * 100) / 100,
+        waterSavedM3: irrigationWaterSavedM3,
+        waterSavedPct: irrigationWaterSavedPct,
+        avgSoilMoisturePct: Math.round(irrigationAvgSoilMoisturePct * 100) / 100,
+        efficiencyScore: irrigationEfficiencyScore,
       },
       biodiversity: {
         restoredArea,
@@ -353,7 +431,100 @@ export async function POST(request: NextRequest) {
     })
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
-    // Fetch readings in the period
+    // ============== فرع مشاريع الري الذكي (smart_irrigation) ==============
+    // مختلف تمامًا عن منطق الطاقة الشمسية أدناه: لا يوجد إنفرتر ولا energy_export_kwh،
+    // بل عداد مياه ذكي (water_meter_m3 / water_flow_m3h) يُقارَن بخط أساس تقليدي، والأثر
+    // الكربوني مشتق من طاقة الضخ الموفَّرة (pumpEnergyKwhPerM3 × emissionFactor) وليس من
+    // إحلال شبكة كهرباء كما في الحالة الشمسية.
+    if (project.projectType === 'smart_irrigation') {
+      const start = new Date(periodStart)
+      const end = new Date(periodEnd)
+      const days = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+
+      const waterReadings = await db.energyReading.findMany({
+        where: {
+          projectId,
+          metricType: { in: ['water_meter_m3', 'water_flow_m3h'] },
+          measuredAt: { gte: start, lte: end },
+          qualityStatus: { in: ['validated', 'approved', 'corrected'] },
+        },
+        orderBy: { measuredAt: 'asc' },
+      })
+      const actualIrrigationM3 = waterReadings.reduce((s, r) => s + r.value, 0)
+
+      const baselineM3 = estimateBaselineWaterUseM3({
+        irrigatedAreaM2: project.irrigatedAreaM2 || 0,
+        days,
+        dailyWaterBudgetM3: project.dailyWaterBudgetM3,
+        baselineWaterUseLM2Day: project.baselineWaterUseLM2Day,
+      })
+
+      const countryCode = (project.country || 'SA').substring(0, 2).toUpperCase()
+      const periodDate = start
+      const emissionFactor = await getEmissionFactor(countryCode, periodDate)
+
+      const savings = calculateWaterSavings({
+        actualM3: actualIrrigationM3,
+        baselineM3,
+        waterTariffPerM3: project.waterTariffPerM3,
+        pumpEnergyKwhPerM3: project.pumpEnergyKwhPerM3,
+        emissionFactorKgPerKwh: emissionFactor.factor,
+      })
+
+      const methodVersion = methodologyVersion || 'smart_irrigation_water_balance_v1'
+      const crypto = await import('crypto')
+      const parametersHash = crypto
+        .createHash('sha256')
+        .update(JSON.stringify({
+          projectId, periodStart, periodEnd, methodologyVersion: methodVersion,
+          baselineM3, actualIrrigationM3, savings,
+          emissionFactor: { factor: emissionFactor.factor, source: emissionFactor.source, version: emissionFactor.version },
+        }))
+        .digest('hex')
+
+      const run = await db.calculationRun.create({
+        data: {
+          projectId,
+          runType: 'water_savings',
+          status: 'completed',
+          periodStart: start,
+          periodEnd: end,
+          methodologyVersion: methodVersion,
+          parametersHash,
+          result: JSON.stringify({
+            baselineM3,
+            actualIrrigationM3,
+            waterSavedM3: savings.savedM3,
+            waterSavedPct: savings.savedPct,
+            costSaved: savings.costSaved,
+            savingsCurrency: project.currency,
+            pumpingEnergyKwhSaved: savings.pumpingEnergyKwhSaved,
+            emissionFactor: { ...emissionFactor },
+          }),
+          totalEnergyKwh: null,
+          totalCo2AvoidedKg: savings.co2AvoidedKg ?? 0,
+          totalSavings: savings.costSaved ?? 0,
+          performanceRatio: baselineM3 > 0 ? Math.round((actualIrrigationM3 / baselineM3) * 1000) / 1000 : null,
+          availability: null,
+          completedAt: new Date(),
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        run,
+        details: {
+          projectType: 'smart_irrigation',
+          readingsCount: waterReadings.length,
+          savingsCurrency: project.currency,
+          emissionFactor,
+          ...savings,
+        },
+      })
+    }
+
+    // ============== منطق مشاريع الطاقة الشمسية (grid_tied / hybrid / off_grid) وما شابهها ==============
+
     const readings = await db.energyReading.findMany({
       where: {
         projectId,

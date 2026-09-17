@@ -357,6 +357,19 @@ async function runValidationRules(
         expected: '< 0.5 kWh at night (hours 20-4)',
       },
     },
+    {
+      ruleCode: 'SOIL_MOISTURE_OUT_OF_RANGE',
+      check: () => metricType === 'soil_moisture_pct' && (value < 0 || value > 100),
+      severity: 'critical',
+      details: { value, expected: '0-100%', note: 'قراءة مجس رطوبة خارج المدى الفيزيائي الممكن - يُرجَّح عطل بالمجس' },
+    },
+    {
+      ruleCode: 'WATER_FLOW_SPIKE',
+      // ارتفاع مفاجئ غير معقول لتدفق المياه اللحظي (أعلى من طاقة أغلب مضخات الحقول الصغيرة/المتوسطة)
+      check: () => metricType === 'water_flow_m3h' && value > 500,
+      severity: 'high',
+      details: { value, expected: '<= 500 m³/h', note: 'تدفق مياه مرتفع بشكل غير معتاد - يستدعي مراجعة عداد المياه الذكي' },
+    },
   ]
 
   for (const rule of rules) {

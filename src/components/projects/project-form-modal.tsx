@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi } from 'lucide-react'
+import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi, Droplet } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProjectFundersManager } from './project-funders-manager'
 
@@ -52,6 +52,16 @@ interface ProjectFormData {
   iotGatewayId: string
   iotProtocol: string
   iotDataFrequency: string
+  // Smart irrigation fields
+  cropType: string
+  irrigatedAreaM2: string
+  irrigationMethod: string
+  soilType: string
+  waterSourceType: string
+  dailyWaterBudgetM3: string
+  baselineWaterUseLM2Day: string
+  waterTariffPerM3: string
+  pumpEnergyKwhPerM3: string
 }
 
 interface ProjectFormModalProps {
@@ -74,10 +84,11 @@ const COUNTRIES = [
 ]
 
 const PROJECT_TYPES = [
-  { code: 'grid_tied', name: 'نظام طاقة شمسية مرتبط بالشبكة', desc: 'Grid-Tied - يصدّر الفائض للشبكة', icon: '🔌', needsInverter: true, needsBattery: false, isAfforestation: false },
-  { code: 'hybrid', name: 'نظام طاقة شمسية هجين', desc: 'Hybrid - مرتبط بالشبكة + بطاريات تخزين', icon: '⚡', needsInverter: true, needsBattery: true, isAfforestation: false },
-  { code: 'off_grid', name: 'نظام طاقة شمسية مستقل (بطاريات)', desc: 'Off-Grid - منفصل عن الشبكة، يعتمد على البطاريات', icon: '🔋', needsInverter: true, needsBattery: true, isAfforestation: false },
-  { code: 'afforestation', name: 'مشروع تشجير', desc: 'Afforestation - زراعة الأشجار مع مستشعرات IoT', icon: '🌳', needsInverter: false, needsBattery: false, isAfforestation: true },
+  { code: 'grid_tied', name: 'نظام طاقة شمسية مرتبط بالشبكة', desc: 'Grid-Tied - يصدّر الفائض للشبكة', icon: '🔌', needsInverter: true, needsBattery: false, isAfforestation: false, isSmartIrrigation: false },
+  { code: 'hybrid', name: 'نظام طاقة شمسية هجين', desc: 'Hybrid - مرتبط بالشبكة + بطاريات تخزين', icon: '⚡', needsInverter: true, needsBattery: true, isAfforestation: false, isSmartIrrigation: false },
+  { code: 'off_grid', name: 'نظام طاقة شمسية مستقل (بطاريات)', desc: 'Off-Grid - منفصل عن الشبكة، يعتمد على البطاريات', icon: '🔋', needsInverter: true, needsBattery: true, isAfforestation: false, isSmartIrrigation: false },
+  { code: 'afforestation', name: 'مشروع تشجير', desc: 'Afforestation - زراعة الأشجار مع مستشعرات IoT', icon: '🌳', needsInverter: false, needsBattery: false, isAfforestation: true, isSmartIrrigation: false },
+  { code: 'smart_irrigation', name: 'مشروع الري الذكي', desc: 'Smart Irrigation - عدادات مياه + شبكة مجسات رطوبة + بيانات فضائية', icon: '💧', needsInverter: false, needsBattery: false, isAfforestation: false, isSmartIrrigation: true },
 ]
 
 const INVERTER_TYPES = [
@@ -126,6 +137,45 @@ const TREE_SPECIES_EXAMPLES = [
   'اللوز (Prunus dulcis)',
 ]
 
+const CROP_TYPES = [
+  { code: 'tomato', name: 'طماطم' },
+  { code: 'date_palm', name: 'نخيل التمر' },
+  { code: 'wheat', name: 'قمح' },
+  { code: 'alfalfa', name: 'برسيم' },
+  { code: 'citrus', name: 'حمضيات' },
+  { code: 'olive', name: 'زيتون' },
+  { code: 'potato', name: 'بطاطس' },
+  { code: 'cucumber', name: 'خيار' },
+  { code: 'pepper', name: 'فلفل' },
+  { code: 'onion', name: 'بصل' },
+  { code: 'other', name: 'أخرى' },
+]
+
+const IRRIGATION_METHODS = [
+  { code: 'drip', name: 'ري بالتنقيط - Drip', desc: 'الأعلى كفاءة (~90%)' },
+  { code: 'subsurface', name: 'ري تحت سطحي - Subsurface', desc: 'كفاءة عالية جدًا (~92%)' },
+  { code: 'sprinkler', name: 'رشاشات - Sprinkler', desc: 'كفاءة متوسطة (~75%)' },
+  { code: 'pivot', name: 'محوري - Center Pivot', desc: 'كفاءة جيدة (~80%)' },
+  { code: 'surface', name: 'ري سطحي/غمر - Surface', desc: 'الأقل كفاءة (~60%)' },
+]
+
+const SOIL_TYPES = [
+  { code: 'sandy', name: 'رملية' },
+  { code: 'sandy_loam', name: 'رملية طينية' },
+  { code: 'loamy', name: 'طميية' },
+  { code: 'clay_loam', name: 'طينية طميية' },
+  { code: 'clay', name: 'طينية' },
+  { code: 'silty', name: 'غرينية' },
+]
+
+const WATER_SOURCE_TYPES = [
+  { code: 'well', name: 'بئر جوفي' },
+  { code: 'municipal', name: 'شبكة المياه العامة' },
+  { code: 'desalination', name: 'تحلية مياه' },
+  { code: 'treated_wastewater', name: 'مياه معالجة (صرف صحي)' },
+  { code: 'canal', name: 'قناة/ترعة ري' },
+]
+
 const CURRENCIES = [
   { code: 'SAR', name: 'ريال سعودي' },
   { code: 'AED', name: 'درهم إماراتي' },
@@ -172,6 +222,16 @@ const EMPTY_FORM: ProjectFormData = {
   iotGatewayId: '',
   iotProtocol: 'lora',
   iotDataFrequency: 'daily',
+  // Smart irrigation fields
+  cropType: 'other',
+  irrigatedAreaM2: '',
+  irrigationMethod: 'drip',
+  soilType: 'loamy',
+  waterSourceType: 'well',
+  dailyWaterBudgetM3: '',
+  baselineWaterUseLM2Day: '',
+  waterTariffPerM3: '',
+  pumpEnergyKwhPerM3: '',
 }
 
 export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: ProjectFormModalProps) {
@@ -241,6 +301,16 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         iotGatewayId: initialData.iotGatewayId || '',
         iotProtocol: initialData.iotProtocol || 'lora',
         iotDataFrequency: initialData.iotDataFrequency || 'daily',
+        // Smart irrigation
+        cropType: initialData.cropType || 'other',
+        irrigatedAreaM2: initialData.irrigatedAreaM2?.toString() || '',
+        irrigationMethod: initialData.irrigationMethod || 'drip',
+        soilType: initialData.soilType || 'loamy',
+        waterSourceType: initialData.waterSourceType || 'well',
+        dailyWaterBudgetM3: initialData.dailyWaterBudgetM3?.toString() || '',
+        baselineWaterUseLM2Day: initialData.baselineWaterUseLM2Day?.toString() || '',
+        waterTariffPerM3: initialData.waterTariffPerM3?.toString() || '',
+        pumpEnergyKwhPerM3: initialData.pumpEnergyKwhPerM3?.toString() || '',
       })
     } else {
       setForm(EMPTY_FORM)
@@ -300,6 +370,23 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       }
       if (!form.plantingDate) newErrors.plantingDate = 'تاريخ الزراعة مطلوب'
       // IoT sensor is optional but if serial provided, type is required
+      if (form.iotSensorSerial && !form.iotSensorType) {
+        newErrors.iotSensorType = 'نوع المستشعر مطلوب عند إدخال سيريال'
+      }
+    }
+
+    if (projectType?.isSmartIrrigation) {
+      if (!form.cropType) newErrors.cropType = 'نوع المحصول مطلوب لمشاريع الري الذكي'
+      if (!form.irrigatedAreaM2 || parseFloat(form.irrigatedAreaM2) <= 0) {
+        newErrors.irrigatedAreaM2 = 'المساحة المروية يجب أن تكون رقمًا موجبًا'
+      }
+      if (!form.irrigationMethod) newErrors.irrigationMethod = 'طريقة الري مطلوبة'
+      if (!form.soilType) newErrors.soilType = 'نوع التربة مطلوب'
+      if (!form.waterSourceType) newErrors.waterSourceType = 'مصدر المياه مطلوب'
+      if (form.dailyWaterBudgetM3 && parseFloat(form.dailyWaterBudgetM3) < 0) {
+        newErrors.dailyWaterBudgetM3 = 'الموازنة اليومية يجب أن تكون رقمًا موجبًا'
+      }
+      // شبكة مجسات الرطوبة اختيارية، لكن إن أُدخل سيريال المجس الأول يجب تحديد نوعه
       if (form.iotSensorSerial && !form.iotSensorType) {
         newErrors.iotSensorType = 'نوع المستشعر مطلوب عند إدخال سيريال'
       }
@@ -370,6 +457,16 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         iotGatewayId: cleanValue(form.iotGatewayId),
         iotProtocol: cleanValue(form.iotProtocol),
         iotDataFrequency: cleanValue(form.iotDataFrequency),
+        // Smart irrigation
+        cropType: cleanValue(form.cropType),
+        irrigatedAreaM2: cleanValue(form.irrigatedAreaM2),
+        irrigationMethod: cleanValue(form.irrigationMethod),
+        soilType: cleanValue(form.soilType),
+        waterSourceType: cleanValue(form.waterSourceType),
+        dailyWaterBudgetM3: cleanValue(form.dailyWaterBudgetM3),
+        baselineWaterUseLM2Day: cleanValue(form.baselineWaterUseLM2Day),
+        waterTariffPerM3: cleanValue(form.waterTariffPerM3),
+        pumpEnergyKwhPerM3: cleanValue(form.pumpEnergyKwhPerM3),
       }
 
       const res = await fetch(url, {
@@ -623,9 +720,11 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
           )}
 
           {/* Afforestation section - only for afforestation projects */}
-          {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isAfforestation && (
+          {(PROJECT_TYPES.find((t) => t.code === form.projectType)?.isAfforestation ||
+            PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation) && (
             <>
               <Separator />
+              {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isAfforestation && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <TreePine className="h-4 w-4 text-primary" />
@@ -721,18 +820,186 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* IoT Sensors section - for afforestation */}
+              {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Droplet className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">معلومات الري الذكي</h3>
+                  <Badge variant="outline" className="text-[10px] bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300">
+                    مشروع ري ذكي
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cropType" className="text-xs">
+                      نوع المحصول <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={form.cropType} onValueChange={(v) => updateField('cropType', v)}>
+                      <SelectTrigger id="cropType" className={errors.cropType ? 'border-red-500' : ''}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CROP_TYPES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.cropType && <p className="text-xs text-red-500">{errors.cropType}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="irrigatedAreaM2" className="text-xs">
+                      المساحة المروية (م²) <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="irrigatedAreaM2"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={form.irrigatedAreaM2}
+                      onChange={(e) => updateField('irrigatedAreaM2', e.target.value)}
+                      placeholder="5000"
+                      className={errors.irrigatedAreaM2 ? 'border-red-500' : ''}
+                      required
+                    />
+                    {errors.irrigatedAreaM2 && <p className="text-xs text-red-500">{errors.irrigatedAreaM2}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="irrigationMethod" className="text-xs">
+                      طريقة الري <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={form.irrigationMethod} onValueChange={(v) => updateField('irrigationMethod', v)}>
+                      <SelectTrigger id="irrigationMethod" className={errors.irrigationMethod ? 'border-red-500' : ''}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IRRIGATION_METHODS.map((m) => (
+                          <SelectItem key={m.code} value={m.code}>{m.name} — {m.desc}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.irrigationMethod && <p className="text-xs text-red-500">{errors.irrigationMethod}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="soilType" className="text-xs">
+                      نوع التربة <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={form.soilType} onValueChange={(v) => updateField('soilType', v)}>
+                      <SelectTrigger id="soilType" className={errors.soilType ? 'border-red-500' : ''}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SOIL_TYPES.map((s) => (
+                          <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.soilType && <p className="text-xs text-red-500">{errors.soilType}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="waterSourceType" className="text-xs">
+                      مصدر المياه <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={form.waterSourceType} onValueChange={(v) => updateField('waterSourceType', v)}>
+                      <SelectTrigger id="waterSourceType" className={errors.waterSourceType ? 'border-red-500' : ''}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WATER_SOURCE_TYPES.map((w) => (
+                          <SelectItem key={w.code} value={w.code}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.waterSourceType && <p className="text-xs text-red-500">{errors.waterSourceType}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="dailyWaterBudgetM3" className="text-xs">
+                      الموازنة اليومية المستهدفة للمياه (م³/يوم)
+                    </Label>
+                    <Input
+                      id="dailyWaterBudgetM3"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={form.dailyWaterBudgetM3}
+                      onChange={(e) => updateField('dailyWaterBudgetM3', e.target.value)}
+                      placeholder="12.5"
+                      className={errors.dailyWaterBudgetM3 ? 'border-red-500' : ''}
+                    />
+                    {errors.dailyWaterBudgetM3 && <p className="text-xs text-red-500">{errors.dailyWaterBudgetM3}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="baselineWaterUseLM2Day" className="text-xs">
+                      خط الأساس التقليدي (لتر/م²/يوم)
+                    </Label>
+                    <Input
+                      id="baselineWaterUseLM2Day"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={form.baselineWaterUseLM2Day}
+                      onChange={(e) => updateField('baselineWaterUseLM2Day', e.target.value)}
+                      placeholder="6"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      استهلاك الري التقليدي قبل اعتماد النظام الذكي - يُستخدم كأساس لحساب التوفير
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="waterTariffPerM3" className="text-xs">
+                      تعرفة المياه (لكل م³)
+                    </Label>
+                    <Input
+                      id="waterTariffPerM3"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.waterTariffPerM3}
+                      onChange={(e) => updateField('waterTariffPerM3', e.target.value)}
+                      placeholder="2.5"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pumpEnergyKwhPerM3" className="text-xs">
+                      طاقة ضخ المتر المكعب (kWh/م³)
+                    </Label>
+                    <Input
+                      id="pumpEnergyKwhPerM3"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.pumpEnergyKwhPerM3}
+                      onChange={(e) => updateField('pumpEnergyKwhPerM3', e.target.value)}
+                      placeholder="0.4"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      يُستخدم لحساب أثر الكربون الناتج عن تقليل طاقة ضخ المياه بفضل التوفير
+                    </p>
+                  </div>
+                </div>
+              </div>
+              )}
+
+              {/* IoT Sensors section - shared: مجسات التشجير أو شبكة مجسات رطوبة الري الذكي */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Radio className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold">مستشعرات إنترنت الأشياء (IoT)</h3>
+                  <h3 className="text-sm font-semibold">
+                    {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation
+                      ? 'شبكة مجسات الرطوبة (IoT)'
+                      : 'مستشعرات إنترنت الأشياء (IoT)'}
+                  </h3>
                   <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300">
-                    اختياري - لمراقبة الأشجار
+                    {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation
+                      ? 'اختياري - المجس الأول في الشبكة'
+                      : 'اختياري - لمراقبة الأشجار'}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  مستشعرات IoT ترسل بيانات دورية (رطوبة التربة، درجة الحرارة، نمو الأشجار، امتصاص CO₂) لمراقبة صحة الأشجار ومعدل بقائها
+                  {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation
+                    ? 'يمثّل هذا المجس أول عقدة في شبكة مجسات الرطوبة الحقلية. يمكن إضافة بقية مجسات الشبكة وعداد المياه الذكي لاحقًا كأجهزة مستقلة من قسم "الأجهزة"، وتُستخدم قراءاتها لتوليد توصيات الري تلقائيًا.'
+                    : 'مستشعرات IoT ترسل بيانات دورية (رطوبة التربة، درجة الحرارة، نمو الأشجار، امتصاص CO₂) لمراقبة صحة الأشجار ومعدل بقائها'}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">

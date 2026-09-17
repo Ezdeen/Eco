@@ -56,7 +56,7 @@ export const createProjectSchema = z.object({
   // free-form string, so a typo or an unexpected value from the API would silently create
   // a project that reporting/filtering logic (e.g. `projectType: { not: 'afforestation' }`)
   // could not correctly classify.
-  projectType: z.enum(['grid_tied', 'hybrid', 'off_grid', 'afforestation'], {
+  projectType: z.enum(['grid_tied', 'hybrid', 'off_grid', 'afforestation', 'smart_irrigation'], {
     error: 'نوع المشروع غير صالح',
   }).default('grid_tied'),
 
@@ -90,6 +90,17 @@ export const createProjectSchema = z.object({
   iotGatewayId: nullableString,
   iotProtocol: nullableString,
   iotDataFrequency: nullableString,
+
+  // Smart irrigation fields (projectType = 'smart_irrigation')
+  cropType: nullableString,
+  irrigatedAreaM2: numericOrNull,
+  irrigationMethod: nullableString,
+  soilType: nullableString,
+  waterSourceType: nullableString,
+  dailyWaterBudgetM3: numericOrNull,
+  baselineWaterUseLM2Day: numericOrNull,
+  waterTariffPerM3: numericOrNull,
+  pumpEnergyKwhPerM3: numericOrNull,
 }).strict()
 
 export const updateProjectSchema = createProjectSchema.partial().extend({

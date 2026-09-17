@@ -119,6 +119,21 @@ model Project {
   iotGatewayId      String?  // معرّف بوابة IoT
   iotProtocol       String?  // بروتوكول الاتصال (lora, wifi, gsm, nb-iot)
   iotDataFrequency  String?  // تردد إرسال البيانات (hourly, daily, weekly)
+  // Smart irrigation project fields (مشروع ري ذكي) - used when projectType = 'smart_irrigation'
+  // المدخلات الثلاثة التي يعتمد عليها هذا النوع من المشاريع (dMRV):
+  //   1) عدادات مياه ذكية        -> EnergyReading بمعرّف metricType = water_flow_m3h / water_meter_m3
+  //   2) شبكة مجسات رطوبة (IoT)  -> تُستخدم حقول iotSensor* أعلاه (نفسها المستخدمة للتشجير، معاد استخدامها
+  //                                 لأنها عامة أصلاً) + أجهزة إضافية عبر قسم "الأجهزة" لكل مجس في الشبكة
+  //   3) موقع المشروع (lat/lon)  -> يُستخدم لسحب SpaceDataObservation/WeatherObservation (ETo، رطوبة، حرارة)
+  cropType          String?  // نوع المحصول (طماطم، نخيل، قمح...)
+  irrigatedAreaM2   Float?   // المساحة المروية بالمتر المربع
+  irrigationMethod  String?  // طريقة الري: drip, sprinkler, surface, subsurface, pivot
+  soilType          String?  // نوع التربة: sandy, loamy, clay, silty, sandy_loam
+  waterSourceType   String?  // مصدر المياه: well, municipal, desalination, treated_wastewater, canal
+  dailyWaterBudgetM3     Float? // الموازنة اليومية المستهدفة للمياه (م³/يوم)
+  baselineWaterUseLM2Day Float? // خط الأساس التقليدي (لتر/م²/يوم) قبل اعتماد الري الذكي - أساس حساب التوفير
+  waterTariffPerM3       Float? // تعرفة المياه لكل م³ (بعملة المشروع) - لحساب الوفر المالي
+  pumpEnergyKwhPerM3     Float? // كثافة طاقة ضخ المتر المكعب الواحد (kWh/m³) - لحساب أثر الكربون من توفير الضخ
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -142,6 +157,7 @@ model Project {
   reconciliationRuns  ReconciliationRun[]
   groundSpaceComparisons GroundSpaceComparison[]
   funders        ProjectFunder[]
+  irrigationRecommendations IrrigationRecommendation[]
 
   @@unique([organizationId, code])
 }
@@ -1005,4 +1021,54 @@ model GroundSpaceComparison {
 
   @@index([projectId, measuredAt])
   @@index([assessment])
+}
+
+// ============== الري الذكي: توصيات الشبكة العصبية لمجسات الرطوبة ==============
+// كل سجل هو "قرار ري" واحد أنتجه محرك الاستدلال (شبكة عصبية بسيطة أمامية التغذية،
+// أوزانها معايرة وموثّقة صراحة في src/lib/irrigation.ts) بناءً على ثلاثة مدخلات:
+//   1) متوسط قراءات شبكة مجسات الرطوبة الحقلية (soil_moisture_pct من EnergyReading)
+//   2) الاحتياج المائي المرجعي (ETo) المشتق من بيانات الطقس/الأقمار الصناعية
+//      (WeatherObservation / SpaceDataObservation) حسب موقع المشروع (lat/lon)
+//   3) معامل المحصول (Kc) ونوع التربة، المأخوذين من بيانات المشروع
+// يُخزَّن كل قرار لأغراض التتبع والتدقيق (dMRV): يمكن لاحقًا مقارنة الكمية المُوصى بها
+// بالكمية الفعلية المقاسة من عداد المياه الذكي (actualIrrigationM3) لقياس دقة النموذج.
+model IrrigationRecommendation {
+  id                    String   @id @default(cuid())
+  projectId             String
+  generatedAt           DateTime @default(now())
+  periodStart           DateTime
+  periodEnd             DateTime
+
+  // مدخلات الشبكة العصبية (مجسات الرطوبة)
+  soilMoistureAvgPct    Float    // متوسط قراءات كل مجسات الرطوبة المستخدمة في هذه الدفعة
+  soilMoistureMinPct    Float?
+  soilMoistureMaxPct    Float?
+  sensorReadingCount    Int      @default(0) // عدد قراءات المجسات المستخدمة
+  sensorAgreement       Float?   // 0-1: اتفاق المجسات (1 - الانحراف المعياري النسبي) - يغذي confidenceScore
+
+  // مدخلات الاحتياج المائي (طقس/فضاء)
+  etoMm                 Float?   // الاحتياج المائي المرجعي (Reference Evapotranspiration) مم/يوم
+  cropCoefficientKc     Float?   // معامل المحصول Kc المستخدم لهذه الفترة
+  weatherSource         String?  // nasa_power, cams, manual, fallback...
+
+  // مخرجات محرك الاستدلال (الشبكة العصبية)
+  recommendedIrrigationM3 Float  // الكمية الموصى بها (م³) لهذه الفترة
+  confidenceScore       Float    // 0-1: ثقة التوصية (اتفاق المجسات × تغطية البيانات)
+  modelVersion          String   @default("irrigation-nn-v1")
+
+  // المقارنة بالفعلي (تُملأ لاحقًا عند توفر قراءة عداد مياه ذكي لنفس الفترة)
+  actualIrrigationM3    Float?
+  deviationPct          Float?   // (actual - recommended) / recommended * 100
+
+  status                String   @default("generated") // generated, applied, overridden, compared
+  overrideReason        String?  // سبب تجاوز التوصية (إن قرر المستخدم ريًا مختلفًا عمّا اقترحه النموذج)
+  inputsHash            String?  // SHA-256 لكل المدخلات - لإعادة إنتاج القرار والتدقيق
+  createdBy             String?  // userId أو 'system' للتوليد التلقائي
+
+  createdAt             DateTime @default(now())
+
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, periodStart])
+  @@index([projectId, generatedAt])
 }

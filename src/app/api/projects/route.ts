@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     const isAfforestation = data.projectType === 'afforestation'
+    const isSmartIrrigation = data.projectType === 'smart_irrigation'
     const latitude = data.latitude ?? null
     const longitude = data.longitude ?? null
     const timezone = data.timezone || 'Asia/Riyadh'
@@ -172,6 +173,15 @@ export async function POST(request: NextRequest) {
           iotGatewayId: data.iotGatewayId ?? null,
           iotProtocol: data.iotProtocol ?? null,
           iotDataFrequency: data.iotDataFrequency ?? null,
+          cropType: data.cropType ?? null,
+          irrigatedAreaM2: data.irrigatedAreaM2 ?? null,
+          irrigationMethod: data.irrigationMethod ?? null,
+          soilType: data.soilType ?? null,
+          waterSourceType: data.waterSourceType ?? null,
+          dailyWaterBudgetM3: data.dailyWaterBudgetM3 ?? null,
+          baselineWaterUseLM2Day: data.baselineWaterUseLM2Day ?? null,
+          waterTariffPerM3: data.waterTariffPerM3 ?? null,
+          pumpEnergyKwhPerM3: data.pumpEnergyKwhPerM3 ?? null,
         },
       })
 
@@ -205,9 +215,38 @@ export async function POST(request: NextRequest) {
               projectId: createdProject.id,
               siteId: site.id,
               assetId: asset.id,
-              name: `<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mrow><mi>d</mi><mi>a</mi><mi>t</mi><mi>a</mi><mi mathvariant="normal">.</mi><mi>c</mi><mi>o</mi><mi>d</mi><mi>e</mi></mrow><mo>−</mo><mi>I</mi><mi>O</mi><mi>T</mi><mo>−</mo></mrow><annotation encoding="application/x-tex">{data.code}-IOT-</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em;"></span><span class="mord"><span class="mord mathnormal">d</span><span class="mord mathnormal">a</span><span class="mord mathnormal">t</span><span class="mord mathnormal">a</span><span class="mord">.</span><span class="mord mathnormal">co</span><span class="mord mathnormal">d</span><span class="mord mathnormal">e</span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord mathnormal" style="margin-right:0.0785em;">I</span><span class="mord mathnormal" style="margin-right:0.0278em;">O</span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="mord">−</span></span></span></span>{data.iotSensorType || '001'}`,
+              name: `${data.code}-IOT-${data.iotSensorType || '001'}`,
               manufacturer: data.iotSensorModel ? data.iotSensorModel.split(' ')[0] : 'Generic',
               model: data.iotSensorModel || 'IoT Sensor',
+              serialNumber: data.iotSensorSerial,
+              protocol: data.iotProtocol || 'lora',
+              status: 'registered',
+            },
+          })
+        }
+      } else if (isSmartIrrigation) {
+        // مشروع ري ذكي: أصل واحد يمثل الحقل/المساحة المروية، وجهاز IoT اختياري
+        // يمثل المجس الأول في شبكة مجسات الرطوبة (يمكن إضافة بقية المجسات وعداد
+        // المياه الذكي لاحقًا كأجهزة مستقلة من قسم "الأجهزة").
+        const asset = await tx.asset.create({
+          data: {
+            projectId: createdProject.id,
+            siteId: site.id,
+            name: `${data.code} Irrigated Field`,
+            assetType: 'irrigated_field',
+            status: 'active',
+          },
+        })
+
+        if (data.iotSensorSerial) {
+          await tx.device.create({
+            data: {
+              projectId: createdProject.id,
+              siteId: site.id,
+              assetId: asset.id,
+              name: `${data.code}-MOIST-${data.iotSensorType || '001'}`,
+              manufacturer: data.iotSensorModel ? data.iotSensorModel.split(' ')[0] : 'Generic',
+              model: data.iotSensorModel || 'Soil Moisture Sensor',
               serialNumber: data.iotSensorSerial,
               protocol: data.iotProtocol || 'lora',
               status: 'registered',

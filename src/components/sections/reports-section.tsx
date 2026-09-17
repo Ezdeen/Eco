@@ -755,6 +755,22 @@ export function ReportsSection() {
                         </div>
                       </>
                     )}
+                    {previewReport.data.kpiCatalog.irrigation && previewReport.data.kpiCatalog.irrigation.waterUsedM3 > 0 && (
+                      <>
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <p className="text-muted-foreground">مياه ري مستخدمة</p>
+                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.irrigation.waterUsedM3)} m³</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <p className="text-muted-foreground">توفير مياه الري</p>
+                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.irrigation.waterSavedM3)} m³ ({previewReport.data.kpiCatalog.irrigation.waterSavedPct.toFixed(1)}%)</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <p className="text-muted-foreground">متوسط رطوبة التربة</p>
+                          <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.irrigation.avgSoilMoisturePct.toFixed(1)}%</p>
+                        </div>
+                      </>
+                    )}
                     <div className="p-2 rounded-lg bg-muted/50">
                       <p className="text-muted-foreground">استثمار أخضر</p>
                       <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.economy.greenInvestment)} {previewReport.data.kpiCatalog.economy.currency}</p>

@@ -14,6 +14,7 @@ import { db } from '@/lib/db'
 import { calculateFunderAttribution } from '@/lib/attribution'
 import { getEmissionFactor, getConversionFactor } from '@/lib/reference-data'
 import { getHederaNetwork, getHashscanUrl } from '@/lib/hedera'
+import { calculateWaterSavings, estimateBaselineWaterUseM3 } from '@/lib/irrigation'
 import QRCode from 'qrcode'
 
 // === Date formatting — always Gregorian ===
@@ -54,6 +55,8 @@ export async function generateReportData(reportId: string) {
           inverterSerial: true, inverterType: true, commissionedAt: true,
           projectType: true, treeSpecies: true, treeCount: true,
           plantedAreaM2: true, survivalRateTarget: true, plantingDate: true,
+          cropType: true, irrigatedAreaM2: true, dailyWaterBudgetM3: true,
+          baselineWaterUseLM2Day: true, waterTariffPerM3: true, pumpEnergyKwhPerM3: true,
           funders: {
             where: { isActive: true },
             select: {
@@ -78,6 +81,7 @@ export async function generateReportData(reportId: string) {
       measuredAt: true,
       value: true,
       unit: true,
+      metricType: true,
       qualityStatus: true,
       validationStatus: true,
       cumulativeValue: true,
@@ -91,7 +95,9 @@ export async function generateReportData(reportId: string) {
   // (summary.suspectReadings / rejectedReadings) so the report can show how much
   // data was excluded, without that data ever entering a sum.
   const verifiedStatuses = ['validated', 'approved', 'corrected']
-  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus))
+  // نُقيّد قراءات "الطاقة" بـ metricType = energy_export_kwh صراحة حتى لا تختلط
+  // قراءات مستشعرات أخرى (رطوبة تربة/مياه لمشاريع التشجير والري الذكي) بحساب الطاقة.
+  const readings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus) && r.metricType === 'energy_export_kwh')
 
   const calcRuns = await db.calculationRun.findMany({
     where: {
@@ -175,6 +181,33 @@ export async function generateReportData(reportId: string) {
   const carbonSequestration = isAfforestation ? aliveTrees * treeFactor : 0
   const restoredAreaHa = isAfforestation ? (report.project.plantedAreaM2 || 0) / 10000 : 0
   const habitatIndex = restoredAreaHa > 0 ? Math.min(100, restoredAreaHa * 10) : 0
+
+  // === Smart irrigation (only non-zero for smart_irrigation-type projects) ===
+  // مبنية على قراءات فعلية من عداد المياه الذكي، وليست تقديرًا ثابتًا كما في حالة "الماء" أعلاه.
+  const isSmartIrrigation = report.project.projectType === 'smart_irrigation'
+  let irrigationWaterUsedM3 = 0
+  let irrigationWaterSavedM3 = 0
+  let irrigationWaterSavedPct = 0
+  let irrigationAvgSoilMoisturePct = 0
+  if (isSmartIrrigation) {
+    const waterReadings = allReadings.filter(
+      (r) => verifiedStatuses.includes(r.qualityStatus) && (r.metricType === 'water_meter_m3' || r.metricType === 'water_flow_m3h'),
+    )
+    const soilReadings = allReadings.filter((r) => r.metricType === 'soil_moisture_pct')
+    irrigationWaterUsedM3 = waterReadings.reduce((s, r) => s + r.value, 0)
+    const baselineM3 = estimateBaselineWaterUseM3({
+      irrigatedAreaM2: report.project.irrigatedAreaM2 || 0,
+      days: Math.max(1, days),
+      dailyWaterBudgetM3: report.project.dailyWaterBudgetM3,
+      baselineWaterUseLM2Day: report.project.baselineWaterUseLM2Day,
+    })
+    const savings = calculateWaterSavings({ actualM3: irrigationWaterUsedM3, baselineM3 })
+    irrigationWaterSavedM3 = savings.savedM3
+    irrigationWaterSavedPct = savings.savedPct
+    irrigationAvgSoilMoisturePct = soilReadings.length > 0
+      ? soilReadings.reduce((s, r) => s + r.value, 0) / soilReadings.length
+      : 0
+  }
 
   // === Economy ===
   const currency = report.project.currency || 'SAR'
@@ -311,6 +344,12 @@ export async function generateReportData(reportId: string) {
         biomass,
         carbonStock: co2Sequestered,
         carbonSequestration,
+      },
+      irrigation: {
+        waterUsedM3: Math.round(irrigationWaterUsedM3 * 100) / 100,
+        waterSavedM3: irrigationWaterSavedM3,
+        waterSavedPct: irrigationWaterSavedPct,
+        avgSoilMoisturePct: Math.round(irrigationAvgSoilMoisturePct * 100) / 100,
       },
       biodiversity: {
         restoredArea: restoredAreaHa,

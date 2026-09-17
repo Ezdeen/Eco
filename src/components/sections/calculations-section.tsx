@@ -14,7 +14,7 @@ import {
 import {
   Calculator, Zap, Leaf, Droplet, Recycle, TreePine, Bird, DollarSign,
   ShieldCheck, Database, Activity, Gauge, TrendingUp, FlaskConical, Code2,
-  FileCheck, ExternalLink, Eye, BookOpen, Network, AlertCircle, CheckCircle2,
+  FileCheck, ExternalLink, Eye, BookOpen, Network, AlertCircle, CheckCircle2, Sprout,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -96,6 +96,20 @@ const KPI_CATEGORIES = [
     ],
   },
   {
+    key: 'irrigation',
+    title: 'الري الذكي',
+    titleEn: 'Smart Irrigation',
+    icon: Sprout,
+    color: 'sky',
+    kpis: [
+      { key: 'waterUsedM3', label: 'Water Used', labelAr: 'مياه مستخدمة (فعلي)', unit: 'm³' },
+      { key: 'waterSavedM3', label: 'Water Saved', labelAr: 'مياه موفّرة', unit: 'm³' },
+      { key: 'waterSavedPct', label: 'Water Savings', labelAr: 'نسبة التوفير', unit: '%' },
+      { key: 'avgSoilMoisturePct', label: 'Avg. Soil Moisture', labelAr: 'متوسط رطوبة التربة', unit: '%' },
+      { key: 'efficiencyScore', label: 'Efficiency Score', labelAr: 'مؤشر كفاءة الري', unit: '/100' },
+    ],
+  },
+  {
     key: 'economy',
     title: 'الاقتصاد',
     titleEn: 'Economy',
@@ -143,6 +157,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; grad
   violet: { bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-200', gradient: 'from-violet-500 to-purple-600' },
   green: { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-200', gradient: 'from-green-500 to-emerald-600' },
   teal: { bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200', gradient: 'from-teal-500 to-cyan-600' },
+  sky: { bg: 'bg-sky-50 dark:bg-sky-950/30', text: 'text-sky-700 dark:text-sky-400', border: 'border-sky-200', gradient: 'from-sky-500 to-blue-600' },
 }
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
