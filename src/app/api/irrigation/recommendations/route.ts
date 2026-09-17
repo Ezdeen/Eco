@@ -6,6 +6,7 @@ import {
   computeIrrigationRecommendation,
   calculateWaterSavings,
   estimateBaselineWaterUseM3,
+  type WaterSavingsResult,
 } from '@/lib/irrigation'
 
 // GET /api/irrigation/recommendations?projectId=...
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
     })
 
     // 5) توفير المياه والأثر البيئي المشتق (فقط عند توفر قراءة فعلية)
-    let waterSavings = null
+    let waterSavings: WaterSavingsResult | null = null
     if (actualIrrigationM3 != null) {
       const baselineM3 = estimateBaselineWaterUseM3({
         irrigatedAreaM2: project.irrigatedAreaM2 || 0,
