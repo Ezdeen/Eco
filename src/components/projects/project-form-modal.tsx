@@ -15,9 +15,27 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi, Droplet } from 'lucide-react'
+import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi, Droplet, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProjectFundersManager } from './project-funders-manager'
+
+interface IotSensorEntry {
+  sensorType: string
+  model: string
+  serial: string
+  gatewayId: string
+  protocol: string
+  dataFrequency: string
+}
+
+const EMPTY_SENSOR_ENTRY: IotSensorEntry = {
+  sensorType: 'soil_moisture',
+  model: '',
+  serial: '',
+  gatewayId: '',
+  protocol: 'lora',
+  dataFrequency: 'daily',
+}
 
 interface ProjectFormData {
   name: string
@@ -52,6 +70,8 @@ interface ProjectFormData {
   iotGatewayId: string
   iotProtocol: string
   iotDataFrequency: string
+  // بقية مجسات/أجهزة الشبكة التي تُضاف دفعة واحدة عند إنشاء المشروع
+  additionalIotSensors: IotSensorEntry[]
   // Smart irrigation fields
   cropType: string
   irrigatedAreaM2: string
@@ -222,6 +242,7 @@ const EMPTY_FORM: ProjectFormData = {
   iotGatewayId: '',
   iotProtocol: 'lora',
   iotDataFrequency: 'daily',
+  additionalIotSensors: [],
   // Smart irrigation fields
   cropType: 'other',
   irrigatedAreaM2: '',
@@ -301,6 +322,9 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         iotGatewayId: initialData.iotGatewayId || '',
         iotProtocol: initialData.iotProtocol || 'lora',
         iotDataFrequency: initialData.iotDataFrequency || 'daily',
+        // تُضاف الأجهزة الإضافية فقط عند إنشاء مشروع جديد؛ لمشروع قائم تُدار
+        // الأجهزة من قسم "الأجهزة" المستقل
+        additionalIotSensors: [],
         // Smart irrigation
         cropType: initialData.cropType || 'other',
         irrigatedAreaM2: initialData.irrigatedAreaM2?.toString() || '',
@@ -392,6 +416,17 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       }
     }
 
+    // التحقق من بقية مجسات/أجهزة الشبكة المُضافة دفعة واحدة (تشجير أو ري ذكي)
+    if (projectType?.isAfforestation || projectType?.isSmartIrrigation) {
+      form.additionalIotSensors.forEach((sensor, index) => {
+        if (!sensor.serial.trim()) {
+          newErrors[`additionalIotSensor_${index}_type`] = 'سيريال المستشعر مطلوب'
+        } else if (!sensor.sensorType) {
+          newErrors[`additionalIotSensor_${index}_type`] = 'نوع المستشعر مطلوب'
+        }
+      })
+    }
+
     if (form.sponsorPhone && form.sponsorPhone.length < 6) {
       newErrors.sponsorPhone = 'رقم الهاتف غير صحيح'
     }
@@ -457,6 +492,19 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         iotGatewayId: cleanValue(form.iotGatewayId),
         iotProtocol: cleanValue(form.iotProtocol),
         iotDataFrequency: cleanValue(form.iotDataFrequency),
+        // بقية مجسات/أجهزة الشبكة (تُرسَل فقط عند إنشاء مشروع جديد)
+        additionalIotSensors: isEditMode
+          ? []
+          : form.additionalIotSensors
+              .filter((s) => s.serial.trim() !== '')
+              .map((s) => ({
+                sensorType: cleanValue(s.sensorType),
+                model: cleanValue(s.model),
+                serial: s.serial.trim(),
+                gatewayId: cleanValue(s.gatewayId),
+                protocol: cleanValue(s.protocol),
+                dataFrequency: cleanValue(s.dataFrequency),
+              })),
         // Smart irrigation
         cropType: cleanValue(form.cropType),
         irrigatedAreaM2: cleanValue(form.irrigatedAreaM2),
@@ -539,6 +587,42 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
       setErrors((prev) => {
         const next = { ...prev }
         delete next[field]
+        return next
+      })
+    }
+  }
+
+  const addIotSensorRow = () => {
+    setForm((prev) => ({
+      ...prev,
+      additionalIotSensors: [...prev.additionalIotSensors, { ...EMPTY_SENSOR_ENTRY }],
+    }))
+  }
+
+  const removeIotSensorRow = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      additionalIotSensors: prev.additionalIotSensors.filter((_, i) => i !== index),
+    }))
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next[`additionalIotSensor_${index}_type`]
+      return next
+    })
+  }
+
+  const updateIotSensorRow = (index: number, field: keyof IotSensorEntry, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      additionalIotSensors: prev.additionalIotSensors.map((s, i) =>
+        i === index ? { ...s, [field]: value } : s,
+      ),
+    }))
+    const errorKey = `additionalIotSensor_${index}_type`
+    if (errors[errorKey]) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next[errorKey]
         return next
       })
     }
@@ -1085,6 +1169,137 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                   <strong>ملاحظة:</strong> سيتم إنشاء جهاز IoT تلقائيًا عند حفظ المشروع إذا أدخلت سيريال نمبر المستشعر.
                   البيانات المستلمة من المستشعر تُخزَّن كقراءات في النظام وتُعرض في مركز البيانات.
                 </div>
+
+                {/* بقية مجسات/أجهزة الشبكة — تُضاف دفعة واحدة عند إنشاء المشروع فقط */}
+                {!isEditMode && (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium">
+                        {PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation
+                          ? 'بقية عُقد شبكة مجسات الرطوبة'
+                          : 'مستشعرات إضافية لمراقبة الأشجار'}
+                      </Label>
+                      <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={addIotSensorRow}>
+                        <Plus className="h-3 w-3" />
+                        إضافة مستشعر
+                      </Button>
+                    </div>
+
+                    {form.additionalIotSensors.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        لم تتم إضافة مستشعرات إضافية بعد. اضغط "إضافة مستشعر" لإدراج جميع مجسات وأجهزة الشبكة دفعة واحدة عند إنشاء المشروع.
+                      </p>
+                    )}
+
+                    {form.additionalIotSensors.map((sensor, index) => (
+                      <div key={index} className="rounded-lg border p-3 space-y-3 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            مستشعر إضافي #{index + 2}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
+                            onClick={() => removeIotSensorRow(index)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">نوع المستشعر</Label>
+                            <Select
+                              value={sensor.sensorType}
+                              onValueChange={(v) => updateIotSensorRow(index, 'sensorType', v)}
+                            >
+                              <SelectTrigger
+                                className={errors[`additionalIotSensor_${index}_type`] ? 'border-red-500' : ''}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {IOT_SENSOR_TYPES.map((s) => (
+                                  <SelectItem key={s.code} value={s.code}>
+                                    <div className="flex flex-col">
+                                      <span>{s.name}</span>
+                                      <span className="text-[10px] text-muted-foreground">{s.desc}</span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {errors[`additionalIotSensor_${index}_type`] && (
+                              <p className="text-xs text-red-500">{errors[`additionalIotSensor_${index}_type`]}</p>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">موديل المستشعر</Label>
+                            <Input
+                              value={sensor.model}
+                              onChange={(e) => updateIotSensorRow(index, 'model', e.target.value)}
+                              placeholder="مثال: Decagon EC-5, Davis 6440"
+                              dir="ltr"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">سيريال نمبر المستشعر</Label>
+                            <Input
+                              value={sensor.serial}
+                              onChange={(e) => updateIotSensorRow(index, 'serial', e.target.value)}
+                              placeholder="SN-SENSOR-XXXXX"
+                              className="font-mono"
+                              dir="ltr"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">معرّف بوابة IoT</Label>
+                            <Input
+                              value={sensor.gatewayId}
+                              onChange={(e) => updateIotSensorRow(index, 'gatewayId', e.target.value)}
+                              placeholder="GW-001 أو MAC address"
+                              className="font-mono"
+                              dir="ltr"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">بروتوكول الاتصال</Label>
+                            <Select
+                              value={sensor.protocol}
+                              onValueChange={(v) => updateIotSensorRow(index, 'protocol', v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {IOT_PROTOCOLS.map((p) => (
+                                  <SelectItem key={p.code} value={p.code}>{p.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">تردد إرسال البيانات</Label>
+                            <Select
+                              value={sensor.dataFrequency}
+                              onValueChange={(v) => updateIotSensorRow(index, 'dataFrequency', v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {IOT_DATA_FREQUENCIES.map((f) => (
+                                  <SelectItem key={f.code} value={f.code}>{f.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1258,7 +1473,7 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
               <DollarSign className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">المالية</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className={`grid grid-cols-1 gap-3 ${PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation ? '' : 'md:grid-cols-3'}`}>
               <div className="space-y-1.5">
                 <Label htmlFor="currency" className="text-xs">العملة</Label>
                 <Select value={form.currency} onValueChange={(v) => updateField('currency', v)}>
@@ -1274,30 +1489,36 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="tariffRetail" className="text-xs">تعرفة البيع (لكل kWh)</Label>
-                <Input
-                  id="tariffRetail"
-                  type="number"
-                  step="0.01"
-                  value={form.tariffRetail}
-                  onChange={(e) => updateField('tariffRetail', e.target.value)}
-                  placeholder="0.18"
-                  dir="ltr"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="tariffFeedIn" className="text-xs">تعرفة Feed-in (لكل kWh)</Label>
-                <Input
-                  id="tariffFeedIn"
-                  type="number"
-                  step="0.01"
-                  value={form.tariffFeedIn}
-                  onChange={(e) => updateField('tariffFeedIn', e.target.value)}
-                  placeholder="0.10"
-                  dir="ltr"
-                />
-              </div>
+              {/* تعرفة البيع وFeed-in خاصة بأنظمة الطاقة الشمسية المرتبطة بالشبكة؛
+                  لا معنى لها في مشروع الري الذكي (الذي له تعرفة مياه خاصة به) */}
+              {!PROJECT_TYPES.find((t) => t.code === form.projectType)?.isSmartIrrigation && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tariffRetail" className="text-xs">تعرفة البيع (لكل kWh)</Label>
+                    <Input
+                      id="tariffRetail"
+                      type="number"
+                      step="0.01"
+                      value={form.tariffRetail}
+                      onChange={(e) => updateField('tariffRetail', e.target.value)}
+                      placeholder="0.18"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tariffFeedIn" className="text-xs">تعرفة Feed-in (لكل kWh)</Label>
+                    <Input
+                      id="tariffFeedIn"
+                      type="number"
+                      step="0.01"
+                      value={form.tariffFeedIn}
+                      onChange={(e) => updateField('tariffFeedIn', e.target.value)}
+                      placeholder="0.10"
+                      dir="ltr"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </form>
