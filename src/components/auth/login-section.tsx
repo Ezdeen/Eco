@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Globe, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle } from 'lucide-react'
+import { Globe, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { appCopy, loginCopy, type Locale } from '@/lib/i18n'
 
@@ -23,16 +23,16 @@ const DEMO_ACCOUNTS = [
     password: 'Admin@123456',
     role: 'organizationAdmin',
     icon: '👨‍💼',
-    ring: 'ring-emerald-200 dark:ring-emerald-800',
-    chip: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300',
+    ring: 'focus-visible:ring-emerald-500',
+    chip: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200',
   },
   {
     email: 'project@bfec.sa',
     password: 'Project@123456',
     role: 'projectManager',
     icon: '📋',
-    ring: 'ring-violet-200 dark:ring-violet-800',
-    chip: 'bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300',
+    ring: 'focus-visible:ring-teal-500',
+    chip: 'bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-200',
   },
 ] as const
 
@@ -74,7 +74,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
 
       toast.success(loginCopy[locale].loginSuccess.replace('{name}', data.user.name))
       onLoginSuccess(data.user)
-    } catch (err) {
+    } catch {
       setError(loginCopy[locale].connectionError)
     } finally {
       setLoading(false)
@@ -89,240 +89,213 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 via-background to-teal-50 dark:from-emerald-950/30 dark:via-background dark:to-teal-950/20">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f4f7f1] px-4 py-10 text-foreground dark:bg-[#0b1510] sm:px-6" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(30,73,49,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(30,73,49,0.055)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-20" />
+        <div className="absolute -top-44 end-[-7rem] h-[28rem] w-[28rem] rounded-full bg-emerald-200/45 blur-3xl dark:bg-emerald-800/20" />
+        <div className="absolute -bottom-52 start-[-8rem] h-[32rem] w-[32rem] rounded-full bg-lime-100/70 blur-3xl dark:bg-teal-900/20" />
+        <div className="absolute top-[22%] start-[38%] h-48 w-48 rounded-full border border-emerald-800/10 dark:border-emerald-100/10" />
+      </div>
+
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="absolute top-4 end-4 z-10 gap-2"
+        className="absolute top-5 end-5 z-20 h-9 rounded-full border-emerald-950/10 bg-background/80 px-4 text-foreground shadow-sm transition-colors hover:bg-emerald-50 hover:text-emerald-900 dark:border-emerald-100/15 dark:hover:bg-emerald-950"
         onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}
         title={appCopy[locale].language}
       >
-        <Globe className="h-4 w-4" />
+        <Globe className="me-2 h-4 w-4" />
         {locale === 'ar' ? 'English' : 'العربية'}
       </Button>
-      {/* Ambient background blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-emerald-300/25 dark:bg-emerald-900/20 blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-teal-300/25 dark:bg-teal-900/20 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-emerald-100/20 dark:bg-emerald-950/10 blur-3xl" />
-      </div>
 
-      <div className="relative w-full max-w-5xl grid lg:grid-cols-2 gap-8 items-center">
-        {/* Left: Branding */}
-        <div className="hidden lg:flex flex-col gap-6 p-8">
-          <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-14 w-14 rounded-2xl shrink-0 object-contain shadow-lg ring-1 ring-black/5" />
+      <div className="relative z-10 grid w-full max-w-6xl items-stretch overflow-hidden rounded-[2rem] border border-emerald-950/10 bg-background/85 shadow-[0_28px_70px_-32px_rgba(19,58,39,0.42)] backdrop-blur-sm dark:border-emerald-100/10 lg:grid-cols-[1.14fr_0.86fr]">
+        <section className="relative hidden min-h-[650px] overflow-hidden bg-[#183f2c] p-10 text-emerald-50 lg:flex lg:flex-col" aria-label="Eco Ledger">
+          <div aria-hidden="true" className="absolute inset-0">
+            <div className="absolute -top-16 -end-20 h-72 w-72 rounded-full border-[22px] border-emerald-200/10" />
+            <div className="absolute bottom-12 -start-20 h-80 w-80 rounded-full bg-[#245d40] opacity-70" />
+            <div className="absolute bottom-24 start-20 h-32 w-32 rounded-full border border-emerald-200/20" />
+          </div>
+
+          <div className="relative flex items-center gap-3">
+            <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-12 w-12 rounded-2xl bg-white/90 p-1.5 object-contain shadow-sm" />
             <div>
-              <h1 className="font-cairo text-2xl font-bold text-foreground">Eco Ledger</h1>
-              <p className="text-sm text-muted-foreground">{loginCopy[locale].platformDescription}</p>
+              <p className="text-xl font-bold tracking-tight">Eco Ledger</p>
+              <p className="mt-0.5 text-xs text-emerald-100/70">{loginCopy[locale].platformDescription}</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <h2 className="font-cairo text-3xl font-bold leading-tight text-foreground">
+          <div className="relative my-auto max-w-md pt-16">
+            <Badge className="mb-5 rounded-full border border-emerald-100/20 bg-emerald-100/10 px-3 py-1 text-emerald-50 hover:bg-emerald-100/10">
+              <CheckCircle2 className="me-1.5 h-3.5 w-3.5" />
+              {loginCopy[locale].verifiedData}
+            </Badge>
+            <h1 className="font-cairo text-4xl font-bold leading-[1.25] tracking-tight text-white">
               {loginCopy[locale].headline}
-              <br />
-              <span className="bg-gradient-to-l from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                {loginCopy[locale].headlineHighlight}
-              </span>
-            </h2>
-            <p className="text-muted-foreground leading-relaxed">
+              <span className="block text-emerald-200">{loginCopy[locale].headlineHighlight}</span>
+            </h1>
+            <p className="mt-5 max-w-prose text-base leading-7 text-emerald-50/75">
               {loginCopy[locale].description}
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/70 text-emerald-600 dark:text-emerald-400 mb-2">
-                <Zap className="h-4 w-4" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].verifiedData}</p>
-              <p className="text-xs text-muted-foreground">{loginCopy[locale].realTimeMeasurement}</p>
+          <div className="relative grid grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-emerald-100/15 bg-white/[0.07] p-4">
+              <Zap className="mb-5 h-5 w-5 text-lime-200" />
+              <p className="text-sm font-semibold text-white">{loginCopy[locale].verifiedData}</p>
+              <p className="mt-1 text-xs leading-5 text-emerald-50/60">{loginCopy[locale].realTimeMeasurement}</p>
             </div>
-            <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/70 text-teal-600 dark:text-teal-400 mb-2">
-                <Leaf className="h-4 w-4" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].avoidedCarbon}</p>
-              <p className="text-xs text-muted-foreground">{loginCopy[locale].ghgProtocol}</p>
+            <div className="rounded-2xl border border-emerald-100/15 bg-white/[0.07] p-4">
+              <Leaf className="mb-5 h-5 w-5 text-lime-200" />
+              <p className="text-sm font-semibold text-white">{loginCopy[locale].avoidedCarbon}</p>
+              <p className="mt-1 text-xs leading-5 text-emerald-50/60">{loginCopy[locale].ghgProtocol}</p>
             </div>
-            <div className="p-4 rounded-xl bg-card border shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/70 text-blue-600 dark:text-blue-400 mb-2">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">{loginCopy[locale].hederaAttestation}</p>
-              <p className="text-xs text-muted-foreground">{loginCopy[locale].immutableRecord}</p>
+            <div className="rounded-2xl border border-emerald-100/15 bg-white/[0.07] p-4">
+              <ShieldCheck className="mb-5 h-5 w-5 text-lime-200" />
+              <p className="text-sm font-semibold text-white">{loginCopy[locale].hederaAttestation}</p>
+              <p className="mt-1 text-xs leading-5 text-emerald-50/60">{loginCopy[locale].immutableRecord}</p>
             </div>
           </div>
+        </section>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-4 border-t">
-            <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900">
-              <ShieldCheck className="h-3 w-3 ml-1" />
-              JWT + HTTP-only
-            </Badge>
-            <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
-              <Lock className="h-3 w-3 ml-1" />
-              bcryptjs
-            </Badge>
-            <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900">
-              <ShieldCheck className="h-3 w-3 ml-1" />
-              RBAC + ABAC
-            </Badge>
-          </div>
-        </div>
-
-        {/* Right: Form */}
-        <Card className="w-full shadow-2xl shadow-emerald-950/5 border-border/60 backdrop-blur">
-          <CardHeader className="space-y-3 pb-4">
-            <div className="flex items-center gap-3 lg:hidden">
-              <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-11 w-11 rounded-xl shrink-0 object-contain" />
+        <section className="flex min-h-[650px] flex-col justify-center bg-card px-5 py-10 sm:px-10 lg:px-12">
+          <div className="mx-auto w-full max-w-md animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <div className="mb-8 flex items-center gap-3 lg:hidden">
+              <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-12 w-12 rounded-2xl border border-emerald-950/10 bg-emerald-50 p-1.5 object-contain" />
               <div>
-                <CardTitle className="text-lg">Eco Ledger</CardTitle>
-                <CardDescription className="text-xs">{loginCopy[locale].platformDescription}</CardDescription>
+                <p className="text-xl font-bold tracking-tight">Eco Ledger</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{loginCopy[locale].platformDescription}</p>
               </div>
             </div>
 
-            <div className="hidden lg:block">
-              <CardTitle className="text-2xl font-cairo">{loginCopy[locale].login}</CardTitle>
-              <CardDescription className="mt-1">
-                {loginCopy[locale].loginDescription}
-              </CardDescription>
-            </div>
-          </CardHeader>
+            <Card className="border-0 bg-transparent shadow-none">
+              <CardHeader className="space-y-2 p-0">
+                <Badge variant="outline" className="w-fit rounded-full border-emerald-900/15 bg-emerald-50 px-3 py-1 text-emerald-900 dark:border-emerald-300/20 dark:bg-emerald-950/40 dark:text-emerald-200">
+                  <ShieldCheck className="me-1.5 h-3.5 w-3.5" />
+                  Eco Ledger Secure Access
+                </Badge>
+                <CardTitle className="font-cairo text-3xl font-bold tracking-tight">{loginCopy[locale].login}</CardTitle>
+                <CardDescription className="max-w-sm text-sm leading-6">{loginCopy[locale].loginDescription}</CardDescription>
+              </CardHeader>
 
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-xs font-medium">{loginCopy[locale].email}</Label>
-                <div className="relative">
-                  <Mail className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors ${emailInvalid ? 'text-destructive' : 'text-muted-foreground'}`} />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@bfec.sa"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value)
-                      if (error) setError('')
-                    }}
-                    onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                    className="pr-9 h-11"
-                    aria-invalid={!!emailInvalid}
-                    autoComplete="email"
-                    autoFocus
-                    required
-                    dir="ltr"
-                  />
-                </div>
-                {emailInvalid && (
-                  <p className="text-xs text-destructive">{loginCopy[locale].required}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-medium">{loginCopy[locale].password}</Label>
-                  <button
-                    type="button"
-                    className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline underline-offset-2 transition-colors"
-                    onClick={() => toast.info(loginCopy[locale].forgotPasswordMessage)}
-                  >
-                    {loginCopy[locale].forgotPassword}
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors ${passwordInvalid ? 'text-destructive' : 'text-muted-foreground'}`} />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value)
-                      if (error) setError('')
-                    }}
-                    onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-                    className="pr-9 pl-9 h-11"
-                    aria-invalid={!!passwordInvalid}
-                    autoComplete="current-password"
-                    required
-                    dir="ltr"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showPassword ? loginCopy[locale].hidePassword : loginCopy[locale].showPassword}
-                    tabIndex={-1}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {passwordInvalid && (
-                  <p className="text-xs text-destructive">{loginCopy[locale].required}</p>
-                )}
-              </div>
-
-              {error && (
-                <div role="alert" className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full h-11 bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                    {loginCopy[locale].loggingIn}
-                  </>
-                ) : (
-                  <>{loginCopy[locale].login}</>
-                )}
-              </Button>
-            </form>
-
-            <div className="relative my-5">
-              <Separator />
-              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-                {loginCopy[locale].demoAccounts}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  onClick={() => fillDemo(acc)}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg border bg-card hover:bg-muted/50 hover:ring-2 ${acc.ring} transition-all text-start group`}
-                >
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${acc.chip}`}>
-                    {acc.icon}
+              <CardContent className="p-0 pt-7">
+                <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-sm font-semibold">{loginCopy[locale].email}</Label>
+                    <div className="relative">
+                      <Mail className={`absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${emailInvalid ? 'text-destructive' : 'text-emerald-800/55 dark:text-emerald-200/60'}`} />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="admin@bfec.sa"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value)
+                          if (error) setError('')
+                        }}
+                        onBlur={() => setTouched((current) => ({ ...current, email: true }))}
+                        className="h-12 rounded-xl border-emerald-950/15 bg-[#f8faf6] pe-10 shadow-none transition-[border-color,box-shadow] focus-visible:border-emerald-700 focus-visible:ring-emerald-700/20 dark:bg-emerald-950/10"
+                        aria-invalid={!!emailInvalid}
+                        autoComplete="email"
+                        autoFocus
+                        required
+                        dir="ltr"
+                      />
+                    </div>
+                    {emailInvalid && <p className="text-xs text-destructive">{loginCopy[locale].required}</p>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate text-foreground">{loginCopy[locale][acc.role]}</p>
-                    <p className="text-[10px] text-muted-foreground truncate" dir="ltr">{acc.email}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
 
-            <p className="text-[10px] text-muted-foreground text-center mt-3">
-              {loginCopy[locale].demoHint}
-            </p>
-          </CardContent>
-        </Card>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="password" className="text-sm font-semibold">{loginCopy[locale].password}</Label>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-emerald-800 underline-offset-4 transition-colors hover:text-emerald-950 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700/40 dark:text-emerald-300 dark:hover:text-emerald-100"
+                        onClick={() => toast.info(loginCopy[locale].forgotPasswordMessage)}
+                      >
+                        {loginCopy[locale].forgotPassword}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Lock className={`absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${passwordInvalid ? 'text-destructive' : 'text-emerald-800/55 dark:text-emerald-200/60'}`} />
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          if (error) setError('')
+                        }}
+                        onBlur={() => setTouched((current) => ({ ...current, password: true }))}
+                        className="h-12 rounded-xl border-emerald-950/15 bg-[#f8faf6] pe-10 ps-10 shadow-none transition-[border-color,box-shadow] focus-visible:border-emerald-700 focus-visible:ring-emerald-700/20 dark:bg-emerald-950/10"
+                        aria-invalid={!!passwordInvalid}
+                        autoComplete="current-password"
+                        required
+                        dir="ltr"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((current) => !current)}
+                        className="absolute start-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700/40"
+                        aria-label={showPassword ? loginCopy[locale].hidePassword : loginCopy[locale].showPassword}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {passwordInvalid && <p className="text-xs text-destructive">{loginCopy[locale].required}</p>}
+                  </div>
+
+                  {error && (
+                    <div role="alert" className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="h-12 w-full rounded-xl bg-[#1b5a3a] text-white shadow-sm transition-[background-color,transform,box-shadow] duration-200 hover:bg-[#12442c] hover:shadow-md active:scale-[0.99] disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                  >
+                    {loading ? (
+                      <><Loader2 className="me-2 h-4 w-4 animate-spin" />{loginCopy[locale].loggingIn}</>
+                    ) : loginCopy[locale].login}
+                  </Button>
+                </form>
+
+                <div className="relative my-7">
+                  <Separator />
+                  <span className="absolute start-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-3 text-xs text-muted-foreground">
+                    {loginCopy[locale].demoAccounts}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {DEMO_ACCOUNTS.map((account) => (
+                    <button
+                      key={account.email}
+                      type="button"
+                      onClick={() => fillDemo(account)}
+                      className={`group flex items-center gap-3 rounded-xl border border-emerald-950/10 bg-[#f8faf6] p-3 text-start transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-emerald-700/30 hover:bg-emerald-50 hover:shadow-sm active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${account.ring} dark:bg-emerald-950/10 dark:hover:bg-emerald-950/30`}
+                    >
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base ${account.chip}`}>{account.icon}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-foreground">{loginCopy[locale][account.role]}</span>
+                        <span className="mt-1 block truncate text-[11px] text-muted-foreground" dir="ltr">{account.email}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">{loginCopy[locale].demoHint}</p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
       </div>
 
-      <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-muted-foreground">
-        © 2026 Eco Ledger • {loginCopy[locale].platformDescription}
-      </div>
-    </div>
+      <p className="absolute bottom-4 z-10 text-center text-xs text-emerald-950/55 dark:text-emerald-100/50">© 2026 Eco Ledger • {loginCopy[locale].platformDescription}</p>
+    </main>
   )
 }
