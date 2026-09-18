@@ -7,7 +7,21 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Globe, Mail, Lock, Eye, EyeOff, Loader2, ShieldCheck, Leaf, Zap, AlertCircle, CheckCircle2, Activity, Radio } from 'lucide-react'
+import {
+  Globe,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
+  ShieldCheck,
+  Leaf,
+  Zap,
+  AlertCircle,
+  CheckCircle2,
+  Activity,
+  Radio,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { appCopy, loginCopy, type Locale } from '@/lib/i18n'
 
@@ -23,372 +37,45 @@ const DEMO_ACCOUNTS = [
     password: 'Admin@123456',
     role: 'organizationAdmin',
     icon: '👨‍💼',
-    ring: 'focus-visible:ring-emerald-400',
-    chip: 'bg-emerald-500/15 text-emerald-200 border-emerald-400/25',
+    ring: 'focus-visible:ring-emerald-500',
+    chip: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200',
   },
   {
     email: 'project@bfec.sa',
     password: 'Project@123456',
     role: 'projectManager',
     icon: '📋',
-    ring: 'focus-visible:ring-teal-400',
-    chip: 'bg-teal-500/15 text-teal-200 border-teal-400/25',
+    ring: 'focus-visible:ring-teal-500',
+    chip: 'bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-200',
   },
 ] as const
 
-/* Inline design tokens + motion, scoped to `.eco-auth` so no external CSS file is touched. */
-const ECO_STYLES = `
-.eco-auth {
-  --eco-line: rgba(148, 233, 213, 0.075);
-  --eco-border: rgba(148, 233, 213, 0.14);
-  --eco-border-strong: rgba(94, 234, 212, 0.34);
-  --eco-fg: #e8f5f1;
-  --eco-muted: #8fa8a2;
-  --eco-emerald: #34d399;
-  --eco-teal: #2dd4bf;
-  --eco-cyan: #22d3ee;
-  --eco-panel: rgba(8, 21, 20, 0.74);
-  position: relative;
-  display: flex;
-  min-height: 100vh;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  padding: 2.75rem 1rem 3.5rem;
-  background: radial-gradient(120% 85% at 84% 4%, #13332d 0%, rgba(9, 25, 23, 0.92) 44%, #03080a 100%);
-  color: var(--eco-fg);
-  -webkit-font-smoothing: antialiased;
-}
-.eco-auth .eco-backdrop { position: absolute; inset: 0; pointer-events: none; }
-.eco-auth .eco-grid {
-  position: absolute; inset: -2px;
-  background-image:
-    linear-gradient(var(--eco-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--eco-line) 1px, transparent 1px);
-  background-size: 58px 58px;
-  -webkit-mask-image: radial-gradient(78% 68% at 50% 42%, #000 0%, transparent 100%);
-  mask-image: radial-gradient(78% 68% at 50% 42%, #000 0%, transparent 100%);
-}
-.eco-auth .eco-blob { position: absolute; border-radius: 9999px; filter: blur(90px); opacity: 0.5; }
-.eco-auth .eco-blob-a {
-  inset-inline-end: -7rem; top: -9rem; height: 27rem; width: 27rem;
-  background: radial-gradient(circle at 50% 50%, rgba(45, 212, 191, 0.5), rgba(6, 78, 59, 0) 70%);
-  animation: eco-float 22s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-.eco-auth .eco-blob-b {
-  inset-inline-start: -9rem; bottom: -12rem; height: 31rem; width: 31rem;
-  background: radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.32), rgba(8, 47, 73, 0) 70%);
-  animation: eco-float 28s cubic-bezier(0.45, 0, 0.55, 1) infinite reverse;
-}
-.eco-auth .eco-canvas { position: absolute; inset: 0; height: 100%; width: 100%; opacity: 0.62; }
-.eco-auth .eco-scan {
-  position: absolute; inset-inline: 0; height: 34vh;
-  background: linear-gradient(180deg, rgba(45, 212, 191, 0) 0%, rgba(45, 212, 191, 0.055) 50%, rgba(45, 212, 191, 0) 100%);
-  animation: eco-scan 14s linear infinite;
-}
-.eco-auth .eco-vignette {
-  position: absolute; inset: 0;
-  background: radial-gradient(105% 85% at 50% 45%, rgba(3, 8, 10, 0) 35%, rgba(3, 8, 10, 0.78) 100%);
-}
-.eco-auth .eco-shell {
-  position: relative; z-index: 10;
-  display: grid; width: 100%; max-width: 72rem; align-items: stretch;
-  overflow: hidden; border-radius: 28px;
-  border: 1px solid var(--eco-border);
-  background: var(--eco-panel);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 40px 90px -40px rgba(0, 0, 0, 0.85),
-    0 0 0 1px rgba(6, 20, 18, 0.5);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: eco-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-@media (min-width: 1024px) { .eco-auth .eco-shell { grid-template-columns: 1.08fr 0.92fr; } }
-.eco-auth .eco-hero {
-  position: relative; display: none; flex-direction: column; overflow: hidden;
-  padding: 2.75rem 2.6rem;
-  background:
-    radial-gradient(115% 90% at 12% 0%, rgba(16, 71, 60, 0.9) 0%, rgba(6, 27, 25, 0.95) 55%, rgba(3, 13, 16, 1) 100%);
-}
-@media (min-width: 1024px) { .eco-auth .eco-hero { display: flex; min-height: 660px; } }
-.eco-auth .eco-hero::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    linear-gradient(rgba(148, 233, 213, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 233, 213, 0.05) 1px, transparent 1px);
-  background-size: 44px 44px;
-  -webkit-mask-image: linear-gradient(160deg, #000 5%, transparent 65%);
-  mask-image: linear-gradient(160deg, #000 5%, transparent 65%);
-}
-.eco-auth .eco-ring {
-  position: absolute; border-radius: 9999px; border: 1px solid rgba(148, 233, 213, 0.12);
-}
-.eco-auth .eco-ring-lg { top: -6rem; inset-inline-end: -6rem; height: 20rem; width: 20rem; }
-.eco-auth .eco-ring-sm { bottom: 6rem; inset-inline-start: -5rem; height: 13rem; width: 13rem; border-style: dashed; }
-.eco-auth .eco-dot-live {
-  display: inline-block; height: 6px; width: 6px; border-radius: 9999px; background: #6ee7b7;
-  box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.65);
-  animation: eco-ping 2.4s cubic-bezier(0.25, 1, 0.5, 1) infinite;
-}
-.eco-auth .eco-telemetry { display: flex; flex-direction: column; gap: 1.05rem; }
-.eco-auth .eco-track { height: 3px; border-radius: 9999px; background: rgba(148, 233, 213, 0.1); overflow: hidden; }
-.eco-auth .eco-fill {
-  display: block; height: 100%; border-radius: 9999px;
-  background: linear-gradient(90deg, var(--eco-emerald), var(--eco-cyan));
-  transform-origin: left center;
-  animation: eco-bar 1400ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-[dir='rtl'] .eco-auth .eco-fill { transform-origin: right center; }
-.eco-auth .eco-trust { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem 1rem; }
-.eco-auth .eco-trust-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; letter-spacing: 0.02em; color: rgba(232, 245, 241, 0.66); }
-.eco-auth .eco-trust-sep { height: 1rem; width: 1px; background: rgba(148, 233, 213, 0.18); }
-.eco-auth .eco-form-side { position: relative; display: flex; flex-direction: column; justify-content: center; padding: 2.5rem 1.5rem; background: linear-gradient(180deg, rgba(6, 18, 17, 0.55), rgba(4, 12, 14, 0.75)); }
-@media (min-width: 640px) { .eco-auth .eco-form-side { padding: 3rem 2.5rem; } }
-@media (min-width: 1024px) { .eco-auth .eco-form-side { padding: 3.25rem 3rem; } }
-.eco-auth .eco-lang {
-  position: absolute; top: 1.25rem; inset-inline-end: 1.25rem; z-index: 20;
-  height: 2.25rem; border-radius: 9999px;
-  border: 1px solid var(--eco-border) !important;
-  background: rgba(8, 22, 21, 0.7) !important;
-  color: var(--eco-fg) !important;
-  backdrop-filter: blur(10px);
-  transition: border-color 200ms cubic-bezier(0.25, 1, 0.5, 1), background-color 200ms cubic-bezier(0.25, 1, 0.5, 1), transform 150ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-.eco-auth .eco-lang:hover { border-color: var(--eco-border-strong) !important; background: rgba(13, 38, 34, 0.85) !important; transform: translateY(-1px); }
-.eco-auth .eco-field {
-  height: 3rem !important; border-radius: 14px !important;
-  border: 1px solid rgba(148, 233, 213, 0.16) !important;
-  background: rgba(3, 14, 14, 0.6) !important;
-  color: var(--eco-fg) !important;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
-  transition: border-color 220ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 220ms cubic-bezier(0.25, 1, 0.5, 1), background-color 220ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-.eco-auth .eco-field::placeholder { color: rgba(143, 168, 162, 0.6); }
-.eco-auth .eco-field:hover { border-color: rgba(148, 233, 213, 0.28) !important; }
-.eco-auth .eco-field:focus-visible {
-  border-color: var(--eco-border-strong) !important;
-  background: rgba(3, 18, 18, 0.8) !important;
-  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.14), 0 0 22px -6px rgba(45, 212, 191, 0.5) !important;
-  outline: none !important;
-}
-.eco-auth .eco-field[aria-invalid='true'] { border-color: rgba(248, 113, 113, 0.6) !important; }
-.eco-auth .eco-submit {
-  position: relative; height: 3rem; width: 100%; border-radius: 14px;
-  border: 1px solid rgba(167, 243, 208, 0.24);
-  background: linear-gradient(115deg, #0f766e 0%, #15803d 42%, #0e7490 100%);
-  background-size: 200% 100%;
-  color: #f0fdf9;
-  font-weight: 600; letter-spacing: 0.01em;
-  box-shadow: 0 14px 34px -16px rgba(16, 185, 129, 0.75);
-  transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1), background-position 600ms cubic-bezier(0.25, 1, 0.5, 1);
-  overflow: hidden;
-}
-.eco-auth .eco-submit:hover:not(:disabled) {
-  background-position: 100% 0;
-  transform: translateY(-1px);
-  box-shadow: 0 18px 40px -14px rgba(34, 211, 238, 0.7);
-}
-.eco-auth .eco-submit:active:not(:disabled) { transform: translateY(0) scale(0.994); }
-.eco-auth .eco-submit::after {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 38%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
-  transform: translateX(-160%);
-}
-.eco-auth .eco-submit:hover:not(:disabled)::after { animation: eco-sheen 900ms cubic-bezier(0.25, 1, 0.5, 1); }
-.eco-auth .eco-submit:disabled { opacity: 0.72; }
-.eco-auth .eco-demo {
-  display: flex; align-items: center; gap: 0.75rem; width: 100%;
-  border-radius: 14px; border: 1px solid rgba(148, 233, 213, 0.12);
-  background: rgba(3, 14, 14, 0.5); padding: 0.7rem;
-  text-align: start;
-  transition: border-color 200ms cubic-bezier(0.25, 1, 0.5, 1), background-color 200ms cubic-bezier(0.25, 1, 0.5, 1), transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-.eco-auth .eco-demo:hover { border-color: var(--eco-border-strong); background: rgba(6, 30, 28, 0.8); transform: translateY(-1px); }
-.eco-auth .eco-demo:active { transform: translateY(0) scale(0.993); }
-.eco-auth .eco-link {
-  color: #7dd3c0; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px;
-  transition: color 200ms cubic-bezier(0.25, 1, 0.5, 1);
-}
-.eco-auth .eco-link:hover { color: #a7f3d0; }
-@keyframes eco-rise { from { opacity: 0; transform: translateY(18px) scale(0.994); } to { opacity: 1; transform: none; } }
-@keyframes eco-fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-@keyframes eco-float { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(-2.2rem, 1.8rem, 0) scale(1.07); } }
-@keyframes eco-scan { 0% { top: -36vh; } 100% { top: 106vh; } }
-@keyframes eco-ping { 0% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.6); } 70% { box-shadow: 0 0 0 8px rgba(110, 231, 183, 0); } 100% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0); } }
-@keyframes eco-bar { from { transform: scaleX(0.04); opacity: 0.2; } to { transform: scaleX(1); opacity: 1; } }
-@keyframes eco-sheen { from { transform: translateX(-160%); } to { transform: translateX(320%); } }
-.eco-auth .eco-in { animation: eco-fade-up 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.eco-auth .eco-in-2 { animation-delay: 80ms; }
-.eco-auth .eco-in-3 { animation-delay: 160ms; }
-.eco-auth .eco-in-4 { animation-delay: 240ms; }
-@media (prefers-reduced-motion: reduce) {
-  .eco-auth .eco-shell,
-  .eco-auth .eco-in,
-  .eco-auth .eco-fill,
-  .eco-auth .eco-blob-a,
-  .eco-auth .eco-blob-b,
-  .eco-auth .eco-scan,
-  .eco-auth .eco-submit::after,
-  .eco-auth .eco-dot-live {
-    animation: none !important;
-  }
-  .eco-auth .eco-fill { opacity: 1; }
-  .eco-auth .eco-submit,
-  .eco-auth .eco-demo,
-  .eco-auth .eco-lang,
-  .eco-auth .eco-field { transition: none !important; }
-  .eco-auth .eco-scan { display: none; }
-}
-`
+const NETWORK_NODES = [
+  { x: 6, y: 18, size: 4, delay: '0s', duration: '7s' },
+  { x: 17, y: 35, size: 6, delay: '-2s', duration: '9s' },
+  { x: 12, y: 72, size: 4, delay: '-4s', duration: '8s' },
+  { x: 29, y: 14, size: 5, delay: '-1s', duration: '10s' },
+  { x: 34, y: 58, size: 4, delay: '-5s', duration: '7s' },
+  { x: 47, y: 26, size: 7, delay: '-3s', duration: '11s' },
+  { x: 54, y: 78, size: 4, delay: '-6s', duration: '8s' },
+  { x: 64, y: 43, size: 5, delay: '-2s', duration: '9s' },
+  { x: 73, y: 12, size: 4, delay: '-7s', duration: '10s' },
+  { x: 79, y: 67, size: 6, delay: '-4s', duration: '8s' },
+  { x: 91, y: 28, size: 5, delay: '-1s', duration: '9s' },
+  { x: 94, y: 82, size: 4, delay: '-5s', duration: '11s' },
+] as const
 
-/**
- * Animated environmental data network rendered on canvas.
- * Pure DOM/Canvas: no extra packages, respects `prefers-reduced-motion`,
- * pauses on hidden tabs and cleans up every listener/frame on unmount.
- */
-function NetworkField() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    let reduced = motionQuery.matches
-    let frame = 0
-    let width = 0
-    let height = 0
-    let nodes: { x: number; y: number; vx: number; vy: number; r: number; depth: number }[] = []
-    const pointer = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 }
-
-    const build = () => {
-      const count = Math.max(16, Math.min(58, Math.round((width * height) / 28000)))
-      nodes = Array.from({ length: count }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.15,
-        vy: (Math.random() - 0.5) * 0.15,
-        r: Math.random() * 1.3 + 0.7,
-        depth: Math.random() * 0.7 + 0.3,
-      }))
-    }
-
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect()
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      width = Math.max(1, rect.width)
-      height = Math.max(1, rect.height)
-      canvas.width = Math.round(width * dpr)
-      canvas.height = Math.round(height * dpr)
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      build()
-    }
-
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height)
-      const offsetX = (pointer.x - 0.5) * 24
-      const offsetY = (pointer.y - 0.5) * 24
-
-      if (!reduced) {
-        for (const node of nodes) {
-          node.x += node.vx
-          node.y += node.vy
-          if (node.x < -20) node.x = width + 20
-          if (node.x > width + 20) node.x = -20
-          if (node.y < -20) node.y = height + 20
-          if (node.y > height + 20) node.y = -20
-        }
-      }
-
-      const linkDistance = width < 640 ? 108 : 148
-      for (let i = 0; i < nodes.length; i += 1) {
-        for (let j = i + 1; j < nodes.length; j += 1) {
-          const dx = nodes[i].x - nodes[j].x
-          const dy = nodes[i].y - nodes[j].y
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          if (distance < linkDistance) {
-            ctx.strokeStyle = `rgba(45, 212, 191, ${((1 - distance / linkDistance) * 0.28).toFixed(3)})`
-            ctx.lineWidth = 0.6
-            ctx.beginPath()
-            ctx.moveTo(nodes[i].x + offsetX * nodes[i].depth, nodes[i].y + offsetY * nodes[i].depth)
-            ctx.lineTo(nodes[j].x + offsetX * nodes[j].depth, nodes[j].y + offsetY * nodes[j].depth)
-            ctx.stroke()
-          }
-        }
-      }
-
-      for (const node of nodes) {
-        ctx.beginPath()
-        ctx.fillStyle = 'rgba(110, 231, 183, 0.7)'
-        ctx.arc(node.x + offsetX * node.depth, node.y + offsetY * node.depth, node.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
-
-    const loop = () => {
-      pointer.x += (pointer.tx - pointer.x) * 0.06
-      pointer.y += (pointer.ty - pointer.y) * 0.06
-      draw()
-      frame = window.requestAnimationFrame(loop)
-    }
-
-    const stop = () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame)
-        frame = 0
-      }
-    }
-
-    const start = () => {
-      stop()
-      if (reduced || document.hidden) {
-        draw()
-        return
-      }
-      frame = window.requestAnimationFrame(loop)
-    }
-
-    const handlePointer = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      if (!rect.width || !rect.height) return
-      pointer.tx = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
-      pointer.ty = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
-    }
-
-    const handleMotionChange = () => {
-      reduced = motionQuery.matches
-      start()
-    }
-
-    const handleVisibility = () => start()
-
-    resize()
-    start()
-
-    window.addEventListener('resize', resize)
-    window.addEventListener('pointermove', handlePointer, { passive: true })
-    motionQuery.addEventListener('change', handleMotionChange)
-    document.addEventListener('visibilitychange', handleVisibility)
-
-    return () => {
-      stop()
-      window.removeEventListener('resize', resize)
-      window.removeEventListener('pointermove', handlePointer)
-      motionQuery.removeEventListener('change', handleMotionChange)
-      document.removeEventListener('visibilitychange', handleVisibility)
-    }
-  }, [])
-
-  return <canvas ref={canvasRef} aria-hidden="true" className="eco-canvas" />
-}
-
-const TELEMETRY = [
-  { label: 'verifiedData', sub: 'realTimeMeasurement', icon: Zap, width: '86%', accent: 'text-lime-200' },
-  { label: 'avoidedCarbon', sub: 'ghgProtocol', icon: Leaf, width: '64%', accent: 'text-emerald-200' },
-  { label: 'hederaAttestation', sub: 'immutableRecord', icon: ShieldCheck, width: '93%', accent: 'text-cyan-200' },
+const NETWORK_LINES = [
+  { left: 6, top: 18, width: 20, rotate: 35 },
+  { left: 17, top: 35, width: 30, rotate: -12 },
+  { left: 12, top: 72, width: 24, rotate: -20 },
+  { left: 29, top: 14, width: 19, rotate: 18 },
+  { left: 34, top: 58, width: 22, rotate: 42 },
+  { left: 47, top: 26, width: 21, rotate: 30 },
+  { left: 54, top: 78, width: 27, rotate: -24 },
+  { left: 64, top: 43, width: 20, rotate: 28 },
+  { left: 73, top: 12, width: 20, rotate: 45 },
+  { left: 79, top: 67, width: 17, rotate: 36 },
 ] as const
 
 export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSectionProps) {
@@ -398,9 +85,32 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({})
+  const sceneRef = useRef<HTMLElement>(null)
 
   const emailInvalid = touched.email && !email
   const passwordInvalid = touched.password && !password
+
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    let frame = 0
+    const handlePointerMove = (event: PointerEvent) => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const x = event.clientX / window.innerWidth - 0.5
+        const y = event.clientY / window.innerHeight - 0.5
+        scene.style.setProperty('--pointer-x', `${x * 18}px`)
+        scene.style.setProperty('--pointer-y', `${y * 18}px`)
+      })
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('pointermove', handlePointerMove)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -445,119 +155,210 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
 
   return (
     <main
-      className="eco-auth"
+      ref={sceneRef}
+      className="eco-login-scene relative flex min-h-screen items-center justify-center overflow-hidden bg-[#071713] px-4 py-16 text-[#10241d] sm:px-6 lg:py-10"
       dir={locale === 'ar' ? 'rtl' : 'ltr'}
     >
-      <style>{ECO_STYLES}</style>
+      <style>{`
+        .eco-login-scene {
+          --pointer-x: 0px;
+          --pointer-y: 0px;
+          isolation: isolate;
+          background:
+            radial-gradient(circle at 78% 18%, rgba(30, 155, 128, 0.14), transparent 28rem),
+            radial-gradient(circle at 12% 88%, rgba(117, 166, 72, 0.12), transparent 30rem),
+            linear-gradient(135deg, #06130f 0%, #0a201a 46%, #071a20 100%);
+        }
+        .eco-network-layer {
+          transform: translate3d(var(--pointer-x), var(--pointer-y), 0) scale(1.04);
+          transition: transform 900ms cubic-bezier(0.25, 1, 0.5, 1);
+          will-change: transform;
+        }
+        .eco-grid {
+          background-image:
+            linear-gradient(rgba(131, 211, 181, 0.045) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(131, 211, 181, 0.045) 1px, transparent 1px);
+          background-size: 48px 48px;
+          mask-image: radial-gradient(ellipse at center, black 18%, transparent 78%);
+        }
+        .eco-node {
+          animation: eco-float var(--node-duration) cubic-bezier(0.45, 0, 0.55, 1) infinite alternate,
+            eco-pulse 3.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+          animation-delay: var(--node-delay);
+        }
+        .eco-line {
+          transform-origin: left center;
+          animation: eco-signal 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+        .eco-orbit {
+          animation: eco-orbit 26s linear infinite;
+        }
+        .eco-card-enter {
+          animation: eco-enter 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .eco-button-shine::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          transform: translateX(-120%) skewX(-20deg);
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent);
+          transition: transform 650ms cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .eco-button-shine:hover::after { transform: translateX(120%) skewX(-20deg); }
+        @keyframes eco-float { to { transform: translate3d(7px, -11px, 0); } }
+        @keyframes eco-pulse { 0%, 100% { opacity: .35; box-shadow: 0 0 0 0 rgba(98, 214, 171, .2); } 50% { opacity: .95; box-shadow: 0 0 0 7px rgba(98, 214, 171, 0); } }
+        @keyframes eco-signal { 0%, 100% { opacity: .08; } 50% { opacity: .35; } }
+        @keyframes eco-orbit { to { transform: rotate(360deg); } }
+        @keyframes eco-enter { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @media (prefers-reduced-motion: reduce) {
+          .eco-network-layer { transform: none !important; transition: none !important; }
+          .eco-node, .eco-line, .eco-orbit, .eco-card-enter { animation: none !important; }
+          .eco-button-shine::after { display: none; }
+        }
+      `}</style>
 
-      <div className="eco-backdrop" aria-hidden="true">
-        <div className="eco-blob eco-blob-a" />
-        <div className="eco-blob eco-blob-b" />
-        <NetworkField />
-        <div className="eco-grid" />
-        <div className="eco-scan" />
-        <div className="eco-vignette" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="eco-grid absolute inset-[-5%]" />
+        <div className="absolute left-[58%] top-[-14rem] h-[34rem] w-[34rem] rounded-full bg-teal-400/[0.07] blur-3xl" />
+        <div className="absolute bottom-[-16rem] left-[-9rem] h-[36rem] w-[36rem] rounded-full bg-lime-300/[0.06] blur-3xl" />
+        <div className="eco-network-layer absolute inset-[-2%]">
+          {NETWORK_LINES.map((line, index) => (
+            <span
+              key={`line-${index}`}
+              className="eco-line absolute h-px bg-gradient-to-r from-emerald-300/5 via-teal-200/30 to-transparent"
+              style={{ left: `${line.left}%`, top: `${line.top}%`, width: `${line.width}%`, transform: `rotate(${line.rotate}deg)`, animationDelay: `${index * -0.6}s` }}
+            />
+          ))}
+          {NETWORK_NODES.map((node, index) => (
+            <span
+              key={`node-${index}`}
+              className="eco-node absolute rounded-full border border-emerald-100/40 bg-teal-200/70"
+              style={{ left: `${node.x}%`, top: `${node.y}%`, width: node.size, height: node.size, '--node-delay': node.delay, '--node-duration': node.duration } as React.CSSProperties}
+            />
+          ))}
+        </div>
+        <div className="eco-orbit absolute right-[8%] top-[10%] hidden h-64 w-64 rounded-full border border-dashed border-teal-100/10 md:block">
+          <span className="absolute left-1/2 top-[-3px] h-1.5 w-1.5 rounded-full bg-teal-200/70 shadow-[0_0_16px_rgba(94,234,212,.65)]" />
+        </div>
       </div>
 
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="eco-lang px-4 text-sm font-medium"
+        className="absolute end-4 top-4 z-30 h-10 rounded-full border-white/15 !bg-[#102820]/80 px-4 text-emerald-50 shadow-sm backdrop-blur-md transition-colors duration-200 hover:border-teal-200/30 hover:!bg-[#17372c]/90 hover:text-white focus-visible:ring-teal-300 sm:end-6 sm:top-6"
         onClick={() => onLocaleChange(locale === 'ar' ? 'en' : 'ar')}
         title={appCopy[locale].language}
       >
-        <Globe className="me-2 h-4 w-4" />
+        <Globe className="me-2 h-4 w-4 text-teal-200" />
         {locale === 'ar' ? 'English' : 'العربية'}
       </Button>
 
-      <div className="eco-shell">
-        <section className="eco-hero" aria-label="Eco Ledger">
-          <div className="eco-ring eco-ring-lg" aria-hidden="true" />
-          <div className="eco-ring eco-ring-sm" aria-hidden="true" />
-
-          <div className="relative flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-1.5 shadow-[0_0_24px_-8px_rgba(45,212,191,0.8)]">
-              <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-full w-full object-contain" />
-            </span>
-            <div>
-              <p className="text-lg font-semibold tracking-tight text-white">Eco Ledger</p>
-              <p className="mt-0.5 text-xs text-emerald-100/55">{loginCopy[locale].platformDescription}</p>
-            </div>
+      <div className="eco-card-enter relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/15 bg-[#edf3ed] shadow-[0_30px_100px_-38px_rgba(0,0,0,.75)] ring-1 ring-emerald-100/5 lg:grid-cols-[1.08fr_.92fr]">
+        <section className="relative hidden min-h-[680px] overflow-hidden bg-[#0d2d25] p-10 text-emerald-50 lg:flex lg:flex-col xl:p-12" aria-label="Eco Ledger">
+          <div aria-hidden="true" className="absolute inset-0">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_65%_25%,rgba(68,183,148,.18),transparent_34%),linear-gradient(155deg,transparent_42%,rgba(3,16,14,.32))]" />
+            <div className="absolute -end-28 -top-28 h-80 w-80 rounded-full border border-emerald-100/10" />
+            <div className="absolute -end-16 -top-16 h-56 w-56 rounded-full border border-emerald-100/10" />
+            <div className="absolute bottom-[14%] start-[-8%] h-52 w-52 rotate-12 rounded-[3rem] border border-teal-100/10" />
           </div>
 
-          <div className="relative my-auto max-w-md pt-14">
-            <Badge className="mb-5 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 py-1 text-emerald-100 hover:bg-emerald-400/10">
-              <span className="eco-dot-live me-2" />
+          <div className="relative flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <span className="absolute inset-0 rounded-xl bg-teal-200/25 blur-md" />
+                <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="relative h-12 w-12 rounded-xl border border-white/20 bg-[#eff8f2] p-1.5 object-contain" />
+              </div>
+              <div>
+                <p className="text-lg font-bold tracking-tight text-white">Eco Ledger</p>
+                <p className="mt-0.5 text-xs text-emerald-100/60">{loginCopy[locale].platformDescription}</p>
+              </div>
+            </div>
+            <span className="flex items-center gap-2 rounded-full border border-teal-100/15 bg-teal-100/[0.06] px-3 py-1.5 text-[11px] font-medium text-teal-100/80">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-200 opacity-50 motion-reduce:animate-none" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-200" />
+              </span>
+              Live network
+            </span>
+          </div>
+
+          <div className="relative my-auto max-w-lg py-14">
+            <Badge className="mb-6 rounded-full border border-emerald-100/15 bg-emerald-100/[0.07] px-3 py-1.5 text-emerald-50 shadow-none hover:bg-emerald-100/[0.07]">
+              <CheckCircle2 className="me-1.5 h-3.5 w-3.5 text-teal-200" />
               {loginCopy[locale].verifiedData}
             </Badge>
-            <h1 className="font-cairo text-[2.1rem] font-bold leading-[1.28] tracking-tight text-white">
+            <h1 className="font-cairo text-4xl font-bold leading-[1.22] tracking-tight text-white xl:text-5xl">
               {loginCopy[locale].headline}
-              <span className="block text-emerald-300">{loginCopy[locale].headlineHighlight}</span>
+              <span className="mt-2 block text-[#9fd5bd]">{loginCopy[locale].headlineHighlight}</span>
             </h1>
-            <p className="mt-5 max-w-prose text-[0.95rem] leading-7 text-emerald-50/65">
+            <p className="mt-6 max-w-md text-base leading-7 text-emerald-50/68">
               {loginCopy[locale].description}
             </p>
-
-            <div className="eco-telemetry mt-9">
-              {TELEMETRY.map((row, index) => (
-                <div key={row.label} className={`eco-in eco-in-${index + 2}`}>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-xs font-semibold text-emerald-50/90">
-                      <row.icon className={`h-3.5 w-3.5 ${row.accent}`} />
-                      {loginCopy[locale][row.label]}
-                    </span>
-                    <span className="text-[0.65rem] text-emerald-100/45">{loginCopy[locale][row.sub]}</span>
-                  </div>
-                  <div className="eco-track">
-                    <span className="eco-fill" style={{ width: row.width, animationDelay: `${140 + index * 110}ms` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
-          <div className="eco-trust eco-in eco-in-4 relative pt-8">
-            <span className="eco-trust-item"><Radio className="h-3.5 w-3.5 text-emerald-300" />{loginCopy[locale].realTimeMeasurement}</span>
-            <span className="eco-trust-sep" aria-hidden="true" />
-            <span className="eco-trust-item"><Activity className="h-3.5 w-3.5 text-cyan-300" />{loginCopy[locale].immutableRecord}</span>
+          <div className="relative rounded-2xl border border-white/10 bg-[#123a30]/70 p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Activity className="h-4 w-4 text-teal-200" />
+                Environmental intelligence
+              </div>
+              <div className="flex h-6 items-end gap-1" aria-hidden="true">
+                {[45, 70, 52, 88, 64, 100, 76].map((height, index) => (
+                  <span key={index} className="w-1 rounded-full bg-teal-200/50" style={{ height: `${height}%` }} />
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-white/10 rtl:divide-x-reverse">
+              <div className="pe-3">
+                <Zap className="mb-3 h-4 w-4 text-[#b7db8a]" />
+                <p className="text-xs font-semibold text-white">{loginCopy[locale].verifiedData}</p>
+                <p className="mt-1 text-[11px] leading-4 text-emerald-50/50">{loginCopy[locale].realTimeMeasurement}</p>
+              </div>
+              <div className="px-3">
+                <Leaf className="mb-3 h-4 w-4 text-[#b7db8a]" />
+                <p className="text-xs font-semibold text-white">{loginCopy[locale].avoidedCarbon}</p>
+                <p className="mt-1 text-[11px] leading-4 text-emerald-50/50">{loginCopy[locale].ghgProtocol}</p>
+              </div>
+              <div className="ps-3">
+                <ShieldCheck className="mb-3 h-4 w-4 text-[#b7db8a]" />
+                <p className="text-xs font-semibold text-white">{loginCopy[locale].hederaAttestation}</p>
+                <p className="mt-1 text-[11px] leading-4 text-emerald-50/50">{loginCopy[locale].immutableRecord}</p>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="eco-form-side">
-          <div className="eco-in mx-auto w-full max-w-md">
-            <div className="mb-8 flex items-center gap-3 lg:hidden">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-1.5">
-                <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-full w-full object-contain" />
-              </span>
+        <section className="relative flex min-h-[660px] flex-col justify-center bg-[#f4f7f3] px-5 py-12 sm:px-10 lg:min-h-[680px] lg:px-12 xl:px-14">
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-600/20 to-transparent" />
+          <div className="mx-auto w-full max-w-md">
+            <div className="mb-9 flex items-center gap-3 lg:hidden">
+              <img src="/logo.svg" alt={loginCopy[locale].logoAlt} className="h-11 w-11 rounded-xl border border-emerald-950/10 bg-[#e8f2eb] p-1.5 object-contain" />
               <div>
-                <p className="text-lg font-semibold tracking-tight text-white">Eco Ledger</p>
-                <p className="mt-0.5 text-xs text-emerald-100/55">{loginCopy[locale].platformDescription}</p>
+                <p className="text-lg font-bold tracking-tight text-[#10241d]">Eco Ledger</p>
+                <p className="mt-0.5 text-xs text-[#52675f]">{loginCopy[locale].platformDescription}</p>
               </div>
             </div>
 
             <Card className="border-0 bg-transparent shadow-none">
-              <CardHeader className="space-y-2 p-0">
-                <Badge variant="outline" className="w-fit rounded-full border-emerald-300/20 bg-emerald-400/5 px-3 py-1 text-emerald-100/90">
-                  <ShieldCheck className="me-1.5 h-3.5 w-3.5" />
-                  Eco Ledger Secure Access
-                </Badge>
-                <CardTitle className="font-cairo text-[1.85rem] font-bold tracking-tight text-white">
-                  {loginCopy[locale].login}
-                </CardTitle>
-                <CardDescription className="max-w-sm text-sm leading-6 text-emerald-50/55">
-                  {loginCopy[locale].loginDescription}
-                </CardDescription>
+              <CardHeader className="space-y-3 p-0">
+                <div className="flex items-center justify-between gap-4">
+                  <Badge variant="outline" className="w-fit rounded-full border-emerald-900/15 bg-[#e7f0e9] px-3 py-1 text-[#25553f]">
+                    <ShieldCheck className="me-1.5 h-3.5 w-3.5" />
+                    Eco Ledger Secure Access
+                  </Badge>
+                  <Radio className="h-4 w-4 text-teal-700/45" aria-hidden="true" />
+                </div>
+                <CardTitle className="font-cairo text-3xl font-bold tracking-tight text-[#10241d] sm:text-4xl">{loginCopy[locale].login}</CardTitle>
+                <CardDescription className="max-w-sm text-sm leading-6 text-[#5a6b64]">{loginCopy[locale].loginDescription}</CardDescription>
               </CardHeader>
 
-              <CardContent className="p-0 pt-7">
+              <CardContent className="p-0 pt-8">
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-semibold text-emerald-50/90">
-                      {loginCopy[locale].email}
-                    </Label>
-                    <div className="relative">
-                      <Mail className={`absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${emailInvalid ? 'text-red-400' : 'text-emerald-300/50'}`} />
+                    <Label htmlFor="email" className="text-sm font-semibold text-[#1c352b]">{loginCopy[locale].email}</Label>
+                    <div className="group relative">
+                      <Mail className={`pointer-events-none absolute end-4 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-200 ${emailInvalid ? 'text-destructive' : 'text-[#648074] group-focus-within:text-teal-700'}`} />
                       <Input
                         id="email"
                         type="email"
@@ -568,7 +369,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                           if (error) setError('')
                         }}
                         onBlur={() => setTouched((current) => ({ ...current, email: true }))}
-                        className="eco-field pe-10"
+                        className="h-12 rounded-xl border-[#c8d4cc] bg-[#fbfdfb] pe-11 text-[#10241d] shadow-[0_1px_2px_rgba(9,35,26,.03)] transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-[#829188] hover:border-[#9eb2a5] focus-visible:border-teal-700 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-teal-700/10"
                         aria-invalid={!!emailInvalid}
                         autoComplete="email"
                         autoFocus
@@ -576,24 +377,22 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                         dir="ltr"
                       />
                     </div>
-                    {emailInvalid && <p className="text-xs text-red-400">{loginCopy[locale].required}</p>}
+                    {emailInvalid && <p className="text-xs text-destructive">{loginCopy[locale].required}</p>}
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <Label htmlFor="password" className="text-sm font-semibold text-emerald-50/90">
-                        {loginCopy[locale].password}
-                      </Label>
+                      <Label htmlFor="password" className="text-sm font-semibold text-[#1c352b]">{loginCopy[locale].password}</Label>
                       <button
                         type="button"
-                        className="eco-link rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#04100f]"
+                        className="rounded-md text-xs font-semibold text-[#267256] underline-offset-4 transition-colors duration-200 hover:text-[#164b37] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 focus-visible:ring-offset-2"
                         onClick={() => toast.info(loginCopy[locale].forgotPasswordMessage)}
                       >
                         {loginCopy[locale].forgotPassword}
                       </button>
                     </div>
-                    <div className="relative">
-                      <Lock className={`absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${passwordInvalid ? 'text-red-400' : 'text-emerald-300/50'}`} />
+                    <div className="group relative">
+                      <Lock className={`pointer-events-none absolute end-4 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-200 ${passwordInvalid ? 'text-destructive' : 'text-[#648074] group-focus-within:text-teal-700'}`} />
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
@@ -604,7 +403,7 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                           if (error) setError('')
                         }}
                         onBlur={() => setTouched((current) => ({ ...current, password: true }))}
-                        className="eco-field pe-10 ps-10"
+                        className="h-12 rounded-xl border-[#c8d4cc] bg-[#fbfdfb] pe-11 ps-11 text-[#10241d] shadow-[0_1px_2px_rgba(9,35,26,.03)] transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-[#829188] hover:border-[#9eb2a5] focus-visible:border-teal-700 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-teal-700/10"
                         aria-invalid={!!passwordInvalid}
                         autoComplete="current-password"
                         required
@@ -613,35 +412,38 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                       <button
                         type="button"
                         onClick={() => setShowPassword((current) => !current)}
-                        className="absolute start-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-emerald-200/50 transition-colors hover:text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+                        className="absolute start-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#697d74] transition-colors duration-200 hover:bg-emerald-950/5 hover:text-[#183c2e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40"
                         aria-label={showPassword ? loginCopy[locale].hidePassword : loginCopy[locale].showPassword}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
-                    {passwordInvalid && <p className="text-xs text-red-400">{loginCopy[locale].required}</p>}
+                    {passwordInvalid && <p className="text-xs text-destructive">{loginCopy[locale].required}</p>}
                   </div>
 
                   {error && (
-                    <div
-                      role="alert"
-                      className="eco-in flex items-start gap-2 rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-200"
-                    >
+                    <div role="alert" className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive animate-in fade-in slide-in-from-top-1 duration-200">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <Button type="submit" disabled={loading} className="eco-submit">
-                    {loading ? (
-                      <><Loader2 className="me-2 h-4 w-4 animate-spin" />{loginCopy[locale].loggingIn}</>
-                    ) : loginCopy[locale].login}
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="eco-button-shine relative h-12 w-full overflow-hidden rounded-xl border border-[#246348] bg-gradient-to-r from-[#174d38] via-[#1c684b] to-[#176054] bg-[length:200%_100%] text-white shadow-[0_10px_25px_-12px_rgba(16,82,59,.65)] transition-[transform,box-shadow,background-position] duration-300 hover:-translate-y-0.5 hover:bg-right hover:text-white hover:shadow-[0_14px_28px_-12px_rgba(16,82,59,.72)] active:translate-y-0 active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-teal-700/20 disabled:translate-y-0 disabled:opacity-60"
+                  >
+                    <span className="relative z-10 flex items-center justify-center">
+                      {loading ? (
+                        <><Loader2 className="me-2 h-4 w-4 animate-spin" />{loginCopy[locale].loggingIn}</>
+                      ) : loginCopy[locale].login}
+                    </span>
                   </Button>
                 </form>
 
                 <div className="relative my-7">
-                  <Separator className="bg-emerald-300/12" />
-                  <span className="absolute start-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#04100f] px-3 text-xs text-emerald-100/45">
+                  <Separator className="bg-[#d7e0da]" />
+                  <span className="absolute start-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap bg-[#f4f7f3] px-3 text-xs text-[#6c7b74]">
                     {loginCopy[locale].demoAccounts}
                   </span>
                 </div>
@@ -652,32 +454,25 @@ export function LoginSection({ onLoginSuccess, locale, onLocaleChange }: LoginSe
                       key={account.email}
                       type="button"
                       onClick={() => fillDemo(account)}
-                      className={`eco-demo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#04100f] ${account.ring}`}
+                      className={`group flex min-h-[66px] items-center gap-3 rounded-xl border border-[#d2ddd5] bg-[#f9fbf8] p-3 text-start shadow-[0_1px_2px_rgba(9,35,26,.02)] transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[#88aa98] hover:bg-[#f0f6f1] hover:shadow-sm active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${account.ring}`}
                     >
-                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-base ${account.chip}`}>
-                        {account.icon}
-                      </span>
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base ${account.chip}`}>{account.icon}</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-emerald-50">{loginCopy[locale][account.role]}</span>
-                        <span className="mt-1 block truncate text-[11px] text-emerald-100/45" dir="ltr">{account.email}</span>
+                        <span className="block truncate text-xs font-semibold text-[#1b342a]">{loginCopy[locale][account.role]}</span>
+                        <span className="mt-1 block truncate text-[11px] text-[#718179]" dir="ltr">{account.email}</span>
                       </span>
                     </button>
                   ))}
                 </div>
 
-                <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs leading-5 text-emerald-100/40">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/70" />
-                  {loginCopy[locale].demoHint}
-                </p>
+                <p className="mt-4 text-center text-xs leading-5 text-[#718179]">{loginCopy[locale].demoHint}</p>
               </CardContent>
             </Card>
           </div>
         </section>
       </div>
 
-      <p className="absolute bottom-4 z-10 text-center text-xs text-emerald-100/35">
-        © 2026 Eco Ledger • {loginCopy[locale].platformDescription}
-      </p>
+      <p className="absolute bottom-4 z-10 px-4 text-center text-xs text-emerald-100/45">© 2026 Eco Ledger • {loginCopy[locale].platformDescription}</p>
     </main>
   )
 }
