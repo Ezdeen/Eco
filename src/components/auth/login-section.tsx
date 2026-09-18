@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  Globe,
+  Languages,
   Leaf,
   Loader2,
   Lock,
@@ -28,7 +28,6 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
-  Wind,
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -45,7 +44,7 @@ interface LoginSectionProps {
   onLocaleChange: (next: Locale) => void
   /**
    * حسابات العرض مخفية افتراضيًا خارج بيئة التطوير.
-   * لا تستخدم هذه الحسابات أو كلمات المرور لحسابات إنتاج حقيقية.
+   * إخفاؤها في الواجهة لا يغني عن تعطيل حسابات العرض في خادم الإنتاج.
    */
   showDemoAccounts?: boolean
 }
@@ -80,9 +79,11 @@ const EXTRA_COPY = {
     pauseMotion: 'إيقاف حركة الخلفية',
     playMotion: 'تشغيل حركة الخلفية',
     reducedMotion: 'الحركة متوقفة وفق تفضيلات جهازك',
-    visualNote: 'مشهد توضيحي للاستدامة',
+    visualNote: 'قياس رقمي • تقارير • تحقق',
+    logoLabel: 'شعار Eco Ledger: الاستدامة والقياس الرقمي والتحقق',
     demoNotice: 'للعرض التجريبي فقط؛ لا تستخدم بيانات حساب إنتاج.',
     welcome: 'مرحبًا بعودتك',
+    sustainability: 'بيانات الاستدامة',
   },
   en: {
     secureAccess: 'Your gateway to Eco Ledger',
@@ -92,19 +93,22 @@ const EXTRA_COPY = {
     pauseMotion: 'Pause background animation',
     playMotion: 'Play background animation',
     reducedMotion: 'Animation is disabled by your device preferences',
-    visualNote: 'Illustrative sustainability scene',
+    visualNote: 'Digital measurement • Reporting • Verification',
+    logoLabel: 'Eco Ledger logo: sustainability, digital measurement and verification',
     demoNotice: 'For demonstration only. Do not use production credentials.',
     welcome: 'Welcome back',
+    sustainability: 'Sustainability data',
   },
 } as const
 
 const ECO_STYLES = `
 .eco-auth {
-  --eco-bg: #061b18;
-  --eco-fg: #f0fdf8;
-  --eco-muted: #afcbc2;
-  --eco-accent: #8df0bf;
-  --eco-line: rgba(176, 242, 215, .14);
+  /* أخضر زمردي أفتح مع تباين واضح للنصوص والحقول. */
+  --eco-bg: #174d43;
+  --eco-fg: #f5fff9;
+  --eco-muted: #c2dfd2;
+  --eco-accent: #b6f5cb;
+  --eco-line: rgba(210, 255, 231, .19);
   position: relative;
   isolation: isolate;
   display: flex;
@@ -119,9 +123,9 @@ const ECO_STYLES = `
   color: var(--eco-fg);
   color-scheme: dark;
   background:
-    radial-gradient(ellipse at 12% 10%, #124b3b 0%, transparent 48%),
-    radial-gradient(ellipse at 90% 90%, #083b43 0%, transparent 46%),
-    var(--eco-bg);
+    radial-gradient(ellipse at 12% 10%, #397e60 0%, transparent 52%),
+    radial-gradient(ellipse at 90% 90%, #286b70 0%, transparent 48%),
+    linear-gradient(135deg, #225f4d, var(--eco-bg));
   -webkit-font-smoothing: antialiased;
 }
 .eco-auth,
@@ -135,7 +139,7 @@ const ECO_STYLES = `
   outline: 2px solid var(--eco-accent);
   outline-offset: 4px;
 }
-.eco-auth ::selection { background: #8df0bf; color: #06241a; }
+.eco-auth ::selection { background: #c2f6cf; color: #164c36; }
 
 .eco-auth .eco-backdrop {
   position: absolute;
@@ -150,25 +154,25 @@ const ECO_STYLES = `
   height: 70%;
   border-radius: 50%;
   filter: blur(75px);
-  opacity: .45;
+  opacity: .42;
   will-change: transform;
 }
 .eco-auth .eco-aurora-a {
   top: -30%;
   left: -20%;
-  background: radial-gradient(ellipse, #1b9968, transparent 68%);
+  background: radial-gradient(ellipse, #6bc48a, transparent 68%);
   animation: eco-aurora 22s ease-in-out infinite alternate;
 }
 .eco-auth .eco-aurora-b {
   right: -25%;
   bottom: -30%;
-  background: radial-gradient(ellipse, #087f91, transparent 68%);
+  background: radial-gradient(ellipse, #48a7a6, transparent 68%);
   animation: eco-aurora 27s ease-in-out infinite alternate-reverse;
 }
 .eco-auth .eco-grid {
   position: absolute;
   inset: 0;
-  opacity: .3;
+  opacity: .26;
   background-image:
     linear-gradient(var(--eco-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--eco-line) 1px, transparent 1px);
@@ -181,7 +185,7 @@ const ECO_STYLES = `
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: .75;
+  opacity: .65;
 }
 .eco-auth .eco-horizon {
   position: absolute;
@@ -190,9 +194,9 @@ const ECO_STYLES = `
   width: 140%;
   height: 48%;
   border-radius: 50%;
-  border-top: 1px solid rgba(141, 240, 191, .25);
-  background: radial-gradient(ellipse at top, rgba(27, 133, 91, .15), transparent 65%);
-  box-shadow: 0 -20px 90px rgba(65, 210, 157, .08);
+  border-top: 1px solid rgba(195, 250, 210, .3);
+  background: radial-gradient(ellipse at top, rgba(123, 218, 158, .17), transparent 65%);
+  box-shadow: 0 -20px 90px rgba(155, 238, 190, .1);
   animation: eco-breathe 9s ease-in-out infinite;
 }
 
@@ -211,16 +215,16 @@ const ECO_STYLES = `
   justify-content: center;
   gap: .5rem;
   min-height: 42px;
-  border: 1px solid rgba(176, 242, 215, .22);
+  border: 1px solid rgba(213, 255, 229, .28);
   border-radius: 999px;
   padding: .55rem 1rem;
-  color: #e5f9ef;
-  background: rgba(10, 40, 32, .9);
+  color: #f0fff5;
+  background: rgba(44, 104, 81, .94);
   transition: background .2s, border-color .2s, transform .2s;
 }
 .eco-auth .eco-tool:hover:not(:disabled) {
-  background: #164b3c;
-  border-color: rgba(141, 240, 191, .55);
+  background: #397c60;
+  border-color: rgba(199, 255, 215, .6);
   transform: translateY(-2px);
 }
 .eco-auth .eco-tool-icon { width: 42px; padding: .5rem; }
@@ -230,18 +234,18 @@ const ECO_STYLES = `
   display: grid;
   width: 100%;
   max-width: 1180px;
-  border: 1px solid rgba(176, 242, 215, .2);
+  border: 1px solid rgba(212, 255, 232, .28);
   border-radius: 30px;
   overflow: hidden;
-  background: rgba(8, 35, 28, .94);
+  background: #225b4d;
   box-shadow:
-    0 40px 110px -35px rgba(0, 0, 0, .65),
-    inset 0 1px 0 rgba(255, 255, 255, .05);
+    0 35px 95px -35px rgba(7, 37, 30, .55),
+    inset 0 1px 0 rgba(255, 255, 255, .12);
   animation: eco-enter .8s cubic-bezier(.16, 1, .3, 1) both;
 }
 @supports (backdrop-filter: blur(20px)) {
   .eco-auth .eco-shell {
-    background: rgba(8, 35, 28, .78);
+    background: rgba(34, 91, 77, .86);
     backdrop-filter: blur(20px);
   }
 }
@@ -249,18 +253,19 @@ const ECO_STYLES = `
   position: relative;
   display: none;
   flex-direction: column;
+  min-width: 0;
   padding: 2.5rem;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 50% 40%, rgba(32, 112, 77, .4), transparent 65%),
-    linear-gradient(145deg, rgba(26, 83, 60, .7), rgba(7, 42, 35, .8));
+    radial-gradient(ellipse at 50% 43%, rgba(157, 231, 163, .2), transparent 64%),
+    linear-gradient(145deg, #387b5f, #276353 62%, #245d50);
 }
 .eco-auth .eco-hero::before {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(125deg, rgba(187, 255, 220, .05), transparent 45%);
+  background: linear-gradient(125deg, rgba(222, 255, 215, .09), transparent 48%);
 }
 .eco-auth .eco-brand {
   position: relative;
@@ -271,18 +276,23 @@ const ECO_STYLES = `
 .eco-auth .eco-brand-mark {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   flex-shrink: 0;
-  padding: .5rem;
+  padding: .4rem;
   border-radius: 16px;
-  border: 1px solid rgba(176, 242, 215, .24);
-  background: rgba(151, 239, 190, .08);
+  border: 1px solid rgba(218, 255, 229, .4);
+  background: linear-gradient(145deg, #f0ffe9, #c9ecd7);
+  box-shadow: 0 8px 20px -12px rgba(5, 49, 32, .45);
 }
-.eco-auth .eco-brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+.eco-auth .eco-brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .eco-auth .eco-brand-name {
   margin: 0;
-  color: #f5fff9;
+  color: #f7fff9;
   font-size: 1.1rem;
   font-weight: 750;
   letter-spacing: -.03em;
@@ -293,12 +303,12 @@ const ECO_STYLES = `
   font-size: .73rem;
   line-height: 1.7;
 }
-.eco-auth .eco-hero-copy { position: relative; margin-top: 2.4rem; }
+.eco-auth .eco-hero-copy { position: relative; margin-top: 2.2rem; }
 .eco-auth .eco-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: .5rem;
-  color: #b5f4d1;
+  color: #d7f9dc;
   font-size: .74rem;
   font-weight: 600;
 }
@@ -307,8 +317,8 @@ const ECO_STYLES = `
   height: 7px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #9ff3bd;
-  box-shadow: 0 0 12px rgba(141, 240, 191, .65);
+  background: #c3f8bd;
+  box-shadow: 0 0 12px rgba(188, 249, 196, .55);
   animation: eco-status 3s ease-in-out infinite;
 }
 .eco-auth .eco-headline {
@@ -321,8 +331,8 @@ const ECO_STYLES = `
 }
 .eco-auth .eco-headline span {
   display: block;
-  color: #a3f5bd;
-  background: linear-gradient(100deg, #c2fda6, #68e3c7, #b8f9de);
+  color: #d2f9bf;
+  background: linear-gradient(100deg, #e2ffc0, #adf0ce, #dcffe8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -332,101 +342,111 @@ const ECO_STYLES = `
   max-width: 32rem;
   font-size: .875rem;
   line-height: 1.95;
-  color: #c0d9ce;
+  color: #d6ebdf;
 }
 
+/* شعار dMRV / ESG: ورقة + أعمدة قياس + علامة تحقق + عقد بيانات. */
 .eco-auth .eco-scene {
   position: relative;
   display: grid;
   place-items: center;
   width: 100%;
-  height: 270px;
-  margin: .9rem 0;
-  perspective: 900px;
+  height: 285px;
+  margin: 1rem 0 1.25rem;
 }
-.eco-auth .eco-planet-halo {
+.eco-auth .eco-logo-halo {
   position: absolute;
-  width: 270px;
-  height: 270px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(90, 234, 154, .17), transparent 68%);
-  animation: eco-breathe 6s ease-in-out infinite;
+  width: 285px;
+  height: 260px;
+  border-radius: 42%;
+  background: radial-gradient(ellipse, rgba(210, 255, 182, .28), transparent 70%);
+  animation: eco-breathe 7s ease-in-out infinite;
 }
-.eco-auth .eco-planet {
-  position: relative;
-  width: 172px;
-  height: 172px;
+.eco-auth .eco-data-frame {
+  position: absolute;
+  width: 230px;
+  height: 216px;
+  border: 1px solid rgba(222, 255, 228, .25);
+  border-radius: 42px;
+  transform: rotate(-12deg);
+}
+.eco-auth .eco-data-frame-two {
+  width: 244px;
+  height: 205px;
+  border-style: dashed;
+  border-color: rgba(222, 255, 228, .18);
+  transform: rotate(12deg);
+}
+.eco-auth .eco-data-frame::before,
+.eco-auth .eco-data-frame::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  overflow: hidden;
-  border: 1px solid rgba(166, 255, 208, .5);
+  background: #defbc1;
+  box-shadow: 0 0 14px rgba(218, 255, 190, .5);
+}
+.eco-auth .eco-data-frame::before { top: 28px; left: 7px; }
+.eco-auth .eco-data-frame::after { bottom: 28px; right: 7px; }
+.eco-auth .eco-logo-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 182px;
+  min-height: 206px;
+  padding: 15px 18px 16px;
+  border: 1px solid rgba(245, 255, 232, .88);
+  border-radius: 32px;
   background:
-    radial-gradient(circle at 32% 28%, rgba(182, 255, 184, .28), transparent 35%),
-    radial-gradient(circle at 70% 85%, #05291f, transparent 60%),
-    #176b4e;
+    radial-gradient(circle at 18% 10%, #fbfff4, transparent 65%),
+    linear-gradient(145deg, #ecfbdc, #d0efdd 65%, #bce6d7);
   box-shadow:
-    inset -24px -18px 35px rgba(0, 15, 12, .65),
-    inset 8px 6px 22px rgba(176, 255, 205, .2),
-    0 0 50px rgba(77, 219, 142, .16);
+    0 24px 42px -22px rgba(12, 56, 39, .55),
+    inset 0 1px 0 #fff,
+    0 0 35px rgba(211, 255, 193, .12);
   animation: eco-levitate 7s ease-in-out infinite;
 }
-.eco-auth .eco-planet::before {
-  content: '';
+.eco-auth .eco-logo-symbol {
+  display: block;
+  width: 112px;
+  height: 112px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 5px 7px rgba(35, 113, 78, .1));
+}
+.eco-auth .eco-logo-wordmark {
+  margin-top: 1px;
+  color: #205b42;
+  font-size: 1.65rem;
+  font-weight: 850;
+  line-height: 1.1;
+  letter-spacing: -.06em;
+}
+.eco-auth .eco-logo-tagline {
+  margin-top: .5rem;
+  color: #396b55;
+  font-size: .55rem;
+  font-weight: 700;
+  letter-spacing: .19em;
+}
+.eco-auth .eco-logo-badge {
   position: absolute;
-  inset: -10% -100%;
-  background-image:
-    radial-gradient(ellipse at 20% 35%, #95d987 0 8%, transparent 8.5%),
-    radial-gradient(ellipse at 32% 59%, #5fc990 0 10%, transparent 10.5%),
-    radial-gradient(ellipse at 65% 32%, #87db9a 0 12%, transparent 12.5%),
-    radial-gradient(ellipse at 78% 69%, #49ac7b 0 8%, transparent 8.5%);
-  background-size: 50% 100%;
-  opacity: .65;
-  animation: eco-world 32s linear infinite;
-}
-.eco-auth .eco-planet::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    repeating-linear-gradient(0deg, transparent 0 27px, rgba(189, 255, 220, .13) 28px 29px),
-    repeating-linear-gradient(90deg, transparent 0 35px, rgba(189, 255, 220, .1) 36px 37px);
-  box-shadow: inset -18px -8px 32px #05281ec4;
-}
-.eco-auth .eco-orbit {
-  position: absolute;
-  width: 270px;
-  height: 270px;
-  border: 1px solid rgba(173, 244, 208, .22);
-  border-radius: 50%;
-  transform: rotateX(67deg) rotate(-25deg);
-}
-.eco-auth .eco-orbit-two {
-  width: 245px;
-  height: 245px;
-  transform: rotateX(62deg) rotate(48deg);
-  border-style: dashed;
-  opacity: .65;
-}
-.eco-auth .eco-orbit-spin {
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  animation: eco-spin 16s linear infinite;
-}
-.eco-auth .eco-orbit-spin::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: -4px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #d1ffc1;
-  box-shadow: 0 0 18px #98ffb1;
-}
-.eco-auth .eco-orbit-two .eco-orbit-spin {
-  animation-duration: 23s;
-  animation-direction: reverse;
+  right: -18px;
+  bottom: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .4rem .65rem;
+  border: 1px solid #efffde;
+  border-radius: 999px;
+  color: #225f43;
+  background: #e4f9cc;
+  box-shadow: 0 7px 16px -9px rgba(9, 53, 34, .4);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .04em;
 }
 .eco-auth .eco-floating-icon {
   position: absolute;
@@ -435,20 +455,22 @@ const ECO_STYLES = `
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  border: 1px solid rgba(173, 244, 208, .24);
-  color: #baf5c7;
-  background: rgba(18, 66, 47, .95);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+  border: 1px solid rgba(216, 255, 222, .4);
+  color: #edffe2;
+  background: #448469;
+  box-shadow: 0 10px 25px -12px rgba(8, 53, 36, .4);
   animation: eco-levitate 6s ease-in-out infinite;
 }
-.eco-auth .eco-floating-a { top: 35px; left: 15%; }
-.eco-auth .eco-floating-b { bottom: 28px; right: 14%; animation-delay: -2s; }
-.eco-auth .eco-floating-c { top: 38px; right: 11%; animation-delay: -4s; }
+.eco-auth .eco-floating-a { top: 36px; left: 8%; }
+.eco-auth .eco-floating-b { bottom: 43px; right: 7%; animation-delay: -2s; }
+.eco-auth .eco-floating-c { top: 31px; right: 6%; animation-delay: -4s; }
 .eco-auth .eco-scene-note {
   position: absolute;
   bottom: 0;
+  color: #d2ead8;
   font-size: .65rem;
-  color: #a7c9b7;
+  line-height: 1.7;
+  text-align: center;
 }
 
 .eco-auth .eco-features { display: grid; gap: .65rem; margin-top: auto; }
@@ -457,9 +479,9 @@ const ECO_STYLES = `
   align-items: center;
   gap: .75rem;
   padding: .75rem .85rem;
-  border: 1px solid rgba(183, 241, 212, .12);
+  border: 1px solid rgba(221, 255, 229, .2);
   border-radius: 14px;
-  background: rgba(9, 42, 31, .36);
+  background: rgba(220, 255, 231, .07);
 }
 .eco-auth .eco-feature-icon {
   display: grid;
@@ -468,8 +490,8 @@ const ECO_STYLES = `
   height: 32px;
   flex-shrink: 0;
   border-radius: 10px;
-  color: #b1f7c9;
-  background: rgba(141, 240, 191, .08);
+  color: #e1ffd3;
+  background: rgba(213, 255, 221, .12);
 }
 .eco-auth .eco-feature strong { display: block; font-size: .75rem; font-weight: 600; }
 .eco-auth .eco-feature small {
@@ -482,14 +504,14 @@ const ECO_STYLES = `
   flex: 1;
   height: 1px;
   margin-inline-start: .6rem;
-  background: linear-gradient(90deg, transparent, rgba(153, 235, 187, .3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(210, 250, 203, .36), transparent);
 }
 .eco-auth .eco-trust {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   margin-top: 1.4rem;
-  color: #b5d4c5;
+  color: #d0e8d9;
   font-size: .65rem;
 }
 .eco-auth .eco-trust span { display: flex; align-items: center; gap: .4rem; }
@@ -498,9 +520,9 @@ const ECO_STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1.25rem;
   min-width: 0;
-  background: linear-gradient(155deg, rgba(9, 35, 29, .7), rgba(5, 25, 23, .94));
+  padding: 2rem 1.25rem;
+  background: linear-gradient(155deg, #2b6653, #205447 60%, #1b4b42);
 }
 .eco-auth .eco-form-inner { width: 100%; max-width: 400px; }
 .eco-auth .eco-mobile-brand { margin-bottom: 2rem; }
@@ -510,20 +532,20 @@ const ECO_STYLES = `
   gap: .45rem;
   margin-bottom: 1.1rem;
   padding: .4rem .75rem;
-  border: 1px solid rgba(176, 242, 215, .16);
+  border: 1px solid rgba(218, 255, 226, .25);
   border-radius: 999px;
-  background: rgba(141, 240, 191, .05);
-  color: #bce8ce;
+  background: rgba(205, 251, 216, .09);
+  color: #e0f7df;
   font-size: .7rem;
 }
 .eco-auth .eco-welcome {
   margin: 0 0 .4rem;
-  color: #a8c6b9;
+  color: #c5e0cf;
   font-size: .8rem;
 }
 .eco-auth .eco-title {
   margin: 0;
-  color: #f3fff8;
+  color: #f7fff9;
   font-size: clamp(1.8rem, 4vw, 2.15rem);
   line-height: 1.5;
   font-weight: 800;
@@ -531,7 +553,7 @@ const ECO_STYLES = `
 }
 .eco-auth .eco-form-description {
   margin: .65rem 0 0;
-  color: #b3cec1;
+  color: #cae3d4;
   font-size: .85rem;
   line-height: 1.9;
 }
@@ -543,38 +565,38 @@ const ECO_STYLES = `
   align-items: center;
   gap: .75rem;
 }
-.eco-auth .eco-label { color: #e3f5ea; font-size: .82rem; font-weight: 600; }
+.eco-auth .eco-label { color: #eefbf0; font-size: .82rem; font-weight: 600; }
 .eco-auth .eco-input-wrap { position: relative; }
 .eco-auth .eco-field {
   display: block;
   width: 100%;
   height: 52px;
   padding: 0 2.8rem;
-  border: 1px solid rgba(183, 241, 212, .23);
+  border: 1px solid rgba(207, 246, 219, .32);
   border-radius: 14px;
-  background: rgba(2, 22, 17, .6);
-  color: #f3fff8;
+  background: #214f41;
+  color: #f6fff8;
   font-size: .9rem;
   direction: ltr;
   text-align: left;
-  caret-color: #a3f5bd;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+  caret-color: #d0f6b7;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
   transition: border-color .2s, box-shadow .2s, background .2s;
 }
-.eco-auth .eco-field::placeholder { color: #8faea1; opacity: 1; }
-.eco-auth .eco-field:hover:not(:disabled) { border-color: rgba(183, 241, 212, .4); }
+.eco-auth .eco-field::placeholder { color: #b2ccbc; opacity: 1; }
+.eco-auth .eco-field:hover:not(:disabled) { border-color: rgba(219, 255, 228, .55); }
 .eco-auth .eco-field:focus-visible {
   outline: none;
-  border-color: #8de4b5;
-  background: rgba(10, 44, 31, .8);
-  box-shadow: 0 0 0 4px rgba(141, 240, 191, .1);
+  border-color: #c2f0bc;
+  background: #295e4b;
+  box-shadow: 0 0 0 4px rgba(194, 240, 188, .13);
 }
-.eco-auth .eco-field[aria-invalid='true'] { border-color: #f39b9b; }
+.eco-auth .eco-field[aria-invalid='true'] { border-color: #ffb9b9; }
 .eco-auth .eco-field:disabled { opacity: .65; cursor: not-allowed; }
 .eco-auth .eco-field:-webkit-autofill {
-  -webkit-text-fill-color: #f3fff8;
-  caret-color: #a3f5bd;
-  box-shadow: 0 0 0 1000px #102e23 inset;
+  -webkit-text-fill-color: #f6fff8;
+  caret-color: #d0f6b7;
+  box-shadow: 0 0 0 1000px #285c48 inset;
 }
 .eco-auth .eco-input-icon {
   position: absolute;
@@ -584,10 +606,10 @@ const ECO_STYLES = `
   height: 17px;
   transform: translateY(-50%);
   pointer-events: none;
-  color: #94b5a3;
+  color: #b8d6bf;
   transition: color .2s;
 }
-.eco-auth .eco-input-wrap:focus-within .eco-input-icon { color: #b5f8cd; }
+.eco-auth .eco-input-wrap:focus-within .eco-input-icon { color: #e3ffd8; }
 .eco-auth .eco-password-toggle {
   position: absolute;
   right: 4px;
@@ -599,30 +621,33 @@ const ECO_STYLES = `
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #abcab8;
+  color: #c0dec7;
 }
-.eco-auth .eco-password-toggle:hover { background: rgba(141, 240, 191, .08); color: #e0ffe9; }
+.eco-auth .eco-password-toggle:hover:not(:disabled) {
+  background: rgba(211, 250, 218, .12);
+  color: #f0ffe8;
+}
 .eco-auth .eco-link {
   padding: .25rem 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #b0e9c7;
+  color: #d3f1c8;
   font-size: .73rem;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
-.eco-auth .eco-link:hover { color: #e1ffe5; }
-.eco-auth .eco-field-error { margin: 0; color: #ffc1c1; font-size: .75rem; line-height: 1.6; }
+.eco-auth .eco-link:hover:not(:disabled) { color: #f0ffe1; }
+.eco-auth .eco-field-error { margin: 0; color: #ffcece; font-size: .75rem; line-height: 1.6; }
 .eco-auth .eco-alert {
   display: flex;
   align-items: flex-start;
   gap: .6rem;
   padding: .85rem;
-  border: 1px solid rgba(252, 165, 165, .3);
+  border: 1px solid rgba(255, 193, 193, .4);
   border-radius: 12px;
-  background: rgba(127, 29, 29, .2);
-  color: #ffd0d0;
+  background: #643b3c;
+  color: #ffe1e1;
   font-size: .8rem;
   line-height: 1.8;
 }
@@ -636,26 +661,26 @@ const ECO_STYLES = `
   min-height: 52px;
   margin-top: .15rem;
   overflow: hidden;
-  border: 1px solid rgba(221, 255, 219, .35);
+  border: 1px solid rgba(243, 255, 222, .65);
   border-radius: 14px;
-  background: linear-gradient(115deg, #b4f3a7, #79dfb3 58%, #69d4c5);
-  color: #073224;
+  background: linear-gradient(115deg, #def7b2, #b8ebbf 55%, #a3e2cf);
+  color: #204f35;
   font-size: .9rem;
   font-weight: 750;
-  box-shadow: 0 10px 30px -14px rgba(134, 239, 172, .5);
+  box-shadow: 0 10px 30px -14px rgba(200, 247, 169, .48);
   transition: transform .2s, box-shadow .2s, filter .2s;
 }
 .eco-auth .eco-submit::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .4) 50%, transparent 65%);
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .48) 50%, transparent 65%);
   transform: translateX(-130%);
 }
 .eco-auth .eco-submit:hover:not(:disabled) {
   transform: translateY(-2px);
-  filter: brightness(1.06);
-  box-shadow: 0 14px 35px -12px rgba(134, 239, 172, .5);
+  filter: brightness(1.05);
+  box-shadow: 0 14px 35px -12px rgba(200, 247, 169, .48);
 }
 .eco-auth .eco-submit:hover:not(:disabled)::after { animation: eco-shine .85s ease; }
 .eco-auth .eco-submit:active:not(:disabled) { transform: translateY(0); }
@@ -669,11 +694,16 @@ const ECO_STYLES = `
   align-items: center;
   gap: .8rem;
   margin: 1.6rem 0 1rem;
-  color: #a8c6b9;
+  color: #c8e1ce;
   font-size: .72rem;
 }
 .eco-auth .eco-divider::before,
-.eco-auth .eco-divider::after { content: ''; flex: 1; height: 1px; background: var(--eco-line); }
+.eco-auth .eco-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--eco-line);
+}
 .eco-auth .eco-demo-grid { display: grid; gap: .7rem; }
 .eco-auth .eco-demo {
   display: flex;
@@ -682,17 +712,17 @@ const ECO_STYLES = `
   width: 100%;
   min-width: 0;
   padding: .8rem;
-  border: 1px solid rgba(183, 241, 212, .16);
+  border: 1px solid rgba(214, 250, 222, .24);
   border-radius: 14px;
-  color: #e7f8ed;
-  background: rgba(141, 240, 191, .035);
+  color: #effbf0;
+  background: rgba(212, 248, 215, .07);
   text-align: start;
   transition: background .2s, transform .2s, border-color .2s;
 }
 .eco-auth .eco-demo:hover:not(:disabled) {
   transform: translateY(-2px);
-  border-color: rgba(183, 241, 212, .4);
-  background: rgba(141, 240, 191, .08);
+  border-color: rgba(219, 255, 222, .5);
+  background: rgba(219, 255, 222, .12);
 }
 .eco-auth .eco-demo:disabled { opacity: .5; }
 .eco-auth .eco-demo-icon {
@@ -702,8 +732,8 @@ const ECO_STYLES = `
   height: 32px;
   flex-shrink: 0;
   border-radius: 10px;
-  background: rgba(141, 240, 191, .08);
-  color: #b2f3cb;
+  background: rgba(208, 250, 214, .12);
+  color: #dbf8cf;
 }
 .eco-auth .eco-demo-text { flex: 1; min-width: 0; }
 .eco-auth .eco-demo-text strong {
@@ -719,7 +749,7 @@ const ECO_STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #a8c6b9;
+  color: #c3ddc9;
   font-size: .63rem;
 }
 .eco-auth .eco-demo-hint,
@@ -729,17 +759,17 @@ const ECO_STYLES = `
   align-items: flex-start;
   gap: .4rem;
   margin: 1rem 0 0;
-  color: #afcdbd;
+  color: #c7e2cc;
   text-align: center;
   font-size: .7rem;
   line-height: 1.8;
 }
-.eco-auth .eco-demo-notice { margin-top: .5rem; color: #d9cdaa; font-size: .65rem; }
+.eco-auth .eco-demo-notice { margin-top: .5rem; color: #efe2b7; font-size: .65rem; }
 .eco-auth .eco-footer {
   position: relative;
   width: 100%;
   margin: 0;
-  color: #a9c7b9;
+  color: #d1e7d8;
   text-align: center;
   font-size: .7rem;
   line-height: 1.8;
@@ -796,25 +826,22 @@ const ECO_STYLES = `
 }
 @keyframes eco-levitate {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  50% { transform: translateY(-8px); }
 }
 @keyframes eco-breathe {
-  0%, 100% { opacity: .55; transform: scale(.96); }
+  0%, 100% { opacity: .6; transform: scale(.96); }
   50% { opacity: 1; transform: scale(1.04); }
 }
 @keyframes eco-spin { to { transform: rotate(360deg); } }
-@keyframes eco-world { to { transform: translateX(16.6667%); } }
 @keyframes eco-status {
-  0%, 100% { opacity: .6; }
+  0%, 100% { opacity: .65; }
   50% { opacity: 1; }
 }
-@keyframes eco-shine {
-  to { transform: translateX(130%); }
-}
+@keyframes eco-shine { to { transform: translateX(130%); } }
 `
 
 function useMotionPreferences() {
-  // بداية ثابتة لتجنب اختلاف SSR واحترام التفضيلات قبل تشغيل الحركة.
+  // بداية ثابتة أثناء SSR، ثم احترام تفضيلات الجهاز.
   const [reducedMotion, setReducedMotion] = useState(true)
   const [pageHidden, setPageHidden] = useState(false)
 
@@ -847,13 +874,6 @@ interface Particle {
   phase: number
 }
 
-/**
- * شبكة جسيمات خفيفة:
- * - سرعة مستقلة عن معدل تحديث الشاشة.
- * - حد أقصى 30 إطارًا في الثانية.
- * - توقف عند إخفاء الصفحة أو خروج المكوّن من المشهد.
- * - ResizeObserver وتنظيف كامل للمستمعات والإطارات.
- */
 function NetworkField({ paused }: { paused: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -882,7 +902,10 @@ const pointer = {
     }
 
 const createParticles = () => {
-      const count = Math.min(52, Math.max(18, Math.round(width * height / 26000)))
+      const count = Math.min(
+        52,
+        Math.max(18, Math.round((width * height) / 26000)),
+      )
 
 particles = Array.from({ length: count }, () => ({
         x: Math.random() * width,
@@ -904,11 +927,16 @@ if (pointer.active && !paused) {
         pointer.y += (pointer.targetY - pointer.y) * easing
 
 const glow = context.createRadialGradient(
-          pointer.x, pointer.y, 0,
-          pointer.x, pointer.y, 200,
+          pointer.x,
+          pointer.y,
+          0,
+          pointer.x,
+          pointer.y,
+          200,
         )
-        glow.addColorStop(0, 'rgba(139, 240, 181, 0.07)')
-        glow.addColorStop(1, 'rgba(139, 240, 181, 0)')
+
+glow.addColorStop(0, 'rgba(213, 255, 197, 0.09)')
+        glow.addColorStop(1, 'rgba(213, 255, 197, 0)')
         context.fillStyle = glow
         context.fillRect(0, 0, width, height)
       }
@@ -927,17 +955,21 @@ const linkDistance = width < 640 ? 100 : 145
 
 for (let i = 0; i < particles.length; i += 1) {
         const particle = particles[i]
+        if (!particle) continue
 
 for (let j = i + 1; j < particles.length; j += 1) {
           const next = particles[j]
-          const dx = particle.x - next.x
+          if (!next) continue
+
+const dx = particle.x - next.x
           const dy = particle.y - next.y
           const squared = dx * dx + dy * dy
 
 if (squared >= maxDistanceSquared) continue
 
 const alpha = (1 - Math.sqrt(squared) / linkDistance) * 0.2
-          context.strokeStyle = `rgba(150, 239, 191, ${alpha})`
+
+context.strokeStyle = `rgba(211, 249, 211, ${alpha})`
           context.lineWidth = 0.7
           context.beginPath()
           context.moveTo(particle.x, particle.y)
@@ -945,8 +977,10 @@ const alpha = (1 - Math.sqrt(squared) / linkDistance) * 0.2
           context.stroke()
         }
 
-const alpha = 0.4 + (Math.sin(elapsed * 0.8 + particle.phase) + 1) * 0.2
-        context.fillStyle = `rgba(183, 255, 208, ${alpha})`
+const alpha =
+          0.35 + (Math.sin(elapsed * 0.8 + particle.phase) + 1) * 0.2
+
+context.fillStyle = `rgba(224, 255, 215, ${alpha})`
         context.beginPath()
         context.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2)
         context.fill()
@@ -992,7 +1026,8 @@ const resize = () => {
       height = Math.max(1, rect.height)
 
 const ratio = Math.min(window.devicePixelRatio || 1, 2)
-      canvas.width = Math.round(width * ratio)
+
+canvas.width = Math.round(width * ratio)
       canvas.height = Math.round(height * ratio)
       context.setTransform(ratio, 0, 0, ratio, 0, 0)
 
@@ -1004,7 +1039,8 @@ const handlePointer = (event: PointerEvent) => {
       if (paused || event.pointerType === 'touch') return
 
 const rect = canvas.getBoundingClientRect()
-      pointer.targetX = event.clientX - rect.left
+
+pointer.targetX = event.clientX - rect.left
       pointer.targetY = event.clientY - rect.top
 
 if (!pointer.active) {
@@ -1022,7 +1058,7 @@ const resetPointer = () => {
 const resizeObserver = new ResizeObserver(resize)
     const intersectionObserver = new IntersectionObserver(
       ([entry]) => {
-        visible = entry.isIntersecting
+        visible = entry?.isIntersecting ?? false
         start()
       },
       { threshold: 0 },
@@ -1050,32 +1086,164 @@ return () => {
 return <canvas ref={canvasRef} className="eco-canvas" aria-hidden="true" />
 }
 
-function EcoScene({ caption }: { caption: string }) {
-  return (
+/**
+ * شعار SVG محلي دون ملفات أو صور خارجية.
+ * الورقة للاستدامة، والأعمدة للقياس، وعلامة الصح للتحقق،
+ * والعقد المتصلة للبيانات الرقمية.
+ */
+function EcoLogo({
+  className,
+  label,
+}: {
+  className?: string
+  label?: string
+}) {
+  const id = useId().replace(/:/g, '')
+  const gradientId = `eco-leaf-${id}`
+  const titleId = `eco-logo-title-${id}`
+
+return (
+    <svg
+      viewBox="0 0 120 120"
+      width={120}
+      height={120}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      role={label ? 'img' : undefined}
+      aria-labelledby={label ? titleId : undefined}
+      aria-hidden={label ? undefined : true}
+      focusable="false"
+    >
+      {label && <title id={titleId}>{label}</title>}
+
+<defs>
+        <linearGradient
+          id={gradientId}
+          x1="43"
+          y1="28"
+          x2="86"
+          y2="72"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#9AD774" />
+          <stop offset="1" stopColor="#2E9670" />
+        </linearGradient>
+      </defs>
+
+<path
+        d="M60 8 102 32v48L60 105 18 80V32L60 8Z"
+        fill="#F1FBEA"
+        stroke="#8DC4A0"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+
+<path
+        d="M60 15 95 35v41L60 97 25 76V35l35-20Z"
+        stroke="#B7DCC0"
+        strokeWidth="1.5"
+        strokeDasharray="3 5"
+        strokeLinejoin="round"
+      />
+
+<path
+        d="M47 62C42 44 56 28 84 29c2 25-10 41-28 38"
+        fill={`url(#${gradientId})`}
+      />
+
+<path
+        d="M44 77c8-17 18-29 32-39"
+        stroke="#24684B"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+
+<path
+        d="m57 57 13 1M64 49l-1-10"
+        stroke="#DDF6CF"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+
+<rect x="35" y="72" width="8" height="12" rx="2.5" fill="#79B58C" />
+      <rect x="48" y="66" width="8" height="18" rx="2.5" fill="#4B9970" />
+      <rect x="61" y="59" width="8" height="25" rx="2.5" fill="#2D7759" />
+
+<path
+        d="M18 44H9m93 12h9M60 8V3M18 72h-8"
+        stroke="#69A484"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+
+<circle cx="7" cy="44" r="3.5" fill="#9FC78A" />
+      <circle cx="113" cy="56" r="3.5" fill="#65A987" />
+      <circle cx="60" cy="4" r="3" fill="#7DBA87" />
+      <circle cx="8" cy="72" r="3" fill="#8EBB86" />
+
+<path
+        d="m89 66 15 6v13c0 10-15 17-15 17S74 95 74 85V72l15-6Z"
+        fill="#327C5C"
+        stroke="#F1FBEA"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+
+<path
+        d="m82 83 5 5 9-10"
+        stroke="#EDFFDE"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function EcoScene({ locale }: { locale: Locale }) {
+  const extra = EXTRA_COPY[locale === 'ar' ? 'ar' : 'en']
+
+return (
     <div className="eco-scene">
-      <div className="eco-planet-halo" aria-hidden="true" />
+      <div className="eco-logo-halo" aria-hidden="true" />
+      <div className="eco-data-frame" aria-hidden="true" />
+      <div className="eco-data-frame eco-data-frame-two" aria-hidden="true" />
 
-<div className="eco-orbit" aria-hidden="true">
-        <div className="eco-orbit-spin" />
-      </div>
+<div className="eco-logo-card">
+        <EcoLogo className="eco-logo-symbol" label={extra.logoLabel} />
 
-<div className="eco-planet" aria-hidden="true" />
+<span className="eco-logo-wordmark" dir="ltr">
+          dMRV
+        </span>
 
-<div className="eco-orbit eco-orbit-two" aria-hidden="true">
-        <div className="eco-orbit-spin" />
+<span
+          className="eco-logo-tagline"
+          dir="ltr"
+          aria-label={extra.sustainability}
+        >
+          ECO LEDGER
+        </span>
+
+<span className="eco-logo-badge" dir="ltr">
+          <ShieldCheck size={13} aria-hidden="true" />
+          ESG
+        </span>
       </div>
 
 <span className="eco-floating-icon eco-floating-a" aria-hidden="true">
         <Leaf size={21} />
       </span>
-      <span className="eco-floating-icon eco-floating-b" aria-hidden="true">
-        <Wind size={21} />
-      </span>
-      <span className="eco-floating-icon eco-floating-c" aria-hidden="true">
-        <Zap size={20} />
+
+<span className="eco-floating-icon eco-floating-b" aria-hidden="true">
+        <ShieldCheck size={21} />
       </span>
 
-<span className="eco-scene-note">{caption}</span>
+<span className="eco-floating-icon eco-floating-c" aria-hidden="true">
+        <Activity size={20} />
+      </span>
+
+<span className="eco-scene-note">{extra.visualNote}</span>
     </div>
   )
 }
@@ -1084,18 +1252,13 @@ function Brand({ locale }: { locale: Locale }) {
   return (
     <div className="eco-brand">
       <span className="eco-brand-mark">
-        {/* الأصل محلي؛ لا توجد حاجة إلى طلب صورة خارجية. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo.svg"
-          alt={loginCopy[locale].logoAlt}
-          width={32}
-          height={32}
-          decoding="async"
-        />
+        <EcoLogo />
       </span>
-      <div>
-        <p className="eco-brand-name" dir="ltr">Eco Ledger</p>
+
+<div>
+        <p className="eco-brand-name" dir="ltr">
+          Eco Ledger
+        </p>
         <p className="eco-brand-sub">
           {loginCopy[locale].platformDescription}
         </p>
@@ -1171,8 +1334,7 @@ return () => {
     }
   }, [])
 
-// لا نترك رسالة خطأ باللغة السابقة بعد تغيير لغة الواجهة.
-  useEffect(() => {
+useEffect(() => {
     setError('')
   }, [locale])
 
@@ -1230,13 +1392,19 @@ let data: unknown = null
 try {
         data = await response.json()
       } catch {
-        if (controller.signal.aborted) throw new Error('Request aborted')
+        if (controller.signal.aborted) {
+          throw new Error('Request aborted')
+        }
       }
 
-if (!mountedRef.current || controller.signal.aborted) return
+if (!mountedRef.current) return
+
+if (controller.signal.aborted) {
+        throw new Error('Request aborted')
+      }
 
 if (!response.ok) {
-        // تُعرض الرسالة كنص React فقط، وليس HTML.
+        // تُعرض رسالة الخادم كنص React فقط، وليس HTML.
         const serverError =
           isRecord(data) &&
           typeof data.error === 'string' &&
@@ -1274,7 +1442,7 @@ if (mountedRef.current) {
       }
     }
 
-// خارج catch الخاص بالشبكة حتى لا تُصنّف أخطاء المكوّن الأب كأخطاء اتصال.
+// إبقاء أخطاء المكوّن الأب خارج معالجة أخطاء الاتصال.
     if (authenticatedUser && mountedRef.current && !controller.signal.aborted) {
       setPassword('')
       toast.success(
@@ -1294,6 +1462,12 @@ setEmail(account.email)
     setError('')
     passwordRef.current?.focus()
   }
+
+const motionLabel = reducedMotion
+    ? extra.reducedMotion
+    : motionPaused
+      ? extra.playMotion
+      : extra.pauseMotion
 
 return (
     <main
@@ -1318,20 +1492,8 @@ return (
           className="eco-tool eco-tool-icon"
           disabled={reducedMotion}
           onClick={() => setMotionPaused((current) => !current)}
-          aria-label={
-            reducedMotion
-              ? extra.reducedMotion
-              : motionPaused
-                ? extra.playMotion
-                : extra.pauseMotion
-          }
-          title={
-            reducedMotion
-              ? extra.reducedMotion
-              : motionPaused
-                ? extra.playMotion
-                : extra.pauseMotion
-          }
+          aria-label={motionLabel}
+          title={motionLabel}
         >
           {motionPaused || reducedMotion ? (
             <Play size={16} aria-hidden="true" />
@@ -1348,7 +1510,7 @@ return (
           aria-label={`${appCopy[locale].language}: ${isRTL ? 'English' : 'العربية'}`}
           title={appCopy[locale].language}
         >
-          <Globe size={16} aria-hidden="true" />
+          <Languages size={16} aria-hidden="true" />
           <span lang={isRTL ? 'en' : 'ar'}>
             {isRTL ? 'English' : 'العربية'}
           </span>
@@ -1373,7 +1535,7 @@ return (
 <p className="eco-description">{copy.description}</p>
           </div>
 
-<EcoScene caption={extra.visualNote} />
+<EcoScene locale={locale} />
 
 <div className="eco-features">
             {FEATURES.map((feature, index) => {
@@ -1384,7 +1546,9 @@ return (
                   key={feature.label}
                   className="eco-feature eco-enter"
                   style={
-                    { '--eco-delay': `${index * 90 + 150}ms` } as CSSProperties
+                    {
+                      '--eco-delay': `${index * 90 + 150}ms`,
+                    } as CSSProperties
                   }
                 >
                   <span className="eco-feature-icon">
@@ -1408,7 +1572,8 @@ return (
               <Radio size={13} aria-hidden="true" />
               {copy.realTimeMeasurement}
             </span>
-            <span>
+
+<span>
               <ShieldCheck size={13} aria-hidden="true" />
               {copy.immutableRecord}
             </span>
@@ -1476,7 +1641,10 @@ return (
                       if (error) setError('')
                     }}
                     onBlur={() => {
-                      setTouched((current) => ({ ...current, email: true }))
+                      setTouched((current) => ({
+                        ...current,
+                        email: true,
+                      }))
                     }}
                   />
                 </div>
@@ -1520,13 +1688,18 @@ return (
                     dir="ltr"
                     className="eco-field"
                     aria-invalid={Boolean(passwordError)}
-                    aria-describedby={passwordError ? passwordErrorId : undefined}
+                    aria-describedby={
+                      passwordError ? passwordErrorId : undefined
+                    }
                     onChange={(event) => {
                       setPassword(event.target.value)
                       if (error) setError('')
                     }}
                     onBlur={() => {
-                      setTouched((current) => ({ ...current, password: true }))
+                      setTouched((current) => ({
+                        ...current,
+                        password: true,
+                      }))
                     }}
                   />
 
@@ -1535,8 +1708,12 @@ return (
                     className="eco-password-toggle"
                     disabled={loading}
                     aria-controls={passwordId}
-                    aria-label={showPassword ? copy.hidePassword : copy.showPassword}
-                    title={showPassword ? copy.hidePassword : copy.showPassword}
+                    aria-label={
+                      showPassword ? copy.hidePassword : copy.showPassword
+                    }
+                    title={
+                      showPassword ? copy.hidePassword : copy.showPassword
+                    }
                     onClick={() => setShowPassword((current) => !current)}
                   >
                     {showPassword ? (
@@ -1565,9 +1742,17 @@ return (
                 </div>
               )}
 
-<Button type="submit" disabled={loading} className="eco-submit">
+<Button
+                type="submit"
+                disabled={loading}
+                className="eco-submit"
+              >
                 {loading ? (
-                  <Loader2 size={18} className="eco-spinner" aria-hidden="true" />
+                  <Loader2
+                    size={18}
+                    className="eco-spinner"
+                    aria-hidden="true"
+                  />
                 ) : (
                   <Lock size={16} aria-hidden="true" />
                 )}
