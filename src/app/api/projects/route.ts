@@ -173,6 +173,8 @@ export async function POST(request: NextRequest) {
           iotGatewayId: data.iotGatewayId ?? null,
           iotProtocol: data.iotProtocol ?? null,
           iotDataFrequency: data.iotDataFrequency ?? null,
+          waterMeterSerial: data.waterMeterSerial ?? null,
+          waterMeterType: data.waterMeterType ?? null,
           cropType: data.cropType ?? null,
           irrigatedAreaM2: data.irrigatedAreaM2 ?? null,
           irrigationMethod: data.irrigationMethod ?? null,
@@ -242,9 +244,12 @@ export async function POST(request: NextRequest) {
           })
         }
       } else if (isSmartIrrigation) {
-        // مشروع ري ذكي: أصل واحد يمثل الحقل/المساحة المروية، وجهاز IoT اختياري
-        // يمثل المجس الأول في شبكة مجسات الرطوبة (يمكن إضافة بقية المجسات وعداد
-        // المياه الذكي لاحقًا كأجهزة مستقلة من قسم "الأجهزة").
+        // مشروع ري ذكي: أصل واحد يمثل الحقل/المساحة المروية، وعداد المياه الذكي الرئيسي
+        // (إن أُدخل) يُسجَّل كجهاز Device مستقل بنفس آلية تسجيل الإنفرتر لمشاريع الطاقة
+        // الشمسية بالضبط - سيريال نمبر فريد + بروتوكول اتصال، حتى تتحقق منه نقطة الاستيعاب
+        // /api/integrations/water-meter (hash + Hedera) لاحقًا. بالإضافة لجهاز IoT اختياري
+        // يمثل المجس الأول في شبكة مجسات الرطوبة (يمكن إضافة بقية المجسات لاحقًا كأجهزة
+        // مستقلة من قسم "الأجهزة").
         const asset = await tx.asset.create({
           data: {
             projectId: createdProject.id,
@@ -254,6 +259,22 @@ export async function POST(request: NextRequest) {
             status: 'active',
           },
         })
+
+        if (data.waterMeterSerial) {
+          await tx.device.create({
+            data: {
+              projectId: createdProject.id,
+              siteId: site.id,
+              assetId: asset.id,
+              name: `${data.code}-WM`,
+              manufacturer: 'Generic',
+              model: data.waterMeterType || 'ultrasonic',
+              serialNumber: data.waterMeterSerial,
+              protocol: 'mbus',
+              status: 'registered',
+            },
+          })
+        }
 
         if (data.iotSensorSerial) {
           await tx.device.create({
