@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi, Droplet, Plus, Trash2 } from 'lucide-react'
+import { Loader2, MapPin, Cpu, User, Phone, DollarSign, Building2, TreePine, Radio, Wifi, Droplet, Plus, Trash2, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProjectFundersManager } from './project-funders-manager'
 
@@ -73,6 +73,8 @@ interface ProjectFormData {
   // بقية مجسات/أجهزة الشبكة التي تُضاف دفعة واحدة عند إنشاء المشروع
   additionalIotSensors: IotSensorEntry[]
   // Smart irrigation fields
+  waterMeterSerial: string
+  waterMeterType: string
   cropType: string
   irrigatedAreaM2: string
   irrigationMethod: string
@@ -117,6 +119,13 @@ const INVERTER_TYPES = [
   { code: 'micro', name: 'Microinverter - إنفرتر مصغّر', desc: 'إنفرتر لكل لوح، مناسب للأسطح' },
   { code: 'hybrid', name: 'Hybrid Inverter - إنفرتر هجين', desc: 'يدعم تخزين البطاريات' },
   { code: 'battery', name: 'Battery Inverter - إنفرتر بطاريات', desc: 'مخصص لأنظمة التخزين' },
+]
+
+const WATER_METER_TYPES = [
+  { code: 'ultrasonic', name: 'عداد فوق صوتي - Ultrasonic', desc: 'دقة عالية، بدون أجزاء متحركة، الأنسب لأنظمة dMRV' },
+  { code: 'electromagnetic', name: 'عداد مغناطيسي - Electromagnetic', desc: 'دقة عالية، مناسب للمياه المعالجة/الموصلة كهربائياً' },
+  { code: 'mechanical_pulse', name: 'عداد ميكانيكي بخرج نبضي - Mechanical (Pulse Output)', desc: 'الأكثر شيوعاً، يحتاج مُحوّل نبضي لإرسال القراءات رقميًا' },
+  { code: 'turbine', name: 'عداد توربيني - Turbine', desc: 'مناسب لمعدلات التدفق العالية' },
 ]
 
 const IOT_SENSOR_TYPES = [
@@ -244,6 +253,8 @@ const EMPTY_FORM: ProjectFormData = {
   iotDataFrequency: 'daily',
   additionalIotSensors: [],
   // Smart irrigation fields
+  waterMeterSerial: '',
+  waterMeterType: 'ultrasonic',
   cropType: 'other',
   irrigatedAreaM2: '',
   irrigationMethod: 'drip',
@@ -326,6 +337,8 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
         // الأجهزة من قسم "الأجهزة" المستقل
         additionalIotSensors: [],
         // Smart irrigation
+        waterMeterSerial: initialData.waterMeterSerial || '',
+        waterMeterType: initialData.waterMeterType || 'ultrasonic',
         cropType: initialData.cropType || 'other',
         irrigatedAreaM2: initialData.irrigatedAreaM2?.toString() || '',
         irrigationMethod: initialData.irrigationMethod || 'drip',
@@ -400,6 +413,8 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
     }
 
     if (projectType?.isSmartIrrigation) {
+      if (!form.waterMeterSerial.trim()) newErrors.waterMeterSerial = 'سيريال نمبر عداد المياه الذكي مطلوب لمشاريع الري الذكي'
+      if (!form.waterMeterType) newErrors.waterMeterType = 'نوع عداد المياه مطلوب'
       if (!form.cropType) newErrors.cropType = 'نوع المحصول مطلوب لمشاريع الري الذكي'
       if (!form.irrigatedAreaM2 || parseFloat(form.irrigatedAreaM2) <= 0) {
         newErrors.irrigatedAreaM2 = 'المساحة المروية يجب أن تكون رقمًا موجبًا'
@@ -506,6 +521,8 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                 dataFrequency: cleanValue(s.dataFrequency),
               })),
         // Smart irrigation
+        waterMeterSerial: cleanValue(form.waterMeterSerial),
+        waterMeterType: cleanValue(form.waterMeterType) || 'ultrasonic',
         cropType: cleanValue(form.cropType),
         irrigatedAreaM2: cleanValue(form.irrigatedAreaM2),
         irrigationMethod: cleanValue(form.irrigationMethod),
@@ -1060,6 +1077,65 @@ export function ProjectFormModal({ open, onOpenChange, onSaved, initialData }: P
                     <p className="text-[10px] text-muted-foreground">
                       يُستخدم لحساب أثر الكربون الناتج عن تقليل طاقة ضخ المياه بفضل التوفير
                     </p>
+                  </div>
+                </div>
+
+                {/* Water meter device section - نفس نمط قسم "جهاز الإنفرتر" تمامًا: سيريال + نوع
+                    يُسجَّلان كجهاز Device مستقل، وتُستقبل قراءاته مُوثّقة hash+Hedera لاحقًا عبر
+                    /api/integrations/water-meter بنفس آلية /api/integrations/inverter بالضبط. */}
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold">عداد المياه الذكي الرئيسي</h3>
+                    <Badge variant="outline" className="text-[10px] bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300">
+                      موثّق بنفس آلية الإنفرتر: بصمة رقمية + Hedera
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    قراءات هذا العداد تُستقبل عبر نقطة API مخصّصة تعيد حساب البصمة الرقمية (hash) وتقارنها بما أثبته
+                    n8n على Hedera قبل قبول أي قراءة، تمامًا كما يحدث لبيانات إنفرتر الطاقة الشمسية.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="waterMeterType" className="text-xs">
+                        نوع عداد المياه <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={form.waterMeterType} onValueChange={(v) => updateField('waterMeterType', v)}>
+                        <SelectTrigger id="waterMeterType" className={errors.waterMeterType ? 'border-red-500' : ''}>
+                          <SelectValue placeholder="اختر نوع عداد المياه" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WATER_METER_TYPES.map((t) => (
+                            <SelectItem key={t.code} value={t.code}>
+                              <div className="flex flex-col">
+                                <span>{t.name}</span>
+                                <span className="text-[10px] text-muted-foreground">{t.desc}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.waterMeterType && <p className="text-xs text-red-500">{errors.waterMeterType}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="waterMeterSerial" className="text-xs">
+                        سيريال نمبر عداد المياه <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="waterMeterSerial"
+                        value={form.waterMeterSerial}
+                        onChange={(e) => updateField('waterMeterSerial', e.target.value)}
+                        placeholder="SN-WM-XXXXXXX"
+                        className={`font-mono ${errors.waterMeterSerial ? 'border-red-500' : ''}`}
+                        required
+                        dir="ltr"
+                      />
+                      {errors.waterMeterSerial && <p className="text-xs text-red-500">{errors.waterMeterSerial}</p>}
+                      <p className="text-[10px] text-muted-foreground">
+                        سيريال نمبر فريد لكل عداد - يُستخدم لمنع التكرار ولمطابقة قراءات n8n بالمشروع الصحيح
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
