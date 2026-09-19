@@ -104,6 +104,9 @@ export const createProjectSchema = z.object({
   })).optional().default([]),
 
   // Smart irrigation fields (projectType = 'smart_irrigation')
+  // عداد المياه الذكي الرئيسي - بنفس نمط inverterSerial/inverterType تمامًا لمشاريع الطاقة الشمسية
+  waterMeterSerial: nullableString,
+  waterMeterType: nullableString,
   cropType: nullableString,
   irrigatedAreaM2: numericOrNull,
   irrigationMethod: nullableString,
