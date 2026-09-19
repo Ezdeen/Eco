@@ -8,6 +8,7 @@ import {
   estimateBaselineWaterUseM3,
   type WaterSavingsResult,
 } from '@/lib/irrigation'
+import { assessWaterRecommendation } from '@/lib/water-comparison'
 
 // GET /api/irrigation/recommendations?projectId=...
 // يعيد آخر توصيات الري المولَّدة لمشروع ري ذكي (لأغراض العرض والتدقيق - dMRV trail)
@@ -105,7 +106,11 @@ export async function POST(request: NextRequest) {
     }
     const weatherSource = spaceObs ? spaceObs.sourceKey : weatherObs ? weatherObs.dataSource : 'fallback_defaults'
 
-    // 3) تشغيل محرك الاستدلال (ETo + Kc + شبكة مجسات الرطوبة العصبية)
+    // 3) تشغيل محرك الاستدلال (ETo + Kc(NDVI) + شبكة مجسات الرطوبة العصبية)
+    // NDVI (البيانات الفضائية / Sentinel Hub-CDSE) يُستخدم لاشتقاق Kc الفعلي من حالة
+    // الغطاء النباتي الحقيقية بدل الجدول الثابت - انظر deriveCropCoefficient في irrigation.ts.
+    // فحص الحداثة (NDVI_MAX_AGE_DAYS) يتم داخل المحرك نفسه ويرجع تلقائيًا للجدول الثابت
+    // إن كانت الرصدة قديمة جدًا أو غائبة.
     const rec = computeIrrigationRecommendation({
       soilMoistureReadingsPct: soilMoistureReadings.map((r) => r.value),
       weather,
@@ -113,6 +118,8 @@ export async function POST(request: NextRequest) {
       soilType: project.soilType || 'loamy',
       irrigatedAreaM2: project.irrigatedAreaM2 || 0,
       irrigationMethod: project.irrigationMethod,
+      ndvi: spaceObs?.ndvi ?? null,
+      ndviObservedAt: spaceObs?.observedAt ?? null,
     })
 
     // 4) قراءات عداد المياه الذكي الفعلية لنفس الفترة (إن وُجدت) - للمقارنة الفورية
@@ -149,6 +156,9 @@ export async function POST(request: NextRequest) {
         sensorAgreement: rec.sensorAgreement,
         etoMm: rec.etoMm,
         cropCoefficientKc: rec.cropCoefficientKc,
+        kcSource: rec.kcSource,
+        ndviUsed: rec.ndviUsed,
+        ndviObservedAt: rec.ndviUsed != null ? (spaceObs?.observedAt ?? null) : null,
         weatherSource,
         recommendedIrrigationM3: rec.recommendedIrrigationM3,
         confidenceScore: rec.confidenceScore,
@@ -160,7 +170,16 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // 5) توفير المياه والأثر البيئي المشتق (فقط عند توفر قراءة فعلية)
+    // 5) المقارنة الأرضية-الفضائية (Ground vs Space) وبوابة الأهلية لاستدامة المياه:
+    // نظير GroundSpaceComparison للطاقة الشمسية، لكن مُطبَّق هنا على مستوى الفترة.
+    // يصنّف الانحراف (efficient / over_irrigation / under_irrigation)، ويُصدر تنبيهًا
+    // (Case + Notification) تلقائيًا عند الإفراط أو العجز المائي - فقط عند توفر قراءة فعلية.
+    let waterAssessment: Awaited<ReturnType<typeof assessWaterRecommendation>> | null = null
+    if (actualIrrigationM3 != null) {
+      waterAssessment = await assessWaterRecommendation(created.id)
+    }
+
+    // 6) توفير المياه والأثر البيئي المشتق (فقط عند توفر قراءة فعلية)
     let waterSavings: WaterSavingsResult | null = null
     if (actualIrrigationM3 != null) {
       const baselineM3 = estimateBaselineWaterUseM3({
@@ -182,8 +201,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      recommendation: created,
-      details: { ...rec, weatherSource, waterSavings },
+      recommendation: waterAssessment
+        ? { ...created, assessment: waterAssessment.assessment, severity: waterAssessment.severity, caseId: waterAssessment.caseId, notificationId: waterAssessment.notificationId }
+        : created,
+      details: { ...rec, weatherSource, waterSavings, waterAssessment },
     })
   } catch (error) {
     console.error('Irrigation recommendation error:', error)
