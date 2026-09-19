@@ -1061,9 +1061,27 @@ model IrrigationRecommendation {
   confidenceScore       Float    // 0-1: ثقة التوصية (اتفاق المجسات × تغطية البيانات)
   modelVersion          String   @default("irrigation-nn-v1")
 
+  // ---- بيانات فضائية (NDVI) المستخدمة لاشتقاق Kc ديناميكيًا بدل الجدول الثابت ----
+  // إن توفرت رصدة NDVI حديثة (SpaceDataObservation عبر Sentinel Hub/CDSE) لموقع المشروع،
+  // يُشتق Kc الفعلي من صحة الغطاء النباتي الحقيقية بدل قيمة FAO-56 الجدولية الثابتة.
+  // انظر deriveCropCoefficientFromNdvi في src/lib/irrigation.ts للمعادلة والتوثيق الكامل.
+  ndviUsed              Float?   // قيمة NDVI المستخدمة فعليًا في هذا الحساب (null = لم تتوفر رصدة صالحة)
+  ndviObservedAt        DateTime? // تاريخ رصدة NDVI المستخدمة (للتحقق من الحداثة والتدقيق)
+  kcSource              String?  // 'ndvi_derived' (مُشتق من القمر الصناعي) أو 'static_table' (جدول FAO-56 الثابت)
+
   // المقارنة بالفعلي (تُملأ لاحقًا عند توفر قراءة عداد مياه ذكي لنفس الفترة)
   actualIrrigationM3    Float?
   deviationPct          Float?   // (actual - recommended) / recommended * 100
+
+  // ---- التصنيف والتنبيه الناتج عن مقارنة الفعلي بالمستهدف (Ground vs Space لجدول المياه) ----
+  // نفس فلسفة GroundSpaceComparison للطاقة الشمسية، لكن مُطبَّقة هنا على مستوى الفترة
+  // (period-based) بدل القراءة المفردة، لأن استهلاك المياه الفعلي (V_actual) يُقارَن
+  // بالاحتياج الحيوي/الفيزيائي المستهدف (V_target) على مستوى دورة ري كاملة لا لحظة واحدة.
+  assessment            String?  // efficient, over_irrigation, under_irrigation
+  severity              String?  // low, medium, high, critical (null إن كانت efficient)
+  alertCode             String?  // OVER_IRRIGATION, UNDER_IRRIGATION
+  caseId                String?  // الحالة (Case) التي أُنشئت لهذا الانحراف إن وُجدت
+  notificationId        String?  // الإشعار المرتبط إن وُجد
 
   status                String   @default("generated") // generated, applied, overridden, compared
   overrideReason        String?  // سبب تجاوز التوصية (إن قرر المستخدم ريًا مختلفًا عمّا اقترحه النموذج)
