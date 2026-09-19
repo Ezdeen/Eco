@@ -54,6 +54,8 @@ const PROJECT_UPDATE_FIELDS = [
   'iotGatewayId',
   'iotProtocol',
   'iotDataFrequency',
+  'waterMeterSerial',
+  'waterMeterType',
   'cropType',
   'irrigatedAreaM2',
   'irrigationMethod',
