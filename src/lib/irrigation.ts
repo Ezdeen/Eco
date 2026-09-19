@@ -36,6 +36,89 @@ export const CROP_COEFFICIENTS: Record<string, { kc: number; nameAr: string }> =
   other: { kc: 1.00, nameAr: 'أخرى' },
 }
 
+// ============== 1ب) Kc الديناميكي المُشتق من NDVI (بيانات القمر الصناعي) ==============
+// الفرق الجوهري عن الجدول الثابت أعلاه: NDVI يعكس الحالة الفعلية للغطاء النباتي في
+// الحقل نفسه لحظة الرصد (كثافة الأوراق، الإجهاد المائي، مرحلة النمو الحقيقية)، بدل
+// افتراض "محصول نموذجي في منتصف الموسم" الذي يمثّله الجدول الثابت دومًا بلا تغيّر.
+// هذا هو الفرق بين "الاستهلاك النظري" و"الاحتياج البيولوجي الفعلي" الذي يطالب به أي
+// تمويل أخضر جاد: رقم Kc مُشتق من صورة قمر صناعي حقيقية لنفس الإحداثيات، لا افتراض.
+//
+// المعادلة الخطية (Bausch & Neale 1987؛ معتمدة أيضًا في تطبيقات FAO الحقلية لاحقًا):
+//   Kc_NDVI = NDVI_TO_KC.a × NDVI + NDVI_TO_KC.b
+// المعاملات الافتراضية أدناه نموذجية عامة (تصلح لمحاصيل حقلية/خضروات متوسطة الكثافة)
+// ويجب معايرتها لاحقًا لكل نوع محصول عند توفر بيانات ميدانية كافية للمعايرة.
+export const NDVI_TO_KC = { a: 1.25, b: -0.10 } as const
+
+// حدود أمان: تمنع رصدة NDVI شاذة (سحابة لم تُستبعد، بكسل تربة عارية ضمن الحقل) من
+// إنتاج Kc غير فيزيائي. نُقيّد Kc_NDVI إلى نطاق معقول حول القيمة الجدولية لنفس المحصول
+// (لا نسمح له بالخروج عن ±40% منها) بدل نطاق مطلق واحد يناسب كل المحاصيل.
+const NDVI_KC_DEVIATION_BAND = 0.40
+
+// أقل قيمة NDVI تُعتبر "غطاء نباتي حقيقي" - تحت هذا الحد غالبًا تربة عارية/ماء/سحاب،
+// وليس نباتًا يمكن اشتقاق Kc منه بمصداقية.
+const NDVI_MIN_VALID = 0.10
+// أقصى عمر مقبول لرصدة NDVI (بالأيام) قبل اعتبارها غير حديثة كفاية للاعتماد عليها.
+// Sentinel-2 (زوج الأقمار) دورة عبور فعلية ~5 أيام، لكن الغيوم قد تُسقط عدة رصدات
+// متتالية؛ 16 يومًا هامش أمان معقول قبل الرجوع للجدول الثابت تلقائيًا.
+export const NDVI_MAX_AGE_DAYS = 16
+
+export interface CropCoefficientResult {
+  kc: number
+  source: 'ndvi_derived' | 'static_table'
+  ndviUsed: number | null
+  warnings: string[]
+}
+
+// يشتق Kc إما من NDVI (إن كان صالحًا وحديثًا) أو من الجدول الثابت كخط رجوع تلقائي
+// (fallback) آمن. الشفافية الكاملة: كل استدعاء يُعيد "source" الذي يوضّح أيهما استُخدم،
+// بحيث يبقى كل رقم قابلاً للتدقيق (dMRV) ولا يظهر كأنه دومًا نفس مصدر واحد.
+export function deriveCropCoefficient(params: {
+  cropType: string
+  ndvi?: number | null
+  ndviObservedAt?: Date | string | null
+  asOf?: Date
+}): CropCoefficientResult {
+  const warnings: string[] = []
+  const staticKc = CROP_COEFFICIENTS[params.cropType]?.kc ?? CROP_COEFFICIENTS.other.kc
+
+  if (params.ndvi == null || !Number.isFinite(params.ndvi)) {
+    return { kc: staticKc, source: 'static_table', ndviUsed: null, warnings }
+  }
+
+  if (params.ndvi < NDVI_MIN_VALID || params.ndvi > 1) {
+    warnings.push(`قيمة NDVI (${params.ndvi}) خارج المدى المقبول للغطاء النباتي - استُخدم جدول Kc الثابت بدلاً منها`)
+    return { kc: staticKc, source: 'static_table', ndviUsed: null, warnings }
+  }
+
+  if (params.ndviObservedAt) {
+    const asOf = params.asOf ?? new Date()
+    const observedAt = new Date(params.ndviObservedAt)
+    const ageDays = (asOf.getTime() - observedAt.getTime()) / (1000 * 60 * 60 * 24)
+    if (ageDays > NDVI_MAX_AGE_DAYS) {
+      warnings.push(`أحدث رصدة NDVI عمرها ${Math.round(ageDays)} يومًا (أقصى مقبول ${NDVI_MAX_AGE_DAYS}) - استُخدم جدول Kc الثابت بدلاً منها`)
+      return { kc: staticKc, source: 'static_table', ndviUsed: null, warnings }
+    }
+  }
+
+  const rawKcNdvi = NDVI_TO_KC.a * params.ndvi + NDVI_TO_KC.b
+  const minBound = staticKc * (1 - NDVI_KC_DEVIATION_BAND)
+  const maxBound = staticKc * (1 + NDVI_KC_DEVIATION_BAND)
+  const boundedKc = Math.max(minBound, Math.min(maxBound, rawKcNdvi))
+
+  if (boundedKc !== rawKcNdvi) {
+    warnings.push(
+      `Kc المُشتق من NDVI (${rawKcNdvi.toFixed(2)}) خارج الحد المسموح حول القيمة الجدولية (${staticKc}) - تم تقييده إلى ${boundedKc.toFixed(2)}`,
+    )
+  }
+
+  return {
+    kc: Math.round(boundedKc * 1000) / 1000,
+    source: 'ndvi_derived',
+    ndviUsed: params.ndvi,
+    warnings,
+  }
+}
+
 // ============== 2) خصائص التربة — عامل السعة التخزينية النسبية للمياه ==============
 // soilFactor > 1 يعني تربة تحتفظ بمياه أقل (رملية) فتحتاج ريًا أكثر تكرارًا؛
 // < 1 يعني تربة تحتفظ بمياه أكثر (طينية) فتحتاج كمية أقل لكل دورة ري.
@@ -205,12 +288,18 @@ export interface IrrigationRecommendationInput {
   soilType: string
   irrigatedAreaM2: number
   irrigationMethod?: string | null
+  // بيانات القمر الصناعي (NDVI) - اختيارية؛ عند توفرها وحداثتها يُشتق منها Kc فعليًا
+  // بدل الجدول الثابت (انظر deriveCropCoefficient أعلاه)
+  ndvi?: number | null
+  ndviObservedAt?: Date | string | null
 }
 
 export interface IrrigationRecommendationResult {
   etoMm: number
   etoMethod: string
   cropCoefficientKc: number
+  kcSource: 'ndvi_derived' | 'static_table'
+  ndviUsed: number | null
   theoreticalDemandMm: number
   correctionFactor: number
   netDemandMm: number
@@ -227,7 +316,16 @@ export interface IrrigationRecommendationResult {
 
 export function computeIrrigationRecommendation(input: IrrigationRecommendationInput): IrrigationRecommendationResult {
   const { etoMm, method, warnings } = calculateETo(input.weather)
-  const kc = CROP_COEFFICIENTS[input.cropType]?.kc ?? CROP_COEFFICIENTS.other.kc
+  const kcResult = deriveCropCoefficient({
+    cropType: input.cropType,
+    ndvi: input.ndvi,
+    ndviObservedAt: input.ndviObservedAt,
+  })
+  const kc = kcResult.kc
+  warnings.push(...kcResult.warnings)
+  if (kcResult.source === 'static_table' && (input.ndvi == null)) {
+    warnings.push('لا توجد رصدة NDVI متاحة لهذا الموقع بعد - Kc مبني على جدول FAO-56 الثابت وليس حالة الغطاء النباتي الفعلية')
+  }
   const theoreticalDemandMm = etoMm * kc
 
   const nn = runSoilMoistureNeuralNetwork({
@@ -260,6 +358,8 @@ export function computeIrrigationRecommendation(input: IrrigationRecommendationI
     etoMm,
     etoMethod: method,
     cropCoefficientKc: kc,
+    kcSource: kcResult.source,
+    ndviUsed: kcResult.ndviUsed,
     theoreticalDemandMm: Math.round(theoreticalDemandMm * 100) / 100,
     correctionFactor: nn.correctionFactor,
     netDemandMm: Math.round(netDemandMm * 100) / 100,
