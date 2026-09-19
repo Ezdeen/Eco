@@ -122,9 +122,14 @@ model Project {
   // Smart irrigation project fields (مشروع ري ذكي) - used when projectType = 'smart_irrigation'
   // المدخلات الثلاثة التي يعتمد عليها هذا النوع من المشاريع (dMRV):
   //   1) عدادات مياه ذكية        -> EnergyReading بمعرّف metricType = water_flow_m3h / water_meter_m3
+  //      مُدخَلة عند إنشاء المشروع عبر waterMeterSerial/waterMeterType (نفس نمط inverterSerial/inverterType
+  //      تماماً للطاقة الشمسية)، وتُستقبل قراءاتها مُوثّقة hash+Hedera عبر /api/integrations/water-meter
+  //      بنفس آلية /api/integrations/inverter (n8n يحسب الهاش ويُثبّته على Hedera، والمنصة تعيد حسابه وتقارنه).
   //   2) شبكة مجسات رطوبة (IoT)  -> تُستخدم حقول iotSensor* أعلاه (نفسها المستخدمة للتشجير، معاد استخدامها
   //                                 لأنها عامة أصلاً) + أجهزة إضافية عبر قسم "الأجهزة" لكل مجس في الشبكة
   //   3) موقع المشروع (lat/lon)  -> يُستخدم لسحب SpaceDataObservation/WeatherObservation (ETo، رطوبة، حرارة)
+  waterMeterSerial  String?  // سيريال نمبر عداد المياه الذكي الرئيسي للمشروع (مطابق نمطياً لـ inverterSerial)
+  waterMeterType    String?  // نوع عداد المياه: ultrasonic, electromagnetic, mechanical_pulse, turbine
   cropType          String?  // نوع المحصول (طماطم، نخيل، قمح...)
   irrigatedAreaM2   Float?   // المساحة المروية بالمتر المربع
   irrigationMethod  String?  // طريقة الري: drip, sprinkler, surface, subsurface, pivot
@@ -276,7 +281,7 @@ model Device {
   manufacturer    String?
   model           String?
   serialNumber    String   @unique
-  protocol        String   @default("modbus_tcp") // modbus_tcp, mqtt, http_api, sunspec
+  protocol        String   @default("modbus_tcp") // modbus_tcp, mqtt, http_api, sunspec, mbus (عدادات المياه الذكية)
   status          String   @default("registered") // registered, connected, offline, disabled
   lastSeenAt      DateTime?
   firmwareVersion String?
