@@ -6,8 +6,8 @@ export const defaultLocale: Locale = 'ar'
 
 export const appCopy = {
   ar: {
-    appName: 'منصة ESG',
-    appNameLong: 'منصة ESG الشمسية',
+    appName: 'منصة dMRV للمشاريع الصغيرة والمتوسطة',
+    appNameLong: 'منصة dMRV ',
     loading: 'جاري التحقق من الجلسة...',
     search: 'بحث...',
     language: 'اللغة',
@@ -25,8 +25,8 @@ export const appCopy = {
     accessDenied: 'هذا القسم متاح فقط لمدير المؤسسة',
   },
   en: {
-    appName: 'ESG Platform',
-    appNameLong: 'Solar ESG Platform',
+    appName: 'dMRV Platform',
+    appNameLong: ' dMRV Platform',
     loading: 'Checking session...',
     search: 'Search...',
     language: 'Language',
