@@ -1005,5 +1005,4 @@ function RangeControl({
         disabled={disabled}
         aria-valuetext={displayValue}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="block h-8 w-full cursor-pointer accent-emerald-600 focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600
-
+className="block h-8 w-full cursor-pointer accent-emerald-600 focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
