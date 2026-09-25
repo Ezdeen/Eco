@@ -1,0 +1,621 @@
+/* Visual layer only — no changes to calculator behavior. */
+
+.widget.widget,
+.dialog.dialog {
+  --solar-accent: #047857;
+  --solar-deep: #064e3b;
+  --solar-text: #163d34;
+  --solar-muted: #526b62;
+  --solar-line: rgba(5, 150, 105, 0.16);
+
+color: var(--solar-text);
+  color-scheme: light;
+}
+
+/* Main surface */
+
+.widget.widget {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--solar-line);
+  border-radius: 28px;
+  background: #fbfefc;
+  box-shadow:
+    0 24px 64px -30px rgba(6, 78, 59, 0.3),
+    0 4px 16px rgba(6, 78, 59, 0.04);
+}
+
+/* Decorative light never intercepts pointer interactions. */
+
+.widget::before {
+  content: "";
+  position: absolute;
+  inset: -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at 8% 45%,
+      rgba(52, 211, 153, 0.11),
+      transparent 42%
+    ),
+    radial-gradient(
+      ellipse at 92% 80%,
+      rgba(45, 212, 191, 0.09),
+      transparent 40%
+    );
+  animation: ambientDrift 18s ease-in-out infinite alternate;
+}
+
+/* CardHeader */
+
+.widget.widget > :first-child {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 30px;
+  border: 0;
+  border-radius: 0;
+  color: #ffffff;
+  background: linear-gradient(
+    120deg,
+    #063e35 0%,
+    #065f46 48%,
+    #0f766e 100%
+  );
+}
+
+.widget > :first-child::before {
+  content: "";
+  position: absolute;
+  inset: -90px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 12% 48%,
+      rgba(253, 224, 71, 0.2),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 85% 20%,
+      rgba(94, 234, 212, 0.16),
+      transparent 34%
+    );
+  animation: ambientDrift 15s ease-in-out infinite alternate-reverse;
+}
+
+.widget > :first-child::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to left, transparent, black);
+}
+
+.widget.widget > :first-child > :first-child {
+  gap: 12px;
+  font-size: clamp(1.12rem, 3vw, 1.45rem);
+  line-height: 1.65;
+  font-weight: 800;
+}
+
+.widget > :first-child > :first-child svg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  color: #fde68a;
+  filter: drop-shadow(0 0 9px rgba(253, 224, 71, 0.32));
+}
+
+.widget.widget > :first-child > :nth-child(2) {
+  margin-top: 8px;
+  color: #d1fae5;
+  font-size: 0.875rem;
+  line-height: 1.9;
+}
+
+/* CardContent */
+
+.widget.widget > :nth-child(2) {
+  padding: 28px;
+}
+
+.widget.widget label,
+.dialog.dialog label {
+  color: var(--solar-text);
+  font-weight: 600;
+}
+
+/* Client type cards — selection remains driven by existing state. */
+
+.widget.widget [role="radiogroup"] {
+  gap: 12px;
+}
+
+.widget.widget [role="radiogroup"] > label {
+  min-height: 64px;
+  padding: 16px;
+  border-color: #dce9e1;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.widget.widget [role="radiogroup"] > label:has(
+  [role="radio"][data-state="checked"]
+) {
+  color: #065f46;
+  border-color: #059669;
+  background: linear-gradient(135deg, #ecfdf5, #f0fdfa);
+  box-shadow:
+    0 0 0 1px rgba(5, 150, 105, 0.1),
+    0 8px 20px -14px rgba(5, 150, 105, 0.5);
+}
+
+.widget.widget [role="radio"] {
+  flex-shrink: 0;
+  border-color: #789b8b;
+  color: #047857;
+}
+
+.widget.widget [role="radio"][data-state="checked"] {
+  border-color: #047857;
+  background: #ffffff;
+}
+
+.widget.widget [role="radiogroup"] > label > svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+
+/* Monthly bill value */
+
+.widget.widget > :nth-child(2) > :nth-child(2) > :first-child {
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.widget.widget > :nth-child(2) > :nth-child(2) > :first-child > span {
+  padding: 7px 12px;
+  border: 1px solid #d1fae5;
+  border-radius: 12px;
+  color: #065f46;
+  background: #ecfdf5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Financing input panels */
+
+.widget.widget > :nth-child(2) > :nth-child(3) > div {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--solar-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.widget.widget > :nth-child(2) > :nth-child(3) > div > :first-child {
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.widget.widget > :nth-child(2) > :nth-child(3) span {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slider colors inherit locally without changing direction or values.
+   data-slot rules enhance newer shadcn versions. */
+
+.widget.widget > :nth-child(2) {
+  --primary: 160 84% 30%;
+}
+
+.widget [data-slot="slider-track"] {
+  height: 7px;
+  border-radius: 999px;
+  background: #e0eee6;
+}
+
+.widget [data-slot="slider-range"] {
+  background: linear-gradient(90deg, #0d9488, #059669);
+}
+
+.widget.widget [role="slider"] {
+  width: 21px;
+  height: 21px;
+  border: 3px solid #059669;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(6, 78, 59, 0.18);
+  transition:
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+/* Summary metrics */
+
+.widget.widget .metric {
+  min-width: 0;
+  padding: 20px 12px;
+  border-color: var(--solar-line);
+  border-radius: 19px;
+  background: linear-gradient(155deg, #ffffff, #f0fdf6);
+  box-shadow: 0 5px 18px -12px rgba(6, 78, 59, 0.24);
+  transition:
+    transform 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.widget.widget .metric > :first-child {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 12px;
+  border: 1px solid #d1fae5;
+  border-radius: 13px;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.widget.widget .metric > :nth-child(2) {
+  color: #065f46;
+  font-size: clamp(1rem, 2.4vw, 1.3rem);
+  line-height: 1.65;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.widget.widget .metric > :last-child {
+  margin-top: 5px;
+  color: var(--solar-muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+/* Main CTAs */
+
+.widget.widget > :nth-child(2) > button,
+.dialog.dialog button.w-full {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  height: auto;
+  min-height: 54px;
+  padding: 14px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  color: #ffffff;
+  background: linear-gradient(115deg, #047857, #0f766e);
+  box-shadow: 0 10px 22px -12px rgba(4, 120, 87, 0.65);
+  font-weight: 700;
+  line-height: 1.8;
+  white-space: normal;
+  text-align: center;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+.widget.widget > :nth-child(2) > button::before,
+.dialog.dialog button.w-full::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 15%,
+    rgba(255, 255, 255, 0.16) 50%,
+    transparent 85%
+  );
+  transition: opacity 200ms ease;
+}
+
+.widget.widget > :nth-child(2) > button:active,
+.dialog.dialog button.w-full:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.dialog.dialog button:disabled {
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+/* Clear keyboard focus */
+
+.widget.widget button:focus-visible,
+.widget.widget a:focus-visible,
+.widget.widget [role="slider"]:focus-visible,
+.dialog.dialog button:focus-visible,
+.dialog.dialog input:focus-visible {
+  outline: 3px solid #0d9488;
+  outline-offset: 4px;
+}
+
+.widget [role="radiogroup"] > label:focus-within {
+  outline: 2px solid #0d9488;
+  outline-offset: 3px;
+}
+
+/* Disclaimer */
+
+.widget.widget > :nth-child(2) > p:last-child {
+  padding: 14px 16px;
+  border: 1px solid #e1ebe5;
+  border-radius: 14px;
+  color: var(--solar-muted);
+  background: #f3f8f5;
+  font-size: 0.75rem;
+  line-height: 1.95;
+}
+
+/* Full report */
+
+.widget.widget .report {
+  border-color: var(--solar-line);
+  padding-top: 22px;
+  animation: reveal 350ms ease-out both;
+}
+
+.widget.widget .report > :first-child {
+  width: fit-content;
+  padding: 9px 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  color: #065f46;
+  background: #ecfdf5;
+}
+
+.widget.widget .report > :nth-child(2) > div {
+  padding: 18px;
+  border-color: #dce9e1;
+  border-radius: 16px;
+  color: var(--solar-text);
+  background: #ffffff;
+  line-height: 1.85;
+}
+
+.widget.widget .report > :nth-child(2) > div:last-child {
+  border-color: #a7f3d0;
+  background: linear-gradient(135deg, #ecfdf5, #f0fdfa);
+}
+
+.widget.widget .miniStat {
+  min-width: 0;
+  padding: 15px 9px;
+  border-color: var(--solar-line);
+  border-radius: 14px;
+  background: #f5faf7;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.widget.widget .miniStat > :first-child {
+  margin-bottom: 5px;
+  color: #065f46;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget.widget .report a {
+  height: auto;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid #a7d9c3;
+  border-radius: 14px;
+  color: #065f46;
+  background: #ffffff;
+  white-space: normal;
+  text-align: center;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.widget.widget .report a svg {
+  flex-shrink: 0;
+}
+
+.widget.widget :global(.text-muted-foreground),
+.dialog.dialog :global(.text-muted-foreground) {
+  color: var(--solar-muted);
+}
+
+/* Dialog: scoped separately because it lives in a portal. */
+
+.dialog.dialog {
+  width: calc(100% - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 28px;
+  border: 1px solid #cfe5d9;
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      ellipse at 100% 0%,
+      rgba(167, 243, 208, 0.24),
+      transparent 48%
+    ),
+    #ffffff;
+  box-shadow: 0 30px 90px -25px rgba(2, 44, 34, 0.4);
+}
+
+.dialog.dialog h2 {
+  padding-inline-end: 22px;
+  color: #064e3b;
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+
+.dialog.dialog p {
+  line-height: 1.9;
+}
+
+.dialog.dialog input {
+  height: 48px;
+  padding-inline: 14px;
+  border: 1px solid #d4e4db;
+  border-radius: 12px;
+  color: #163d34;
+  background: #fbfefc;
+  box-shadow: inset 0 1px 2px rgba(6, 78, 59, 0.025);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dialog.dialog input:focus {
+  border-color: #059669;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+}
+
+/* Hover effects only on devices that support real hover. */
+
+@media (hover: hover) {
+  .widget.widget [role="radiogroup"] > label:hover {
+    transform: translateY(-2px);
+    border-color: #34d399;
+  }
+
+.widget.widget .metric:hover {
+    transform: translateY(-4px);
+    border-color: #6ee7b7;
+    box-shadow: 0 14px 28px -18px rgba(6, 78, 59, 0.4);
+  }
+
+.widget.widget [role="slider"]:hover {
+    box-shadow: 0 0 0 6px rgba(5, 150, 105, 0.1);
+  }
+
+.widget.widget > :nth-child(2) > button:hover,
+  .dialog.dialog button.w-full:not(:disabled):hover {
+    transform: translateY(-2px);
+    filter: brightness(1.06);
+    box-shadow: 0 14px 28px -12px rgba(4, 120, 87, 0.55);
+  }
+
+.widget.widget > :nth-child(2) > button:hover::before,
+  .dialog.dialog button.w-full:not(:disabled):hover::before {
+    opacity: 1;
+  }
+
+.widget.widget .report a:hover {
+    border-color: #059669;
+    background: #ecfdf5;
+  }
+}
+
+/* Mobile layout */
+
+@media (max-width: 640px) {
+  .widget.widget {
+    border-radius: 22px;
+  }
+
+.widget.widget > :first-child {
+    padding: 24px 20px;
+  }
+
+.widget.widget > :nth-child(2) {
+    padding: 20px 16px;
+  }
+
+.widget.widget [role="radiogroup"] > label {
+    gap: 8px;
+    padding: 12px;
+    font-size: 0.8rem;
+  }
+
+.widget.widget .metric {
+    padding: 16px 8px;
+    border-radius: 15px;
+  }
+
+.dialog.dialog {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .widget.widget [role="radiogroup"] {
+    grid-template-columns: 1fr;
+  }
+
+.widget.widget > :nth-child(2) > :nth-child(4) {
+    grid-template-columns: 1fr;
+  }
+
+.widget.widget .metric {
+    padding: 18px;
+  }
+}
+
+/* Only transform/opacity are animated. */
+
+@keyframes ambientDrift {
+  from {
+    transform: translate3d(-1%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2%, 2%, 0) scale(1.04);
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect reduced-motion preferences, including loading indicators. */
+
+@media (prefers-reduced-motion: reduce) {
+  .widget.widget,
+  .widget.widget *,
+  .widget.widget::before,
+  .widget.widget *::before,
+  .widget.widget *::after,
+  .dialog.dialog,
+  .dialog.dialog *,
+  .dialog.dialog *::before,
+  .dialog.dialog *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+.widget.widget .metric:hover,
+  .widget.widget [role="radiogroup"] > label:hover,
+  .widget.widget > :nth-child(2) > button:hover,
+  .dialog.dialog button.w-full:hover {
+    transform: none;
+  }
+}
