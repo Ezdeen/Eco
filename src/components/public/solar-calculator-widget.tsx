@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import styles from './solar-calculator-widget.module.css'
+
 import {
   Dialog,
   DialogContent,
@@ -127,7 +129,7 @@ export function SolarCalculatorWidget() {
   const displayed = fullReport?.result || teaser
 
   return (
-    <Card className="border-green-200/60 shadow-lg shadow-green-900/5">
+  <Card className={`${styles.widget} border-green-200/60 shadow-lg shadow-green-900/5`}>
       <CardHeader className="bg-gradient-to-l from-green-600 to-teal-600 text-white rounded-t-xl">
         <CardTitle className="flex items-center gap-2 text-xl">
           <Sun className="h-5 w-5" /> حاسبة القرض الأخضر الشمسي
@@ -202,7 +204,7 @@ export function SolarCalculatorWidget() {
         </div>
 
         {/* Teaser metrics — top-line, shown immediately */}
-        <div className="grid grid-cols-3 gap-3 pt-2">
+<div className={`${styles.metric} rounded-lg border bg-muted/30 p-3 text-center space-y-1`}>
           <TeaserCard
             icon={<TrendingDown className="h-4 w-4" />}
             label="صافي التوفير الشهري"
@@ -231,6 +233,7 @@ export function SolarCalculatorWidget() {
             احصل على تقريرك الكامل (PDF جاهز للبنك) مجانًا
           </Button>
         )}
+<div className={`${styles.report} space-y-4 border-t pt-4`}>
 
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           هذه النتائج تقديرية لأغراض التخطيط الأولي ولا تشكل عرض تمويل ملزمًا. القيم المعروضة قبل إرسال
@@ -240,7 +243,7 @@ export function SolarCalculatorWidget() {
       </CardContent>
 
       <Dialog open={gateOpen} onOpenChange={setGateOpen}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+<DialogContent className={`${styles.dialog} sm:max-w-md`} dir="rtl">
           <DialogHeader>
             <DialogTitle>أكمل بياناتك لإصدار التقرير الكامل</DialogTitle>
             <DialogDescription>
@@ -326,7 +329,7 @@ function FullReportDetails({ result, reportUrl }: { result: SolarCalculatorResul
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+<div className={`${styles.miniStat} rounded-lg border p-2 bg-muted/20`}>
         <MiniStat label="تكلفة المنظومة" value={`${fmt(result.loan.estimatedSystemCost)} ${result.currency}`} />
         <MiniStat label="القسط الشهري" value={`${fmt(result.loan.monthlyPMT)} ${result.currency}`} />
         <MiniStat label="العائد التراكمي 20 سنة" value={`${result.cashflow.cumulativeROI20yrPct ?? '—'}%`} />
