@@ -1,0 +1,209 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Bell, CheckCircle2, AlertCircle, AlertTriangle, Info, Check, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
+
+export function NotificationsSection() {
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+
+  const fetchNotifications = useCallback(async (opts?: { silent?: boolean }) => {
+    if (opts?.silent) setRefreshing(true)
+    else setLoading(true)
+    try {
+      const res = await fetch('/api/notifications')
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setNotifications(data?.notifications || [])
+      setStats(data?.stats || null)
+    } catch {
+      setNotifications([])
+      setStats(null)
+      if (opts?.silent) toast.error('تعذّر تحديث الإشعارات')
+    } finally {
+      if (opts?.silent) setRefreshing(false)
+      else setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
+
+  const markAsRead = async (id: string) => {
+    setPendingIds((prev) => new Set(prev).add(id))
+    // Optimistic update so the UI feels instant; reconciled by the refetch below.
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isRead: true }),
+      })
+      if (!res.ok) throw new Error()
+      await fetchNotifications({ silent: true })
+    } catch {
+      toast.error('فشل تحديث الإشعار')
+      fetchNotifications({ silent: true })
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  }
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => n.id)
+    if (unreadIds.length === 0) return
+
+    setMarkingAll(true)
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: unreadIds, isRead: true }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success('تم تعليم الكل كمقروء')
+      await fetchNotifications({ silent: true })
+    } catch {
+      toast.error('فشل تحديث الإشعارات')
+    } finally {
+      setMarkingAll(false)
+    }
+  }
+
+  if (loading) {
+    return <Card className="h-96 animate-pulse bg-muted/40" />
+  }
+
+  const ICONS = {
+    success: <CheckCircle2 className="h-5 w-5 text-emerald-600" />,
+    error: <AlertCircle className="h-5 w-5 text-red-600" />,
+    warning: <AlertTriangle className="h-5 w-5 text-amber-600" />,
+    info: <Info className="h-5 w-5 text-blue-600" />,
+  }
+
+  const BG = {
+    success: 'bg-emerald-50 dark:bg-emerald-950/30',
+    error: 'bg-red-50 dark:bg-red-950/30',
+    warning: 'bg-amber-50 dark:bg-amber-950/30',
+    info: 'bg-blue-50 dark:bg-blue-950/30',
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground">الإجمالي</p>
+          <p className="text-xl font-bold tabular-nums">{stats?.total || 0}</p>
+        </Card>
+        <Card className="p-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+          <p className="text-xs text-amber-700">غير مقروء</p>
+          <p className="text-xl font-bold tabular-nums text-amber-600">{stats?.unread || 0}</p>
+        </Card>
+        <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200">
+          <p className="text-xs text-red-700">أخطاء</p>
+          <p className="text-xl font-bold tabular-nums text-red-600">{stats?.bySeverity?.error || 0}</p>
+        </Card>
+        <Card className="p-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+          <p className="text-xs text-amber-700">تحذيرات</p>
+          <p className="text-xl font-bold tabular-nums text-amber-600">{stats?.bySeverity?.warning || 0}</p>
+        </Card>
+        <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
+          <p className="text-xs text-emerald-700">نجاح</p>
+          <p className="text-xl font-bold tabular-nums text-emerald-600">{stats?.bySeverity?.success || 0}</p>
+        </Card>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">عرض {notifications.length} إشعار</p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchNotifications({ silent: true })}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ml-1 ${refreshing ? 'animate-spin' : ''}`} />
+            تحديث
+          </Button>
+          {(stats?.unread || 0) > 0 && (
+            <Button variant="outline" size="sm" onClick={markAllAsRead} disabled={markingAll}>
+              {markingAll ? (
+                <RefreshCw className="h-4 w-4 ml-1 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4 ml-1" />
+              )}
+              تعليم الكل كمقروء
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Notifications list */}
+      <div className="space-y-2">
+        {notifications.map((n) => (
+          <Card
+            key={n.id}
+            className={`overflow-hidden ${!n.isRead ? 'border-r-4 border-r-primary' : ''} ${BG[n.severity as keyof typeof BG] || ''}`}
+          >
+            <CardContent className="p-3">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 mt-0.5">{ICONS[n.severity as keyof typeof ICONS] || ICONS.info}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className={`text-sm ${!n.isRead ? 'font-bold' : 'font-medium'}`}>{n.title}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className="text-[10px]">{n.category}</Badge>
+                      {!n.isRead && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => markAsRead(n.id)}
+                          disabled={pendingIds.has(n.id)}
+                        >
+                          {pendingIds.has(n.id) ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'تعليم كمقروء'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{n.body}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">
+                    {new Date(n.createdAt).toLocaleString('ar-SA')}
+                    {n.project && ` • ${n.project.nameAr || n.project.name}`}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {notifications.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Bell className="h-12 w-12 text-muted-foreground/50 mb-3" />
+            <p className="text-muted-foreground">لا توجد إشعارات</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
