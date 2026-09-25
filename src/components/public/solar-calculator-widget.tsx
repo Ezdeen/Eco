@@ -43,15 +43,13 @@ export function SolarCalculatorWidget() {
   const [fullReport, setFullReport] = useState<{ result: SolarCalculatorResult; reportUrl: string } | null>(null)
   const [form, setForm] = useState<LeadFormState>({ fullName: '', email: '', phone: '', companyName: '' })
 
+  // Session ID initialization stable across renders
   const sessionIdRef = useRef<string>('')
-  if (!sessionIdRef.current && typeof crypto !== 'undefined' && crypto.randomUUID) {
-    sessionIdRef.current = crypto.randomUUID()
+  if (!sessionIdRef.current) {
+    sessionIdRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`
   }
 
-  // Instant, client-side teaser — zero network round-trip. Uses indicative
-  // fallback factors (see src/lib/solar-engine.ts::DEFAULT_CLIENT_FACTORS);
-  // the authoritative, DB-backed numbers are recomputed server-side the
-  // moment the visitor submits the full-report gate below.
+  // Client-side instant teaser calculation
   const teaser = useMemo(
     () =>
       runSolarCalculator(
@@ -61,7 +59,7 @@ export function SolarCalculatorWidget() {
     [userType, monthlyBill, loanPercent, loanTermYears, loanInterestRatePct],
   )
 
-  // Debounced, best-effort, anonymous funnel logging (no PII). Never blocks the UI.
+  // Funnel logging (non-blocking)
   useEffect(() => {
     const handle = setTimeout(() => {
       fetch('/api/public/solar-calculator/event', {
@@ -84,24 +82,30 @@ export function SolarCalculatorWidget() {
   }, [userType, monthlyBill, loanPercent, loanTermYears, loanInterestRatePct])
 
   async function handleSubmitGate() {
-    if (!form.fullName.trim() || !form.email.trim()) {
-      toast.error('الاسم الكامل والبريد الإلكتروني مطلوبان')
+    if (!form.fullName.trim()) {
+      toast.error('الرجاء إدخال الاسم الكامل')
+      return
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!form.email.trim() || !emailRegex.test(form.email.trim())) {
+      toast.error('الرجاء إدخال بريد إلكتروني صحيح')
       return
     }
     if (userType === 'sme' && !form.companyName.trim()) {
       toast.error('اسم المنشأة مطلوب لعملاء الشركات الصغيرة والمتوسطة')
       return
     }
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/public/solar-calculator/lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: form.fullName,
-          email: form.email,
-          phone: form.phone || undefined,
-          companyName: form.companyName || undefined,
+          fullName: form.fullName.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim() || undefined,
+          companyName: form.companyName.trim() || undefined,
           userType,
           countryCode: 'SA',
           locale: 'ar',
@@ -129,69 +133,94 @@ export function SolarCalculatorWidget() {
   const displayed = fullReport?.result || teaser
 
   return (
-  <Card className={`${styles.widget} border-green-200/60 shadow-lg shadow-green-900/5`}>
-      <CardHeader className="bg-gradient-to-l from-green-600 to-teal-600 text-white rounded-t-xl">
-        <CardTitle className="flex items-center gap-2 text-xl">
-          <Sun className="h-5 w-5" /> حاسبة القرض الأخضر الشمسي
+    <Card className={styles.widget}>
+      <CardHeader className={styles.header}>
+        <CardTitle className={styles.title}>
+          <Sun className="h-6 w-6" />
+          <span>حاسبة القرض الأخضر الشمسي</span>
         </CardTitle>
-        <CardDescription className="text-green-50">
+        <CardDescription className={styles.description}>
           اعرف توفيرك الشهري، فترة الاسترداد، والأثر البيئي المتوقع خلال أقل من دقيقة
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-6 pt-6">
-        {/* User type */}
+      <CardContent className={styles.content}>
+        {/* User type selector */}
         <div className="space-y-2">
-          <Label>نوع العميل</Label>
+          <Label className={styles.label}>نوع العميل</Label>
           <RadioGroup
             value={userType}
             onValueChange={(v) => setUserType(v as SolarUserType)}
             className="grid grid-cols-2 gap-3"
           >
             <label
-              className={`flex items-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors ${userType === 'individual' ? 'border-green-500 bg-green-50' : 'border-muted'}`}
+              className={`${styles.radioCard} ${userType === 'individual' ? styles.radioCardActive : ''}`}
             >
-              <RadioGroupItem value="individual" />
-              <User className="h-4 w-4" /> فرد
+              <RadioGroupItem value="individual" id="type-individual" />
+              <User className="h-4 w-4" />
+              <span>فرد</span>
             </label>
             <label
-              className={`flex items-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors ${userType === 'sme' ? 'border-green-500 bg-green-50' : 'border-muted'}`}
+              className={`${styles.radioCard} ${userType === 'sme' ? styles.radioCardActive : ''}`}
             >
-              <RadioGroupItem value="sme" />
-              <Building2 className="h-4 w-4" /> منشأة صغيرة/متوسطة
+              <RadioGroupItem value="sme" id="type-sme" />
+              <Building2 className="h-4 w-4" />
+              <span>منشأة صغيرة/متوسطة</span>
             </label>
           </RadioGroup>
         </div>
 
-        {/* Monthly bill */}
+        {/* Monthly bill input */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <Label>فاتورة الكهرباء الشهرية الحالية</Label>
-            <span className="font-bold text-green-700">{fmt(monthlyBill)} {DEFAULT_CLIENT_FACTORS.currency}</span>
+            <Label className={styles.label}>فاتورة الكهرباء الشهرية الحالية</Label>
+            <span className={styles.billBadge}>
+              {fmt(monthlyBill)} {DEFAULT_CLIENT_FACTORS.currency}
+            </span>
           </div>
-          <Slider value={[monthlyBill]} min={100} max={20000} step={50} onValueChange={(v) => setMonthlyBill(v[0])} />
+          <Slider
+            value={[monthlyBill]}
+            min={100}
+            max={20000}
+            step={50}
+            onValueChange={(v) => setMonthlyBill(v[0])}
+          />
         </div>
 
-        {/* Loan inputs */}
-        <div className="grid sm:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-xs">نسبة التمويل بالقرض</Label>
-              <span className="text-xs font-semibold">{loanPercent}%</span>
+        {/* Loan parameters */}
+        <div className={styles.loanGrid}>
+          <div className={styles.loanCard}>
+            <div className="flex justify-between items-center mb-2">
+              <Label className="text-xs font-semibold">نسبة التمويل</Label>
+              <span className="text-xs font-bold text-emerald-700">{loanPercent}%</span>
             </div>
-            <Slider value={[loanPercent]} min={0} max={100} step={5} onValueChange={(v) => setLoanPercent(v[0])} />
+            <Slider
+              value={[loanPercent]}
+              min={0}
+              max={100}
+              step={5}
+              onValueChange={(v) => setLoanPercent(v[0])}
+            />
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-xs">مدة التمويل</Label>
-              <span className="text-xs font-semibold">{loanTermYears} سنوات</span>
+
+          <div className={styles.loanCard}>
+            <div className="flex justify-between items-center mb-2">
+              <Label className="text-xs font-semibold">مدة التمويل</Label>
+              <span className="text-xs font-bold text-emerald-700">{loanTermYears} سنوات</span>
             </div>
-            <Slider value={[loanTermYears]} min={1} max={10} step={1} onValueChange={(v) => setLoanTermYears(v[0])} />
+            <Slider
+              value={[loanTermYears]}
+              min={1}
+              max={10}
+              step={1}
+              onValueChange={(v) => setLoanTermYears(v[0])}
+            />
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-xs">معدل الفائدة السنوي</Label>
-              <span className="text-xs font-semibold">{loanInterestRatePct}%</span>
+
+          <div className={styles.loanCard}>
+            <div className="flex justify-between items-center mb-2">
+              <Label className="text-xs font-semibold">معدل الفائدة السنوي</Label>
+              <span className="text-xs font-bold text-emerald-700">{loanInterestRatePct}%</span>
             </div>
             <Slider
               value={[loanInterestRatePct]}
@@ -203,39 +232,39 @@ export function SolarCalculatorWidget() {
           </div>
         </div>
 
-        {/* Teaser metrics — top-line, shown immediately */}
-<div className={`${styles.metric} rounded-lg border bg-muted/30 p-3 text-center space-y-1`}>
+        {/* Teaser key metrics */}
+        <div className={styles.teaserGrid}>
           <TeaserCard
-            icon={<TrendingDown className="h-4 w-4" />}
+            icon={<TrendingDown className="h-5 w-5" />}
             label="صافي التوفير الشهري"
             value={`${fmt(displayed.cashflow.netMonthlyCashflowDuringLoan)} ${displayed.currency}`}
           />
           <TeaserCard
-            icon={<Calendar className="h-4 w-4" />}
+            icon={<Calendar className="h-5 w-5" />}
             label="سنة الاسترداد"
             value={displayed.cashflow.simplePaybackYears ? `${displayed.cashflow.simplePaybackYears}` : '—'}
           />
           <TeaserCard
-            icon={<Leaf className="h-4 w-4" />}
+            icon={<Leaf className="h-5 w-5" />}
             label="CO₂ متجنَّب سنويًا"
             value={`${displayed.carbon.avoidedCO2TonsPerYear} طن`}
           />
         </div>
 
+        {/* Call to action or Full Report */}
         {fullReport ? (
           <FullReportDetails result={fullReport.result} reportUrl={fullReport.reportUrl} />
         ) : (
           <Button
-            className="w-full bg-green-600 hover:bg-green-700"
+            className={styles.submitBtn}
             size="lg"
             onClick={() => setGateOpen(true)}
           >
             احصل على تقريرك الكامل (PDF جاهز للبنك) مجانًا
           </Button>
         )}
-<div className={`${styles.report} space-y-4 border-t pt-4`}>
 
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        <p className={styles.disclaimer}>
           هذه النتائج تقديرية لأغراض التخطيط الأولي ولا تشكل عرض تمويل ملزمًا. القيم المعروضة قبل إرسال
           النموذج تستخدم عوامل مرجعية افتراضية توضيحية؛ يُعاد احتسابها بدقة عبر مصادر بيانات موثّقة عند
           إصدار التقرير الكامل.
@@ -243,27 +272,30 @@ export function SolarCalculatorWidget() {
       </CardContent>
 
       <Dialog open={gateOpen} onOpenChange={setGateOpen}>
-<DialogContent className={`${styles.dialog} sm:max-w-md`} dir="rtl">
-          <DialogHeader>
-            <DialogTitle>أكمل بياناتك لإصدار التقرير الكامل</DialogTitle>
-            <DialogDescription>
+        <DialogContent className={styles.dialog} dir="rtl">
+          <DialogHeader className="space-y-2 text-right">
+            <DialogTitle className={styles.dialogTitle}>أكمل بياناتك لإصدار التقرير الكامل</DialogTitle>
+            <DialogDescription className={styles.dialogDescription}>
               تقرير PDF مفصّل يتضمن ختم توثيق dMRV، جاهز لعرضه على البنك أو الجهة الممولة.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+
+          <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="solar-lead-name">الاسم الكامل</Label>
+              <Label htmlFor="solar-lead-name">الاسم الكامل *</Label>
               <Input
                 id="solar-lead-name"
+                placeholder="أدخل اسمك الكامل"
                 value={form.fullName}
                 onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="solar-lead-email">البريد الإلكتروني</Label>
+              <Label htmlFor="solar-lead-email">البريد الإلكتروني *</Label>
               <Input
                 id="solar-lead-email"
                 type="email"
+                placeholder="name@example.com"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
@@ -272,23 +304,31 @@ export function SolarCalculatorWidget() {
               <Label htmlFor="solar-lead-phone">رقم الهاتف (اختياري)</Label>
               <Input
                 id="solar-lead-phone"
+                type="tel"
+                placeholder="05XXXXXXXX"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               />
             </div>
             {userType === 'sme' && (
               <div className="space-y-1.5">
-                <Label htmlFor="solar-lead-company">اسم المنشأة</Label>
+                <Label htmlFor="solar-lead-company">اسم المنشأة *</Label>
                 <Input
                   id="solar-lead-company"
+                  placeholder="اسم الشركة أو المؤسسة"
                   value={form.companyName}
                   onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
                 />
               </div>
             )}
           </div>
+
           <DialogFooter>
-            <Button onClick={handleSubmitGate} disabled={submitting} className="w-full bg-green-600 hover:bg-green-700">
+            <Button
+              onClick={handleSubmitGate}
+              disabled={submitting}
+              className={styles.dialogSubmitBtn}
+            >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : null}
               إصدار التقرير الكامل
             </Button>
@@ -301,46 +341,49 @@ export function SolarCalculatorWidget() {
 
 function TeaserCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-muted/30 p-3 text-center space-y-1">
-      <div className="flex items-center justify-center gap-1 text-muted-foreground">{icon}</div>
-      <div className="text-lg font-bold text-green-700">{value}</div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+    <div className={styles.teaserCard}>
+      <div className={styles.teaserIcon}>{icon}</div>
+      <div className={styles.teaserValue}>{value}</div>
+      <div className={styles.teaserLabel}>{label}</div>
     </div>
   )
 }
 
 function FullReportDetails({ result, reportUrl }: { result: SolarCalculatorResult; reportUrl: string }) {
   return (
-    <div className="space-y-4 border-t pt-4">
-      <div className="flex items-center gap-2 text-green-700 font-semibold text-sm">
-        <CheckCircle2 className="h-4 w-4" /> تقريرك الكامل جاهز
+    <div className={styles.reportContainer}>
+      <div className={styles.reportHeader}>
+        <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+        <span className="font-bold text-emerald-900 text-sm">تقريرك الكامل جاهز للتحميل</span>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3 text-sm">
-        <div className="rounded-lg border p-3">
-          <div className="text-xs text-muted-foreground mb-1">السيناريو أ — الوضع الحالي</div>
-          <div className="font-bold">{fmt(result.scenarios.scenarioA_statusQuo.monthlyCost)} {result.currency}/شهريًا</div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className={styles.scenarioCard}>
+          <div className="text-xs text-muted-foreground mb-1 font-medium">السيناريو أ — الوضع الحالي</div>
+          <div className="font-bold text-slate-800">{fmt(result.scenarios.scenarioA_statusQuo.monthlyCost)} {result.currency}/شهريًا</div>
         </div>
-        <div className="rounded-lg border p-3 border-green-300 bg-green-50">
-          <div className="text-xs text-muted-foreground mb-1">السيناريو ب — شمسي + قرض أخضر</div>
-          <div className="font-bold text-green-700">
+        <div className={`${styles.scenarioCard} ${styles.scenarioCardHighlight}`}>
+          <div className="text-xs text-emerald-700 mb-1 font-semibold">السيناريو ب — شمسي + قرض أخضر</div>
+          <div className="font-bold text-emerald-800">
             {fmt(result.scenarios.scenarioB_solarLoan.monthlyOutflowYear1)} {result.currency}/شهريًا
           </div>
         </div>
       </div>
 
-<div className={`${styles.miniStat} rounded-lg border p-2 bg-muted/20`}>
+      <div className={styles.miniStatGrid}>
         <MiniStat label="تكلفة المنظومة" value={`${fmt(result.loan.estimatedSystemCost)} ${result.currency}`} />
         <MiniStat label="القسط الشهري" value={`${fmt(result.loan.monthlyPMT)} ${result.currency}`} />
         <MiniStat label="العائد التراكمي 20 سنة" value={`${result.cashflow.cumulativeROI20yrPct ?? '—'}%`} />
         <MiniStat label="أشجار مكافئة/سنويًا" value={`${result.carbon.treesEquivalentPerYear}`} />
       </div>
 
-      <Badge variant="outline" className="text-[10px]">
-        {result.leadScore.priority === 'high' ? 'أولوية عالية' : result.leadScore.priority === 'medium' ? 'أولوية متوسطة' : 'أولوية عادية'}
-      </Badge>
+      <div className="flex items-center justify-between">
+        <Badge variant="outline" className="text-xs px-3 py-1 border-emerald-300 text-emerald-800 bg-emerald-50">
+          أولوية التمويل: {result.leadScore.priority === 'high' ? 'عالية' : result.leadScore.priority === 'medium' ? 'متوسطة' : 'عادية'}
+        </Badge>
+      </div>
 
-      <Button asChild variant="outline" className="w-full">
+      <Button asChild variant="outline" className={styles.downloadBtn}>
         <a href={reportUrl} target="_blank" rel="noopener noreferrer">
           <Download className="h-4 w-4 ml-2" /> تحميل التقرير الكامل (PDF)
         </a>
@@ -351,9 +394,9 @@ function FullReportDetails({ result, reportUrl }: { result: SolarCalculatorResul
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border p-2 bg-muted/20">
-      <div className="font-bold">{value}</div>
-      <div className="text-muted-foreground">{label}</div>
+    <div className={styles.miniStatCard}>
+      <div className={styles.miniStatValue}>{value}</div>
+      <div className={styles.miniStatLabel}>{label}</div>
     </div>
   )
 }
