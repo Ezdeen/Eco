@@ -14,26 +14,42 @@ export async function GET() {
     })
 
     return NextResponse.json({
-      configs: configs.map((c) => ({
-        id: c.id,
-        organizationId: c.organizationId,
-        name: c.name,
-        displayName: c.displayName,
-        description: c.description,
-        category: c.category,
-        isActive: c.isActive,
-        config: c.config ? JSON.parse(c.config) : null,
-        hasSecret: !!c.encryptedSecret,
-        maskedSecret: c.encryptedSecret ? maskSecret(decryptSecret(c.encryptedSecret)) : null,
-        secretKey: c.secretKey,
-        lastTestedAt: c.lastTestedAt,
-        lastTestResult: c.lastTestResult,
-        lastTestError: c.lastTestError,
-        createdBy: c.createdBy,
-        updatedBy: c.updatedBy,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      })),
+      configs: configs.map((c) => {
+        let maskedSecret: string | null = null
+        let decryptError: string | null = null
+        if (c.encryptedSecret) {
+          try {
+            maskedSecret = maskSecret(decryptSecret(c.encryptedSecret))
+          } catch {
+            // لا نكسر القائمة بالكامل بسبب صف واحد فيه سر تالف (مفتاح تشفير
+            // تغيّر بعد الحفظ، أو بيانات جاءت من بيئة مختلفة). نعرض تحذيرًا
+            // بدل الفشل، ونترك للمستخدم إعادة إدخال السر من الواجهة.
+            decryptError = 'تعذّر فك تشفير السر المخزَّن (قد يكون مفتاح التشفير تغيّر) - أعد إدخاله'
+          }
+        }
+
+        return {
+          id: c.id,
+          organizationId: c.organizationId,
+          name: c.name,
+          displayName: c.displayName,
+          description: c.description,
+          category: c.category,
+          isActive: c.isActive,
+          config: c.config ? JSON.parse(c.config) : null,
+          hasSecret: !!c.encryptedSecret,
+          maskedSecret,
+          decryptError,
+          secretKey: c.secretKey,
+          lastTestedAt: c.lastTestedAt,
+          lastTestResult: c.lastTestResult,
+          lastTestError: c.lastTestError,
+          createdBy: c.createdBy,
+          updatedBy: c.updatedBy,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        }
+      }),
       total: configs.length,
     })
   } catch (error) {
