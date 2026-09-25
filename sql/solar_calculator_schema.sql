@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS "SolarCalculatorLead" (
     -- Report / PDF
     "reportToken"                         TEXT NOT NULL UNIQUE,
     "reportGeneratedAt"                   TIMESTAMPTZ,
+    "reportSentAt"                        TIMESTAMPTZ,
     "reportDownloadCount"                 INTEGER NOT NULL DEFAULT 0,
     "reportLastDownloadedAt"              TIMESTAMPTZ,
     "reportVerificationHash"              TEXT,

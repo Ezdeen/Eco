@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
-import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
 import { db } from '@/lib/db'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/middleware-utils'
 import { generateSolarLeadReportHTML } from '@/lib/solar-report-template'
+import { renderHtmlToPdfBuffer } from '@/lib/render-html-to-pdf'
 import type { SolarCalculatorResult } from '@/lib/solar-engine'
 
 interface Params {
@@ -15,14 +12,12 @@ interface Params {
 // GET /api/public/solar-calculator/report/[token]/pdf
 // PUBLIC — gated only by the unguessable `reportToken` (24 random bytes, hex),
 // never the DB cuid, so the URL can be safely emailed/shared without exposing
-// or letting anyone enumerate lead records. Follows the exact same
-// Playwright HTML→PDF pipeline as src/app/api/reports/[id]/pdf/route.ts
-// (scripts/html-to-pdf.js) so output is visually consistent with the rest
-// of the platform's PDF reports.
+// or letting anyone enumerate lead records. Uses the same Playwright HTML→PDF
+// pipeline as src/app/api/reports/[id]/pdf/route.ts (renderHtmlToPdfBuffer →
+// scripts/html-to-pdf.js), and the exact same helper the Gmail sender in
+// src/lib/solar-lead-notify.ts uses, so the downloaded copy and the emailed
+// copy are always byte-identical.
 export async function GET(request: NextRequest, { params }: Params) {
-  let htmlPath: string | null = null
-  let pdfPath: string | null = null
-
   try {
     const rateCheck = checkRateLimit(request, RATE_LIMITS.solarCalculatorPdf, 'solar-pdf')
     if (!rateCheck.allowed && rateCheck.response) {
@@ -57,44 +52,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       verifyUrl: `${origin}/api/public/solar-calculator/report/${lead.reportToken}/pdf`,
     })
 
-    const tmpDir = path.join(process.cwd(), 'tmp', 'solar-lead-pdfs')
-    if (!existsSync(tmpDir)) {
-      await mkdir(tmpDir, { recursive: true })
-    }
-    const fileBase = `solar-report-${lead.id}-${Date.now()}`
-    htmlPath = path.join(tmpDir, `${fileBase}.html`)
-    pdfPath = path.join(tmpDir, `${fileBase}.pdf`)
-    await writeFile(htmlPath, html, 'utf-8')
-
-    const scriptPath = path.join(process.cwd(), 'scripts', 'html-to-pdf.js')
-    const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
-      const proc = spawn('node', [scriptPath, htmlPath!, pdfPath!], {
-        cwd: process.cwd(),
-      })
-      let stderr = ''
-      proc.stderr?.on('data', (d) => { stderr += d.toString() })
-      proc.on('close', async (code) => {
-        if (code !== 0) {
-          reject(new Error(`PDF generation failed (exit ${code}): ${stderr}`))
-          return
-        }
-        try {
-          const pdf = await readFile(pdfPath!)
-          resolve(pdf)
-        } catch (err) {
-          reject(err)
-        }
-      })
-      proc.on('error', (err) => {
-        console.error('Process spawn error:', err)
-        reject(err)
-      })
-    })
-
-    await unlink(htmlPath).catch(() => {})
-    await unlink(pdfPath).catch(() => {})
-    htmlPath = null
-    pdfPath = null
+    const pdfBuffer = await renderHtmlToPdfBuffer(html, `solar-report-${lead.id}-${Date.now()}`)
 
     await db.solarCalculatorLead.update({
       where: { id: lead.id },
@@ -110,8 +68,6 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
   } catch (error) {
     console.error('Solar calculator PDF error:', error)
-    if (htmlPath) await unlink(htmlPath).catch(() => {})
-    if (pdfPath) await unlink(pdfPath).catch(() => {})
     return NextResponse.json({ error: 'تعذّر توليد التقرير' }, { status: 500 })
   }
 }

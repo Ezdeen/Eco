@@ -1,25 +1,26 @@
-// Email delivery for the Solar Calculator lead report.
+// Email delivery for the Solar Calculator lead report — via Gmail SMTP
+// (nodemailer), using a Gmail "App Password" (not the account's normal
+// login password — Google requires this for third-party SMTP access when
+// 2-Step Verification is on, which it must be to generate one).
 //
-// HONESTY NOTE: this codebase has no email/SMTP/ESP integration anywhere
-// (grep confirms no nodemailer/resend/SES usage exists). Rather than fabricate
-// a call to a provider that isn't configured — which would silently fail in
-// production and give a false sense that "email delivery" is done — this
-// function is a clearly-marked, safe no-op until a real provider is wired in.
+// Required env vars (see .env):
+//   GMAIL_USER          - the sending Gmail address, e.g. reports@yourdomain.com or you@gmail.com
+//   GMAIL_APP_PASSWORD  - a 16-character App Password from
+//                          https://myaccount.google.com/apppasswords
+//                          (Google Account → Security → 2-Step Verification must be ON first)
+// Optional:
+//   GMAIL_FROM_NAME     - display name for the "From" header (default: "Eco Ledger")
 //
-// The lead is NOT blocked by this: the PDF is downloadable immediately via
-// `reportUrl` returned by POST /api/public/solar-calculator/lead, regardless
-// of whether this function actually sends anything.
-//
-// TO ENABLE REAL EMAIL DELIVERY:
-//   1. Pick a provider (Resend, Postmark, SES, or SMTP via nodemailer) and
-//      add it to package.json.
-//   2. Set the matching env var(s) below (e.g. RESEND_API_KEY).
-//   3. Replace the `if (!apiKey) { ... return }` branch with the provider's
-//      send call, attaching the PDF from
-//      GET /api/public/solar-calculator/report/{reportToken}/pdf
-//      (fetch it server-side, or render generateSolarLeadReportHTML directly
-//      and pipe it through scripts/html-to-pdf.js exactly like
-//      src/app/api/reports/[id]/pdf/route.ts does).
+// If these are not set, this function safely no-ops and logs a warning —
+// the lead is still saved and the PDF is still downloadable immediately via
+// the reportUrl returned by POST /api/public/solar-calculator/lead, so a
+// missing/incorrect Gmail config never blocks lead capture.
+
+import nodemailer from 'nodemailer'
+import { db } from '@/lib/db'
+import { generateSolarLeadReportHTML } from '@/lib/solar-report-template'
+import { renderHtmlToPdfBuffer } from '@/lib/render-html-to-pdf'
+import type { SolarCalculatorResult } from '@/lib/solar-engine'
 
 export interface SendLeadReportEmailInput {
   leadId: string
@@ -27,20 +28,104 @@ export interface SendLeadReportEmailInput {
   reportToken: string
 }
 
-export async function sendLeadReportEmail(input: SendLeadReportEmailInput): Promise<{ sent: boolean; reason?: string }> {
-  const apiKey = process.env.SOLAR_LEAD_EMAIL_API_KEY
+let cachedTransporter: nodemailer.Transporter | null = null
 
-  if (!apiKey) {
+function getTransporter(): nodemailer.Transporter | null {
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  if (!user || !pass) return null
+
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+    })
+  }
+  return cachedTransporter
+}
+
+export async function sendLeadReportEmail(
+  input: SendLeadReportEmailInput,
+): Promise<{ sent: boolean; reason?: string }> {
+  const transporter = getTransporter()
+  if (!transporter) {
     console.warn(
-      `[solar-lead-notify] Email provider not configured (SOLAR_LEAD_EMAIL_API_KEY unset). ` +
+      `[solar-lead-notify] Gmail not configured (GMAIL_USER / GMAIL_APP_PASSWORD unset). ` +
         `Skipping email for lead ${input.leadId}. The lead was still saved and the PDF is ` +
         `downloadable at /api/public/solar-calculator/report/${input.reportToken}/pdf.`,
     )
-    return { sent: false, reason: 'email_provider_not_configured' }
+    return { sent: false, reason: 'gmail_not_configured' }
   }
 
-  // Placeholder for the real provider call once configured — intentionally not
-  // implemented against a guessed API shape.
-  console.info(`[solar-lead-notify] Would send report email to ${input.email} for lead ${input.leadId}`)
-  return { sent: false, reason: 'not_implemented' }
+  const lead = await db.solarCalculatorLead.findUnique({ where: { id: input.leadId } })
+  if (!lead) {
+    console.error(`[solar-lead-notify] Lead ${input.leadId} not found — cannot send email.`)
+    return { sent: false, reason: 'lead_not_found' }
+  }
+
+  const result = lead.resultSnapshot as unknown as SolarCalculatorResult
+  const html = await generateSolarLeadReportHTML({
+    id: lead.id,
+    reportToken: lead.reportToken,
+    fullName: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    companyName: lead.companyName,
+    userType: lead.userType,
+    countryCode: lead.countryCode,
+    createdAt: lead.createdAt,
+    result,
+    // No request context here (this runs outside an HTTP handler), so the
+    // stamp's verify URL falls back to APP_URL if set, else a relative path
+    // description — cosmetic only, doesn't affect the PDF's validity.
+    verifyUrl: `${process.env.APP_URL || ''}/api/public/solar-calculator/report/${lead.reportToken}/pdf`,
+  })
+
+  const pdfBuffer = await renderHtmlToPdfBuffer(html, `solar-report-email-${lead.id}-${Date.now()}`)
+
+  const fromName = process.env.GMAIL_FROM_NAME || 'Eco Ledger'
+  const savings = Math.round(result.cashflow.netMonthlyCashflowDuringLoan).toLocaleString('en-US')
+
+  try {
+    await transporter.sendMail({
+      from: `"${fromName}" <${process.env.GMAIL_USER}>`,
+      to: lead.email,
+      subject: `تقرير القرض الأخضر الشمسي الخاص بك — ${lead.fullName}`,
+      html: `
+        <div dir="rtl" style="font-family: Tajawal, Arial, sans-serif; max-width: 560px; margin: 0 auto; color:#1a1a1a;">
+          <div style="background: linear-gradient(135deg,#16a34a,#0891b2); color:#fff; padding:20px; border-radius:10px;">
+            <h2 style="margin:0;">تقريرك جاهز يا ${escapeHtmlBasic(lead.fullName)} 🌞</h2>
+          </div>
+          <p style="line-height:1.8; margin-top:16px;">
+            شكرًا لاستخدامك حاسبة القرض الأخضر الشمسي من Eco Ledger. مرفق لك تقرير PDF كامل
+            يتضمن تفاصيل التمويل، التوفير المتوقع، والأثر البيئي — جاهز لعرضه على البنك أو الجهة الممولة.
+          </p>
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px; margin:16px 0;">
+            <div>صافي التوفير الشهري المتوقع: <strong>${savings} ${result.currency}</strong></div>
+            <div>فترة الاسترداد التقديرية: <strong>${result.cashflow.simplePaybackYears ?? '—'} سنة</strong></div>
+          </div>
+          <p style="font-size:12px; color:#64748b; line-height:1.7;">
+            هذه الأرقام تقديرية لأغراض التخطيط الأولي ولا تشكل عرض تمويل ملزمًا. سيتواصل معك فريقنا قريبًا.
+          </p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `solar-green-loan-report-${lead.id.slice(0, 8)}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    })
+
+    await db.solarCalculatorLead.update({ where: { id: lead.id }, data: { reportSentAt: new Date() } })
+    return { sent: true }
+  } catch (err) {
+    console.error('[solar-lead-notify] Gmail send failed:', err)
+    return { sent: false, reason: 'gmail_send_failed' }
+  }
+}
+
+function escapeHtmlBasic(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

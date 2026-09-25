@@ -1278,6 +1278,7 @@ model SolarCalculatorLead {
   // ---- التقرير (PDF) ----
   reportToken                   String   @unique // معرّف عشوائي غير قابل للتخمين لرابط تحميل PDF العام (بدون تسريب معرّف السجل التسلسلي)
   reportGeneratedAt             DateTime?
+  reportSentAt                  DateTime? // آخر مرة أُرسل فيها التقرير فعليًا عبر البريد (Gmail) - انظر src/lib/solar-lead-notify.ts
   reportDownloadCount           Int      @default(0)
   reportLastDownloadedAt        DateTime?
   reportVerificationHash        String?  // بصمة SHA-256 لمحتوى التقرير - "dMRV Blockchain-Ready Verification Stamp"
