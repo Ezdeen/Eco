@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -150,6 +150,62 @@ const KPI_CATEGORIES = [
   },
 ]
 
+const GUARDIAN_COMMIT = '6e23c0563806d43155d6b2c738b577ef35728459'
+const GUARDIAN_CDM_PATH = `https://github.com/hashgraph/guardian/tree/${GUARDIAN_COMMIT}/Methodology%20Library/Clean%20Development%20Mechanism%20%28CDM%29`
+
+const KPI_CATALOG_CONFIG: Record<string, {
+  categories: Record<string, string[]>
+  note: string
+  sources: Array<{ label: string; href: string }>
+}> = {
+  grid_tied: {
+    categories: {
+      energy: ['energyGenerated'],
+      carbon: ['co2Avoided'],
+    },
+    note: 'الإنتاج مقيس من العدادات. أثره البيئي (CO₂e المتجنَّب) = الإنتاج × معامل الشبكة وفق AMS-I.D مع Tool 07 في Guardian. يُطبَّق على كامل الإنتاج لأن الجزء المُصدَّر (AMS-I.D) والمستهلك ذاتيًا (AMS-I.F، خيار الشبكة) يستخدمان الصيغة نفسها. الرقم تقديري حتى تُضاف قيم OM/BM وتقييم الإضافية.',
+    sources: [
+      { label: 'Guardian CDM AMS-I.D', href: `${GUARDIAN_CDM_PATH}/CDM%20AMS-I.D/AMS-I.D.policy` },
+      { label: 'Guardian CDM Tool 07', href: `${GUARDIAN_CDM_PATH}/Tools/Tool%2007/Tool%2007.tool` },
+    ],
+  },
+  solar: {
+    categories: {
+      energy: ['energyGenerated'],
+      carbon: ['co2Avoided'],
+    },
+    note: 'الإنتاج مقيس من العدادات. أثره البيئي (CO₂e المتجنَّب) = الإنتاج × معامل الشبكة وفق AMS-I.D مع Tool 07 في Guardian. يُطبَّق على كامل الإنتاج لأن الجزء المُصدَّر (AMS-I.D) والمستهلك ذاتيًا (AMS-I.F، خيار الشبكة) يستخدمان الصيغة نفسها. الرقم تقديري حتى تُضاف قيم OM/BM وتقييم الإضافية.',
+    sources: [
+      { label: 'Guardian CDM AMS-I.D', href: `${GUARDIAN_CDM_PATH}/CDM%20AMS-I.D/AMS-I.D.policy` },
+      { label: 'Guardian CDM Tool 07', href: `${GUARDIAN_CDM_PATH}/Tools/Tool%2007/Tool%2007.tool` },
+    ],
+  },
+  hybrid: {
+    categories: { energy: ['energyGenerated'] },
+    note: 'الإنتاج مقيس من العدادات. لا يُعرض الأثر الكربوني لأن خط الأساس هنا يعتمد على بديل (مثل مولّد ديزل أو شبكة مصغّرة) يتطلب AMS-I.F مع Tool 05 وهو غير مطبّق في حسابات المنصة بعد.',
+    sources: [
+      { label: 'Guardian CDM AMS-I.F', href: `${GUARDIAN_CDM_PATH}/CDM%20AMS-I.F/readme.md` },
+    ],
+  },
+  off_grid: {
+    categories: { energy: ['energyGenerated'] },
+    note: 'الإنتاج مقيس من العدادات. لا يُعرض الأثر الكربوني لأن خط الأساس هنا يعتمد على بديل (مثل مولّد ديزل أو شبكة مصغّرة) يتطلب AMS-I.F مع Tool 05 وهو غير مطبّق في حسابات المنصة بعد.',
+    sources: [
+      { label: 'Guardian CDM AMS-I.F', href: `${GUARDIAN_CDM_PATH}/CDM%20AMS-I.F/readme.md` },
+    ],
+  },
+  smart_irrigation: {
+    categories: {},
+    note: 'لم نعثر في Guardian على منهجية تطابق كفاءة مياه الري الذكي. منهجيات مياه الشرب الآمنة لا تنطبق على الري، لذا أُخفيت القياسات التشغيلية المحلية من كتالوج مؤشرات Guardian.',
+    sources: [],
+  },
+  afforestation: {
+    categories: {},
+    note: 'لا توجد في هذا الكتالوج مؤشرات تشجير محسوبة وفق مخرجات Guardian؛ لن تُعرض التقديرات المحلية على أنها مؤشرات مستمدة من Guardian.',
+    sources: [],
+  },
+}
+
 const COLOR_MAP: Record<string, { bg: string; text: string; border: string; gradient: string }> = {
   amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200', gradient: 'from-amber-500 to-orange-600' },
   emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200', gradient: 'from-emerald-500 to-teal-600' },
@@ -176,11 +232,22 @@ export function CalculationsSection() {
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [recentRuns, setRecentRuns] = useState<any[]>([])
   const [kpiCatalog, setKpiCatalog] = useState<any>(null)
+  const [kpiCatalogProjectId, setKpiCatalogProjectId] = useState('')
+  const [kpiCatalogLoading, setKpiCatalogLoading] = useState(false)
+  const [kpiCatalogError, setKpiCatalogError] = useState(false)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<any>(null)
   // ESG frameworks
   const [esgData, setEsgData] = useState<any>(null)
   const [traceDialog, setTraceDialog] = useState<any>(null)
+  const calculationsRequestId = useRef(0)
+  const selectedProjectInfo = projects.find((project) => project.id === selectedProject)
+  const selectedKpiConfig = selectedProjectInfo
+    ? KPI_CATALOG_CONFIG[selectedProjectInfo.projectType]
+    : null
+  const visibleKpiCategories = selectedKpiConfig
+    ? KPI_CATEGORIES.filter((category) => (selectedKpiConfig.categories[category.key] || []).length > 0)
+    : []
 
   useEffect(() => {
     fetch('/api/projects')
@@ -189,22 +256,32 @@ export function CalculationsSection() {
       .catch(() => {})
   }, [])
 
-  // Re-fetch KPI Catalog + Traceable KPIs whenever the selected project changes,
-  // and on initial mount (selectedProject starts as '' → shows the org-wide totals).
+  // Re-fetch KPI Catalog + Traceable KPIs whenever the selected project changes.
   useEffect(() => {
     fetchCalculations(selectedProject)
     fetchEsgFrameworks(selectedProject)
   }, [selectedProject])
 
   const fetchCalculations = async (projectId?: string) => {
+    const requestId = ++calculationsRequestId.current
+    setKpiCatalogLoading(Boolean(projectId))
+    setKpiCatalogError(false)
     try {
       const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
       const res = await fetch(`/api/calculations${qs}`)
-      if (!res.ok) return
+      if (!res.ok) throw new Error('Failed to load calculation KPIs')
       const data = await res.json()
+      if (requestId !== calculationsRequestId.current) return
       setRecentRuns(data.calculationRuns || [])
       setKpiCatalog(data.kpiCatalog || null)
-    } catch {}
+      setKpiCatalogProjectId(projectId || '')
+    } catch {
+      if (requestId !== calculationsRequestId.current) return
+      setKpiCatalogError(true)
+      toast.error('تعذر تحميل مؤشرات المشروع')
+    } finally {
+      if (requestId === calculationsRequestId.current) setKpiCatalogLoading(false)
+    }
   }
 
   const fetchEsgFrameworks = async (projectId?: string) => {
@@ -265,12 +342,12 @@ export function CalculationsSection() {
             <div>
               <h2 className="font-cairo text-2xl font-bold mb-1">Environmental KPI Catalog</h2>
               <p className="text-sm opacity-90">
-                جميع المؤشرات البيئية بشكل موحد - 9 فئات تشمل الطاقة والكربون والمياه والنفايات والتشجير والتنوع الحيوي والاقتصاد وجودة البيانات والتوثيق
+                مؤشرات مرتبطة بنوع المشروع المحدد، مع إظهار مرجع Guardian وحدود تطبيق المنهجية
               </p>
               <Badge variant="outline" className="mt-2 border-white/40 text-white bg-white/10">
-                {selectedProject
-                  ? `نطاق العرض: ${projects.find((p) => p.id === selectedProject)?.nameAr || projects.find((p) => p.id === selectedProject)?.name || 'المشروع المحدد'}`
-                  : 'نطاق العرض: جميع المشاريع'}
+                {selectedProjectInfo
+                  ? `المشروع: ${selectedProjectInfo.nameAr || selectedProjectInfo.name}`
+                  : 'اختر مشروعًا لعرض مؤشرات نوعه فقط'}
               </Badge>
             </div>
             <Database className="h-12 w-12 opacity-80" />
@@ -403,29 +480,80 @@ export function CalculationsSection() {
 
         {/* KPI Catalog Tab */}
         <TabsContent value="kpi" className="mt-4">
-          {kpiCatalog && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Activity className="h-5 w-5 text-primary" />
-                <h3 className="font-cairo text-lg font-bold">Environmental KPI Catalog</h3>
-                <Badge variant="outline" className="text-xs">9 فئات</Badge>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {KPI_CATEGORIES.map((cat) => {
-                  const Icon = cat.icon
-                  const colors = COLOR_MAP[cat.color] || COLOR_MAP.blue
-                  const categoryData = kpiCatalog[cat.key] || {}
-                  return (
-                    <Card key={cat.key} className={`overflow-hidden ${colors.border}`}>
-                      <CardHeader className={`pb-2 bg-gradient-to-br ${colors.gradient} text-white`}>
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {cat.title}
-                          <span className="text-xs opacity-80 mr-auto">{cat.titleEn}</span>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-3 space-y-2">
-                        {cat.kpis.map((kpi) => {
+          <div>
+            {!selectedProject && (
+              <Card>
+                <CardContent className="p-5 text-sm text-muted-foreground">
+                  اختر مشروعًا من القائمة لعرض المؤشرات المرتبطة بنوعه دون خلط بيانات المشاريع المختلفة.
+                </CardContent>
+              </Card>
+            )}
+            {selectedProject && kpiCatalogProjectId !== selectedProject && (
+              <Card>
+                <CardContent className="p-5 text-sm text-muted-foreground">
+                  {kpiCatalogLoading
+                    ? 'جاري تحميل مؤشرات المشروع...'
+                    : kpiCatalogError
+                      ? 'تعذر تحميل المؤشرات. حاول تغيير المشروع أو تحديث الصفحة.'
+                      : 'جاري تجهيز مؤشرات المشروع...'}
+                </CardContent>
+              </Card>
+            )}
+            {selectedProject && kpiCatalogProjectId === selectedProject && selectedKpiConfig && (
+                <>
+                  <Card className="mb-4 border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <BookOpen className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                        <div className="space-y-2">
+                          <p className="text-sm text-blue-900 dark:text-blue-200">{selectedKpiConfig.note}</p>
+                          {selectedKpiConfig.sources.length > 0 && (
+                            <div className="flex flex-wrap gap-x-4 gap-y-1">
+                              {selectedKpiConfig.sources.map((source) => (
+                                <a
+                                  key={source.href}
+                                  href={source.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-700 underline dark:text-blue-300"
+                                >
+                                  {source.label}
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-blue-700/80 dark:text-blue-300/80">
+                            مصدر Guardian المثبّت: commit {GUARDIAN_COMMIT.slice(0, 7)}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {visibleKpiCategories.length > 0 ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Activity className="h-5 w-5 text-primary" />
+                        <h3 className="font-cairo text-lg font-bold">Environmental KPI Catalog</h3>
+                        <Badge variant="outline" className="text-xs">{visibleKpiCategories.length} فئات</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {visibleKpiCategories.map((cat) => {
+                          const Icon = cat.icon
+                          const colors = COLOR_MAP[cat.color] || COLOR_MAP.blue
+                          const categoryData = kpiCatalog?.[cat.key] || {}
+                          const visibleKeys = selectedKpiConfig.categories[cat.key] || []
+                          return (
+                            <Card key={cat.key} className={`overflow-hidden ${colors.border}`}>
+                              <CardHeader className={`pb-2 bg-gradient-to-br ${colors.gradient} text-white`}>
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  <Icon className="h-4 w-4" />
+                                  {cat.title}
+                                  <span className="text-xs opacity-80 mr-auto">{cat.titleEn}</span>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-3 space-y-2">
+                                {cat.kpis.filter((kpi) => visibleKeys.includes(kpi.key)).map((kpi) => {
                           const rawValue = categoryData[kpi.key]
                           // Economy KPIs can be null when projects use different currencies
                           // (see kpiCatalog.economy in the API) — show the per-currency
@@ -452,47 +580,68 @@ export function CalculationsSection() {
                                 </div>
                               </div>
                             )
-                          }
-                          return (
-                            <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-                              <div className="min-w-0">
-                                <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
-                                <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
-                              </div>
-                              <div className="text-left shrink-0">
-                                <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
-                                  {fmtExact(rawValue || 0)}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {cat.key === 'economy' && categoryData.currency
-                                    ? kpi.unit.replace('SAR', categoryData.currency)
-                                    : kpi.unit}
-                                </p>
-                              </div>
-                            </div>
+                                  }
+                                  return (
+                                    <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
+                                        <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
+                                      </div>
+                                      <div className="text-left shrink-0">
+                                        <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
+                                          {fmtExact(rawValue || 0)}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {cat.key === 'economy' && categoryData.currency
+                                            ? kpi.unit.replace('SAR', categoryData.currency)
+                                            : kpi.unit}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                                {cat.key === 'carbon' && categoryData.emissionFactorsUsed?.length > 0 && (
+                                  <div className="pt-1.5 mt-1 border-t border-border/60">
+                                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                                      عامل الانبعاث المُستخدم:{' '}
+                                      {categoryData.emissionFactorsUsed.map((ef: any, i: number) => (
+                                        <span key={ef.countryCode}>
+                                          {i > 0 && '، '}
+                                          {ef.countryCode} = {ef.factor} kgCO₂e/kWh
+                                          {ef.fromDb ? '' : ' (افتراضي)'}
+                                        </span>
+                                      ))}
+                                    </p>
+                                  </div>
+                                )}
+                                {cat.key === 'carbon' && categoryData.claimGrades?.co2Avoided === 'indicative' && (
+                                  <p className="pt-1.5 mt-1 border-t border-border/60 text-[10px] text-amber-700 dark:text-amber-400">
+                                    النتيجة تقديرية؛ لا تُستخدم كادعاء تخفيض معتمد.
+                                  </p>
+                                )}
+                              </CardContent>
+                            </Card>
                           )
                         })}
-                        {cat.key === 'carbon' && categoryData.emissionFactorsUsed?.length > 0 && (
-                          <div className="pt-1.5 mt-1 border-t border-border/60">
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                              عامل الانبعاث المُستخدم:{' '}
-                              {categoryData.emissionFactorsUsed.map((ef: any, i: number) => (
-                                <span key={ef.countryCode}>
-                                  {i > 0 && '، '}
-                                  {ef.countryCode} = {ef.factor} kgCO₂e/kWh
-                                  {ef.fromDb ? '' : ' (افتراضي)'}
-                                </span>
-                              ))}
-                            </p>
-                          </div>
-                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-5 text-sm text-muted-foreground">
+                        لا توجد مؤشرات Guardian مطبقة لهذا النوع من المشاريع حاليًا.
                       </CardContent>
                     </Card>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+                  )}
+                </>
+              )}
+              {selectedProject && kpiCatalogProjectId === selectedProject && !selectedKpiConfig && (
+                <Card>
+                  <CardContent className="p-5 text-sm text-muted-foreground">
+                    لا توجد مؤشرات Guardian مهيأة لنوع هذا المشروع في الكتالوج حاليًا.
+                  </CardContent>
+                </Card>
+              )}
+          </div>
         </TabsContent>
 
         {/* ESG Frameworks Tab */}

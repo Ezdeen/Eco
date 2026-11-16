@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { BankSummaryView } from '@/components/sections/bank-summary-view'
+import { KpiCatalogView } from '@/components/sections/kpi-catalog-view'
 import { StatusBadge } from '@/components/platform/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +17,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { FileBarChart, Download, FileText, CheckCircle2, Clock, FilePlus, FileSpreadsheet, FileCode, Eye, Loader2, Printer } from 'lucide-react'
+import { FileBarChart, Download, FileText, CheckCircle2, Clock, FilePlus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function ReportsSection() {
@@ -72,110 +74,55 @@ export function ReportsSection() {
     }
   }, [])
 
-  const handleDownload = async (report: any, format: 'pdf' | 'csv' | 'html') => {
+  const handleDownload = async (report: any) => {
     setDownloadingId(report.id)
     try {
       const reportName = `${report.project?.code || 'report'}-${(report.periodStart || '').slice(0, 10)}`
 
-      if (format === 'pdf') {
-        // Use the dedicated PDF API that uses Playwright to generate a real PDF
-        const res = await fetch(`/api/reports/${report.id}/pdf`)
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || 'فشل توليد PDF')
-        }
-        const pdfBlob = await res.blob()
-
-        // Trigger download using a more robust method
-        const url = URL.createObjectURL(pdfBlob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${reportName}.pdf`
-        a.rel = 'noopener'
-        a.target = '_self'
-        a.style.display = 'none'
-        document.body.appendChild(a)
-
-        // Use programmatic click
-        const clickEvent = new MouseEvent('click', {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-        })
-        a.dispatchEvent(clickEvent)
-
-        // Cleanup after download starts
-        setTimeout(() => {
-          if (a.parentNode) {
-            document.body.removeChild(a)
-          }
-          URL.revokeObjectURL(url)
-        }, 2000)
-
-        toast.success(`تم تحميل التقرير بصيغة PDF (${(pdfBlob.size / 1024).toFixed(0)} KB)`)
-      } else if (format === 'csv') {
-        const res = await fetch(`/api/reports/${report.id}/download?format=csv`)
-        if (!res.ok) throw new Error('فشل تحميل CSV')
-        const csv = await res.text()
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${reportName}.csv`
-        a.rel = 'noopener'
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true })
-        a.dispatchEvent(clickEvent)
-        setTimeout(() => {
-          if (a.parentNode) document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }, 2000)
-        toast.success('تم تحميل التقرير بصيغة CSV')
-      } else if (format === 'html') {
-        const res = await fetch(`/api/reports/${report.id}/download?format=html`)
-        if (!res.ok) throw new Error('فشل تحميل HTML')
-        const html = await res.text()
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${reportName}.html`
-        a.rel = 'noopener'
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true })
-        a.dispatchEvent(clickEvent)
-        setTimeout(() => {
-          if (a.parentNode) document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }, 2000)
-        toast.success('تم تحميل التقرير بصيغة HTML')
+      // Use the dedicated PDF API that uses Playwright to generate a real PDF
+      const res = await fetch(`/api/reports/${report.id}/pdf`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'فشل توليد PDF')
       }
+      const pdfBlob = await res.blob()
+      const signature = await pdfBlob.slice(0, 5).text()
+      if (res.headers.get('content-type')?.includes('application/pdf') !== true || signature !== '%PDF-') {
+        throw new Error('استجابة الخادم ليست ملف PDF صالحًا. أعد بناء التطبيق وتشغيله، ثم حاول مجددًا.')
+      }
+
+      // Trigger download using a more robust method
+      const url = URL.createObjectURL(pdfBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${reportName}.pdf`
+      a.rel = 'noopener'
+      a.target = '_self'
+      a.style.display = 'none'
+      document.body.appendChild(a)
+
+      // Use programmatic click
+      const clickEvent = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+      })
+      a.dispatchEvent(clickEvent)
+
+      // Cleanup after download starts
+      setTimeout(() => {
+        if (a.parentNode) {
+          document.body.removeChild(a)
+        }
+        URL.revokeObjectURL(url)
+      }, 2000)
+
+      toast.success(`تم تحميل التقرير بصيغة PDF (${(pdfBlob.size / 1024).toFixed(0)} KB)`)
     } catch (e: any) {
       console.warn('Download error:', e)
       toast.error(e.message || 'فشل تحميل التقرير')
     } finally {
       setDownloadingId(null)
-    }
-  }
-
-  const handlePreview = async (report: any) => {
-    setPreviewReport({ ...report, loading: true })
-    setPreviewOpen(true)
-    try {
-      const res = await fetch(`/api/reports/${report.id}/download?format=json`)
-      if (!res.ok) throw new Error('فشل تحميل المعاينة')
-      const data = await res.json()
-      if (data && data.project && data.summary) {
-        setPreviewReport({ ...report, data, loading: false })
-      } else {
-        setPreviewReport({ ...report, loading: false, error: true })
-        toast.error('استجابة غير صالحة')
-      }
-    } catch {
-      setPreviewReport({ ...report, loading: false, error: true })
-      toast.error('فشل تحميل معاينة التقرير')
     }
   }
 
@@ -294,38 +241,6 @@ export function ReportsSection() {
     }
   }
 
-  // Print report - opens print dialog with formatted HTML
-  const handlePrint = async (report: any) => {
-    try {
-      toast.info('جاري تحضير التقرير للطباعة...')
-      const res = await fetch(`/api/reports/${report.id}/download?format=html`)
-      if (!res.ok) throw new Error('فشل تحميل التقرير')
-      const html = await res.text()
-
-      // Open print window
-      const printWindow = window.open('', '_blank', 'width=800,height=900')
-      if (!printWindow) {
-        toast.error('يرجى السماح بالنوافذ المنبثقة للطباعة')
-        return
-      }
-
-      printWindow.document.write(html)
-      printWindow.document.close()
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus()
-          printWindow.print()
-        }, 500)
-      }
-
-      toast.success('تم فتح نافذة الطباعة')
-    } catch (e: any) {
-      toast.error(e.message || 'فشل تحضير الطباعة')
-    }
-  }
-
   if (loading) {
     return <Card className="h-96 animate-pulse bg-muted/40" />
   }
@@ -333,7 +248,7 @@ export function ReportsSection() {
   const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
   // 'ar-SA' defaults to the Hijri (Umm al-Qura) calendar in JS's Intl — '-u-ca-gregory'
   // pins the calendar to Gregorian explicitly, matching the same fix applied to the
-  // downloaded PDF/CSV/HTML reports (see lib/report-data.ts).
+  // downloaded PDF reports (see lib/report-data.ts).
   const fmtDate = (d: string | Date) => new Date(d).toLocaleDateString('en-GB-u-ca-gregory', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
   return (
@@ -366,7 +281,7 @@ export function ReportsSection() {
       <Card>
         <CardContent className="p-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
-            تقارير شاملة مع رسوم بيانية وألوان ومعلومات تفصيلية - يمكن تحميلها بصيغ متعددة
+            تقارير شاملة مع رسوم بيانية وألوان ومعلومات تفصيلية بصيغة PDF
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1">
@@ -514,23 +429,12 @@ export function ReportsSection() {
                 </div>
               </div>
 
-              {/* Download buttons */}
-              <div className="grid grid-cols-5 gap-2 pt-2 border-t">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 text-xs flex flex-col gap-0.5"
-                  onClick={() => handlePreview(r)}
-                  title="معاينة"
-                >
-                  <Eye className="h-3 w-3" />
-                  <span className="text-[10px]">معاينة</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs flex flex-col gap-0.5 border-red-200 text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                  onClick={() => handleDownload(r, 'pdf')}
+                  className="h-9 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  onClick={() => handleDownload(r)}
                   disabled={downloadingId === r.id}
                   title="تحميل PDF"
                 >
@@ -539,39 +443,7 @@ export function ReportsSection() {
                   ) : (
                     <FileText className="h-3 w-3" />
                   )}
-                  <span className="text-[10px]">PDF</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs flex flex-col gap-0.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                  onClick={() => handleDownload(r, 'csv')}
-                  disabled={downloadingId === r.id}
-                  title="تحميل CSV"
-                >
-                  <FileSpreadsheet className="h-3 w-3" />
-                  <span className="text-[10px]">CSV</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs flex flex-col gap-0.5 border-blue-200 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
-                  onClick={() => handleDownload(r, 'html')}
-                  disabled={downloadingId === r.id}
-                  title="تحميل HTML"
-                >
-                  <FileCode className="h-3 w-3" />
-                  <span className="text-[10px]">HTML</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs flex flex-col gap-0.5 border-violet-200 text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-950/30"
-                  onClick={() => handlePrint(r)}
-                  title="طباعة التقرير"
-                >
-                  <Printer className="h-3 w-3" />
-                  <span className="text-[10px]">طباعة</span>
+                  <span>تحميل PDF</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -635,29 +507,10 @@ export function ReportsSection() {
                 </p>
               </div>
 
-              {/* KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Card className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200">
-                  <p className="text-xs text-muted-foreground">إجمالي الطاقة</p>
-                  <p className="text-xl font-bold tabular-nums text-emerald-600">{fmt(previewReport.data.summary.totalEnergy)}</p>
-                  <p className="text-[10px] text-muted-foreground">kWh</p>
-                </Card>
-                <Card className="p-3 bg-teal-50 dark:bg-teal-950/30 border-teal-200">
-                  <p className="text-xs text-muted-foreground">CO₂ متجنب</p>
-                  <p className="text-xl font-bold tabular-nums text-teal-600">{fmt(previewReport.data.summary.totalCo2AvoidedTons)}</p>
-                  <p className="text-[10px] text-muted-foreground">طن</p>
-                </Card>
-                <Card className="p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200">
-                  <p className="text-xs text-muted-foreground">الوفر المالي</p>
-                  <p className="text-xl font-bold tabular-nums text-amber-600">{fmt(previewReport.data.summary.totalSavings)}</p>
-                  <p className="text-[10px] text-muted-foreground">{previewReport.data.project.currency}</p>
-                </Card>
-                <Card className="p-3 bg-blue-50 dark:bg-blue-950/30 border-blue-200">
-                  <p className="text-xs text-muted-foreground">Performance Ratio</p>
-                  <p className="text-xl font-bold tabular-nums text-blue-600">{previewReport.data.summary.performanceRatio}</p>
-                  <p className="text-[10px] text-muted-foreground">%</p>
-                </Card>
-              </div>
+              {/* ملخص ضابط التمويل الأخضر — أول ما يُرى */}
+              {previewReport.data.bankSummary && (
+                <BankSummaryView summary={previewReport.data.bankSummary} fmtDate={fmtDate} />
+              )}
 
               {/* Quality */}
               <Card className="p-4">
@@ -721,70 +574,41 @@ export function ReportsSection() {
                 </div>
               </Card>
 
-              {/* Full environmental KPI catalog — same categories as the Calculations section */}
-              {previewReport.data.kpiCatalog && (
-                <Card className="p-4">
-                  <p className="text-sm font-semibold mb-1">الحسابات البيئية الشاملة</p>
-                  <p className="text-[10px] text-muted-foreground mb-3">نفس فئات ومنهجية قسم "الحسابات"، محسوبة لهذا المشروع وهذه الفترة.</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">طاقة مُصدَّرة</p>
-                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.energy.energyExported)} kWh</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">استهلاك ذاتي</p>
-                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.energy.selfConsumption)} kWh</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">كثافة الكربون</p>
-                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.carbon.carbonIntensity.toFixed(3)} kgCO₂e/kWh</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">مياه موفّرة</p>
-                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.water.waterSaved)} لتر</p>
-                    </div>
-                    {previewReport.data.kpiCatalog.afforestation.treesPlanted > 0 && (
-                      <>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-muted-foreground">أشجار مزروعة</p>
-                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.afforestation.treesPlanted)}</p>
-                        </div>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-muted-foreground">مساحة مُستعادة</p>
-                          <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.biodiversity.restoredArea.toFixed(2)} ha</p>
-                        </div>
-                      </>
-                    )}
-                    {previewReport.data.kpiCatalog.irrigation && previewReport.data.kpiCatalog.irrigation.waterUsedM3 > 0 && (
-                      <>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-muted-foreground">مياه ري مستخدمة</p>
-                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.irrigation.waterUsedM3)} m³</p>
-                        </div>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-muted-foreground">توفير مياه الري</p>
-                          <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.irrigation.waterSavedM3)} m³ ({previewReport.data.kpiCatalog.irrigation.waterSavedPct.toFixed(1)}%)</p>
-                        </div>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-muted-foreground">متوسط رطوبة التربة</p>
-                          <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.irrigation.avgSoilMoisturePct.toFixed(1)}%</p>
-                        </div>
-                      </>
-                    )}
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">استثمار أخضر</p>
-                      <p className="font-bold tabular-nums">{fmt(previewReport.data.kpiCatalog.economy.greenInvestment)} {previewReport.data.kpiCatalog.economy.currency}</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">تكلفة/طن CO₂e</p>
-                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(previewReport.data.kpiCatalog.economy.costPerTCo2e) : '—'}</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-muted/50">
-                      <p className="text-muted-foreground">اكتمال البيانات</p>
-                      <p className="font-bold tabular-nums">{previewReport.data.kpiCatalog.dataQuality.completeness.toFixed(1)}%</p>
-                    </div>
+              {/* الحسابات البيئية الشاملة — ديناميكية حسب نوع المشروع */}
+              {previewReport.data.kpiGroups && <KpiCatalogView groups={previewReport.data.kpiGroups} />}
+
+              {/* Methodology & Guardian provenance */}
+              {previewReport.data.methodology && (
+                <details>
+                <summary className="cursor-pointer text-sm font-semibold py-2">تفاصيل المنهجية والمرجعية (للمدقق)</summary>
+                <Card className="p-4 mt-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-semibold">المنهجية والمرجعية</p>
+                    <Badge variant="outline" className="text-[10px]">{previewReport.data.methodology.label}</Badge>
                   </div>
+                  <p className="text-[10px] text-muted-foreground mb-3">
+                    {previewReport.data.methodology.name} — صيغتها منقولة من سياسة Guardian «{previewReport.data.methodology.guardian.policy}»
+                    {previewReport.data.methodology.guardian.tools.length > 0 && ` (أدوات: ${previewReport.data.methodology.guardian.tools.join('، ')})`}.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {previewReport.data.methodology.claimGrades.co2Avoided && (
+                      <Badge variant={previewReport.data.methodology.claimGrades.co2Avoided === 'methodology_compliant' ? 'default' : 'secondary'} className="text-[10px]">
+                        الكربون المُتجنَّب: {previewReport.data.methodology.claimGrades.co2Avoided === 'methodology_compliant' ? 'مطابق للمنهجية' : 'تقديري'}
+                      </Badge>
+                    )}
+                    {previewReport.data.methodology.claimGrades.co2Sequestered && (
+                      <Badge variant="secondary" className="text-[10px]">الإزالة بالتشجير: تقديرية</Badge>
+                    )}
+                    {previewReport.data.methodology.staleRuns > 0 && (
+                      <Badge variant="destructive" className="text-[10px]">{previewReport.data.methodology.staleRuns} عملية حساب بحاجة لإعادة التشغيل</Badge>
+                    )}
+                  </div>
+                  {previewReport.data.methodology.warnings.map((w: string, i: number) => (
+                    <p key={i} className="text-[11px] text-amber-700 dark:text-amber-400 mb-1">⚠ {w}</p>
+                  ))}
+                  <p className="text-[9px] text-muted-foreground font-mono break-all mt-2">SHA-256: {previewReport.data.methodology.contentHash}</p>
                 </Card>
+                </details>
               )}
 
               {/* Hedera attestation / verification */}
@@ -855,25 +679,12 @@ export function ReportsSection() {
                 </div>
               </Card>
 
-              {/* Download buttons in preview */}
-              <div className="flex gap-2 pt-2 border-t">
-                <Button onClick={() => handleDownload(previewReport, 'pdf')} className="flex-1 bg-red-600 hover:bg-red-700">
+              <div className="pt-2 border-t">
+                <Button onClick={() => handleDownload(previewReport)} className="w-full bg-red-600 hover:bg-red-700">
                   <FileText className="h-4 w-4 ml-1" />
                   تحميل PDF
                 </Button>
-                <Button onClick={() => handleDownload(previewReport, 'csv')} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                  <FileSpreadsheet className="h-4 w-4 ml-1" />
-                  تحميل CSV
-                </Button>
-                <Button onClick={() => handleDownload(previewReport, 'html')} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                  <FileCode className="h-4 w-4 ml-1" />
-                  تحميل HTML
-                </Button>
               </div>
-              <Button onClick={() => handlePrint(previewReport)} className="w-full bg-violet-600 hover:bg-violet-700">
-                <Printer className="h-4 w-4 ml-1" />
-                طباعة التقرير
-              </Button>
             </div>
           ) : null}
         </DialogContent>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/authorization'
 import { generateReportData, fmtReportDate, fmtReportDateTime } from '@/lib/report-data'
+import { renderBankSummaryHtml } from '@/lib/report-bank-summary'
+import { renderKpiCatalogHtml, kpiGroupsToCsvRows } from '@/lib/report-kpi-catalog'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -41,7 +43,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       rows.push(`الكربون المتجنب,${data.summary.totalCo2AvoidedTons},tCO2e`)
       rows.push(`الوفر المالي,${data.summary.totalSavings},${data.project.currency}`)
       rows.push(`Specific Yield,${data.summary.specificYield},kWh/kWp`)
-      rows.push(`Performance Ratio,${data.summary.performanceRatio},%`)
+      rows.push(`عامل السعة,${data.summary.capacityFactor},%`)
+      rows.push(`مستوى الثقة بالبيانات,${data.bankSummary.confidence.level},`)
+      rows.push(`تغطية أيام الفترة,${data.bankSummary.confidence.coveragePct},%`)
       rows.push(`القراءات الصحيحة,${data.summary.validReadings},قراءة`)
       rows.push(`القراءات المشبوهة,${data.summary.suspectReadings},قراءة`)
       rows.push(`القراءات المرفوضة,${data.summary.rejectedReadings},قراءة`)
@@ -50,37 +54,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       rows.push(`كم سيارة متجنّب,${data.summary.carKmAvoided},km`)
       rows.push('')
       rows.push('# الحسابات البيئية الشاملة (Environmental KPI Catalog)')
-      rows.push('الفئة,المؤشر,القيمة,الوحدة')
-      const kpi = data.kpiCatalog
-      rows.push(`الطاقة,الطاقة المُولّدة,${kpi.energy.energyGenerated.toFixed(2)},kWh`)
-      rows.push(`الطاقة,الطاقة المُصدَّرة,${kpi.energy.energyExported.toFixed(2)},kWh`)
-      rows.push(`الطاقة,الاستهلاك الذاتي,${kpi.energy.selfConsumption.toFixed(2)},kWh`)
-      rows.push(`الطاقة,نسبة الطاقة المتجددة,${kpi.energy.renewableFraction.toFixed(1)},%`)
-      rows.push(`الكربون,CO2e متجنب,${kpi.carbon.co2Avoided.toFixed(2)},kg`)
-      rows.push(`الكربون,CO2e ممتص (تشجير),${kpi.carbon.co2Sequestered.toFixed(2)},kg`)
-      rows.push(`الكربون,كثافة الكربون,${kpi.carbon.carbonIntensity.toFixed(4)},kgCO2e/kWh`)
-      rows.push(`الكربون,معامل الانبعاث المُستخدم,${kpi.carbon.blendedEmissionFactor.toFixed(4)},kgCO2e/kWh`)
-      rows.push(`المياه,مياه موفّرة,${kpi.water.waterSaved.toFixed(2)},لتر`)
-      rows.push(`المياه,مياه مستهلكة (تنظيف الألواح),${kpi.water.waterConsumed.toFixed(2)},لتر`)
-      rows.push(`النفايات,نفايات مُحوّلة,${kpi.waste.wasteDiverted.toFixed(2)},kg`)
-      rows.push(`النفايات,نفايات مُعاد تدويرها,${kpi.waste.wasteRecycled.toFixed(2)},kg`)
-      if (kpi.afforestation.treesPlanted > 0) {
-        rows.push(`التشجير,أشجار مزروعة,${kpi.afforestation.treesPlanted},شجرة`)
-        rows.push(`التشجير,معدل البقاء,${(kpi.afforestation.survivalRate * 100).toFixed(1)},%`)
-        rows.push(`التشجير,الكتلة الحيوية,${kpi.afforestation.biomass.toFixed(2)},kg`)
-        rows.push(`التشجير,الكربون المخزن,${kpi.afforestation.carbonStock.toFixed(2)},kgCO2e`)
-        rows.push(`التنوع الحيوي,مساحة مُستعادة,${kpi.biodiversity.restoredArea.toFixed(2)},ha`)
-        rows.push(`التنوع الحيوي,مؤشر الموئل,${kpi.biodiversity.habitatIndex.toFixed(1)},/100`)
-      }
-      rows.push(`الاقتصاد,وفر تكاليف,${kpi.economy.costSavings.toFixed(2)},${kpi.economy.currency}`)
-      rows.push(`الاقتصاد,استثمار أخضر,${kpi.economy.greenInvestment.toFixed(2)},${kpi.economy.currency}`)
-      if (kpi.economy.costPerTCo2e !== null) rows.push(`الاقتصاد,تكلفة لكل طن CO2e,${kpi.economy.costPerTCo2e.toFixed(2)},${kpi.economy.currency}/tCO2e`)
-      rows.push(`جودة البيانات,الاكتمال,${kpi.dataQuality.completeness.toFixed(1)},%`)
-      rows.push(`جودة البيانات,الدقة,${kpi.dataQuality.accuracy.toFixed(1)},%`)
-      rows.push(`جودة البيانات,نسبة التحقق,${kpi.dataQuality.validationRate.toFixed(1)},%`)
-      rows.push(`التوثيق,بيانات موثقة على Hedera,${kpi.attestation.verifiedDataPercent.toFixed(1)},%`)
-      rows.push(`التوثيق,قابلية التتبع,${kpi.attestation.traceabilityPercent.toFixed(1)},%`)
-      rows.push(`التوثيق,عدد دفعات التوثيق المؤكدة,${kpi.attestation.attestationCount},دفعة`)
+      rows.push(...kpiGroupsToCsvRows(data.kpiGroups))
       rows.push('')
       rows.push('# البيانات اليومية')
       rows.push('التاريخ,الطاقة (kWh),CO2 (kg),الوفر')
@@ -243,89 +217,12 @@ function generateHTMLReport(data: any, reportName: string): string {
     </div>
   </div>
 
-  <div class="section">
-    <h2>📊 الملخص التنفيذي</h2>
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="label">إجمالي الطاقة</div>
-        <div class="value">${fmt(data.summary.totalEnergy)}</div>
-        <div class="unit">kWh</div>
-      </div>
-      <div class="kpi-card info">
-        <div class="label">الكربون المتجنب</div>
-        <div class="value">${fmt(data.summary.totalCo2AvoidedTons)}</div>
-        <div class="unit">طن CO₂e</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">الوفر المالي</div>
-        <div class="value">${fmt(data.summary.totalSavings)}</div>
-        <div class="unit">${data.project.currency}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">Performance Ratio</div>
-        <div class="value">${data.summary.performanceRatio}</div>
-        <div class="unit">%</div>
-      </div>
-    </div>
-  </div>
+  ${renderBankSummaryHtml(data.bankSummary, fmtDate)}
 
   <div class="section">
     <h2>🌍 الحسابات البيئية الشاملة (Environmental KPI Catalog)</h2>
-    <p style="font-size:11px;color:#64748b;margin:0 0 10px;">نفس فئات ومنهجية قسم "الحسابات" في المنصة، محسوبة لهذا المشروع وهذه الفترة تحديدًا.</p>
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="label">الطاقة المُصدَّرة</div>
-        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.energyExported)}</div>
-        <div class="unit">kWh</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">الاستهلاك الذاتي</div>
-        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.selfConsumption)}</div>
-        <div class="unit">kWh</div>
-      </div>
-      <div class="kpi-card info">
-        <div class="label">كثافة الكربون</div>
-        <div class="value" style="font-size:16px;">${data.kpiCatalog.carbon.carbonIntensity.toFixed(3)}</div>
-        <div class="unit">kgCO₂e/kWh</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">مياه موفّرة</div>
-        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.water.waterSaved)}</div>
-        <div class="unit">لتر</div>
-      </div>
-      ${data.kpiCatalog.afforestation.treesPlanted > 0 ? `
-      <div class="kpi-card">
-        <div class="label">أشجار مزروعة</div>
-        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.afforestation.treesPlanted)}</div>
-        <div class="unit">شجرة</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">مساحة مُستعادة</div>
-        <div class="value" style="font-size:16px;">${data.kpiCatalog.biodiversity.restoredArea.toFixed(2)}</div>
-        <div class="unit">هكتار</div>
-      </div>
-      ` : ''}
-      <div class="kpi-card">
-        <div class="label">استثمار أخضر</div>
-        <div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.economy.greenInvestment)}</div>
-        <div class="unit">${data.kpiCatalog.economy.currency}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">تكلفة لكل طن CO₂e</div>
-        <div class="value" style="font-size:16px;">${data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(data.kpiCatalog.economy.costPerTCo2e) : '—'}</div>
-        <div class="unit">${data.kpiCatalog.economy.currency}/tCO₂e</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">اكتمال البيانات</div>
-        <div class="value" style="font-size:16px;">${data.kpiCatalog.dataQuality.completeness.toFixed(1)}</div>
-        <div class="unit">%</div>
-      </div>
-      <div class="kpi-card">
-        <div class="label">بيانات موثقة على Hedera</div>
-        <div class="value" style="font-size:16px;">${data.kpiCatalog.attestation.verifiedDataPercent.toFixed(1)}</div>
-        <div class="unit">%</div>
-      </div>
-    </div>
+    <p style="font-size:11px;color:#64748b;margin:0 0 4px;">مؤشرات هذا المشروع وهذه الفترة فقط، حسب نوع المشروع والبيانات المتوفرة. لكل مؤشر أساسه: مقيس، أو محسوب بمنهجية، أو مُسجَّل، أو تقديري.</p>
+    ${renderKpiCatalogHtml(data.kpiGroups)}
   </div>
 
   <div class="section">
@@ -360,24 +257,6 @@ function generateHTMLReport(data: any, reportName: string): string {
       <div class="kpi-card danger">
         <div class="label">قراءات مرفوضة</div>
         <div class="value">${fmt(data.summary.rejectedReadings)}</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>🌱 الأثر البيئي المكافئ</h2>
-    <div class="two-cols">
-      <div>
-        <div class="info-row"><span class="label">🌳 أشجار مكافئة</span><span class="value">${fmt(data.summary.treeEquivalent)} شجرة/سنة</span></div>
-        <div class="info-row"><span class="label">🚗 كم سيارة متجنّب</span><span class="value">${fmt(data.summary.carKmAvoided)} km</span></div>
-        <div class="info-row"><span class="label">⚡ استهلاك ذاتي</span><span class="value">${fmt(data.summary.selfConsumed)} kWh</span></div>
-        <div class="info-row"><span class="label">📤 طاقة مُصدَّرة</span><span class="value">${fmt(data.summary.exported)} kWh</span></div>
-      </div>
-      <div>
-        <div class="info-row"><span class="label">📐 Specific Yield</span><span class="value">${fmt(data.summary.specificYield)} kWh/kWp</span></div>
-        <div class="info-row"><span class="label">🔋 القدرة المنصوبة</span><span class="value">${fmt(data.summary.capacityKwp)} kWp</span></div>
-        <div class="info-row"><span class="label">🌍 معامل الانبعاث</span><span class="value">${data.summary.emissionFactor} kgCO₂e/kWh</span></div>
-        <div class="info-row"><span class="label">📅 عدد الأيام</span><span class="value">${data.dailyData.length} يوم</span></div>
       </div>
     </div>
   </div>

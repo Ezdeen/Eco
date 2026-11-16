@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getEmissionFactor, getTariff, getConversionFactor, getMethodology } from '@/lib/reference-data'
+import { getEmissionFactor, getTariff, getConversionFactor } from '@/lib/reference-data'
 import { requireAuth, requireProjectAccess, projectScopeFilter } from '@/lib/authorization'
 import { calculationSchema } from '@/lib/validation'
 import { calculateFunderAttribution } from '@/lib/attribution'
 import { calculateWaterSavings, estimateBaselineWaterUseM3 } from '@/lib/irrigation'
+import { computeAmsId, computeIndicativeTreeRemovals } from '@/lib/methodologies'
+import {
+  resolveMethodologyVersion,
+  resolveCarbonMethodologyCode,
+  effectiveGridFactor,
+  type EffectiveGridFactor,
+} from '@/lib/methodologies/resolve'
 
 // Legacy constants removed - now using reference-data.ts library
 
@@ -132,13 +139,17 @@ export async function GET(request: NextRequest) {
     // which is exactly the residual mismatch between a run's result and this catalog.
     // Fix: look up the factor per (country, month-of-reading) bucket so historical readings
     // use the factor version that was valid when they were measured, same as a real run would.
-    const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
+    // كل معامل يُمرَّر عبر Tool 07 (Combined Margin) إن توفر OM/BM، وإلا يبقى متوسطًا ويُوسَم indicative.
+    type CachedEf = Awaited<ReturnType<typeof getEmissionFactor>> & { eff: EffectiveGridFactor }
+    const emissionFactorCache = new Map<string, CachedEf>()
     const getCachedEmissionFactor = async (countryCode: string, date: Date) => {
       // Bucket by month: factor versions in practice don't change more often than that,
       // and this keeps DB lookups bounded instead of one-per-reading.
       const bucketKey = `${countryCode}:${date.getUTCFullYear()}-${date.getUTCMonth()}`
       if (!emissionFactorCache.has(bucketKey)) {
-        emissionFactorCache.set(bucketKey, await getEmissionFactor(countryCode, date))
+        const ef = await getEmissionFactor(countryCode, date)
+        const meth = await resolveMethodologyVersion('cdm_ams_id', date)
+        emissionFactorCache.set(bucketKey, { ...ef, eff: effectiveGridFactor(ef, meth.parameters) })
       }
       return emissionFactorCache.get(bucketKey)!
     }
@@ -149,9 +160,11 @@ export async function GET(request: NextRequest) {
       const projectReadings = allReadings.filter((r) => r.projectId === p.id)
       for (const r of projectReadings) {
         const ef = await getCachedEmissionFactor(countryCode, r.measuredAt)
-        totalCo2Avoided += r.value * ef.factor
+        totalCo2Avoided += r.value * ef.eff.meterToNetFactor * ef.eff.factor
       }
     }
+    // درجة الادعاء للكربون المُتجنَّب: compliant فقط إذا كل المعاملات المستخدمة Combined Margin
+    const avoidedClaimGrade: 'methodology_compliant' | 'indicative' = 'indicative'
     // Blended factor across all scoped projects — informational only; the actual totals
     // above are computed per-project/per-reading-date with each factor version, not this one.
     const blendedEmissionFactor = totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0
@@ -161,12 +174,14 @@ export async function GET(request: NextRequest) {
       new Map(
         Array.from(emissionFactorCache.entries()).map(([bucketKey, ef]) => {
           const countryCode = bucketKey.split(':')[0]
-          return [`${countryCode}|${ef.version}|${ef.factor}`, { countryCode, factor: ef.factor, source: ef.source, version: ef.version, fromDb: ef.fromDb }]
+          return [`${countryCode}|${ef.version}|${ef.eff.factor}`, { countryCode, factor: ef.eff.factor, basis: ef.eff.basis, source: ef.source, version: ef.version, fromDb: ef.fromDb }]
         }),
       ).values(),
     )
 
     // Energy KPIs
+    // تقدير 30% ثابت (لا يوجد قياس فعلي للتصدير) — متسق مع selfConsumption (70%) ومع report-data.
+    // المؤشر المعتمد للإنتاج هو energyGenerated (مجموع قراءات العدادات).
     const energyExported = totalEnergy * 0.3
     const energyImported = 0 // not tracked yet
     const selfConsumption = totalEnergy * 0.7
@@ -175,13 +190,27 @@ export async function GET(request: NextRequest) {
     // Carbon KPIs
     const co2Avoided = totalCo2Avoided
     const co2Stored = 0 // for storage projects
+    // تقدير موسوم indicative (معامل ثابت/شجرة، نسبة بقاء مستهدفة) — لا يطابق AR-ACM0003 (انظر
+    // src/lib/methodologies/ar-acm0003.ts). المسار المطابق يتطلب قياس كتلة حيوية حقليًا.
+    const afforestationRemovalWarnings = new Set<string>()
+    if (allProjects.some((p) => p.projectType !== 'afforestation')) {
+      afforestationRemovalWarnings.add('لا يوجد تقييم موثق للإضافية؛ نتائج تخفيض الانبعاثات تظل تقديرية حتى استكمال التقييم.')
+    }
+    if (
+      allProjects.some((p) => p.projectType !== 'afforestation') &&
+      (emissionFactorCache.size === 0 || Array.from(emissionFactorCache.values()).some((e) => !e.eff.isCombinedMargin))
+    ) {
+      afforestationRemovalWarnings.add('معامل الشبكة المتوسط لا يطابق Combined Margin المطلوب في CDM Tool 07.')
+    }
     const co2Sequestered = allProjects
       .filter((p) => p.projectType === 'afforestation')
       .reduce((s, p) => {
         const treeFactor = p.treeSpecies === 'السدر (Ziziphus spina-christi)' ? 22 : 21
         const alive = Math.round((p.treeCount || 0) * (p.survivalRateTarget || 0.85))
         const years = p.plantingDate ? (Date.now() - p.plantingDate.getTime()) / (1000 * 60 * 60 * 24 * 365) : 0
-        return s + alive * treeFactor * Math.max(years, 0)
+        const res = computeIndicativeTreeRemovals({ aliveTrees: alive, years, kgCo2PerTreePerYear: treeFactor, survivalIsMeasured: false })
+        res.warnings.forEach((w) => afforestationRemovalWarnings.add(w))
+        return s + res.details.removalsKgCo2e
       }, 0)
     const carbonIntensity = totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0
 
@@ -334,6 +363,12 @@ export async function GET(request: NextRequest) {
         // country's factor — this is not a single factor applied uniformly).
         blendedEmissionFactor,
         emissionFactorsUsed,
+        // درجة الادعاء: methodology_compliant | indicative (انظر src/lib/methodologies/types.ts)
+        claimGrades: {
+          co2Avoided: avoidedClaimGrade,
+          co2Sequestered: 'indicative' as const,
+        },
+        claimWarnings: Array.from(afforestationRemovalWarnings),
         // Banking attribution (PCAF-aligned): only computed when a single project is
         // scoped (projectId query param), since attribution is meaningless summed
         // across projects with different funders. co2Avoided above always remains
@@ -397,7 +432,13 @@ export async function GET(request: NextRequest) {
       },
     }
 
-    return NextResponse.json({ calculationRuns: runs, kpiCatalog })
+    // مؤشرات تُحسب بثوابت/افتراضات ثابتة وليست من قياس فعلي — يجب أن توسم "تقديرية" في أي تقرير.
+    const estimatedKpis = [
+      'energy.energyExported', 'energy.selfConsumption', 'water.waterSaved', 'water.waterConsumed',
+      'economy.greenInvestment', 'dataQuality.accuracy', 'dataQuality.timeliness', 'attestation.auditCoveragePercent',
+    ]
+
+    return NextResponse.json({ calculationRuns: runs, kpiCatalog, estimatedKpis })
   } catch (error) {
     console.error('Calculations API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -530,7 +571,8 @@ export async function POST(request: NextRequest) {
         projectId,
         metricType: 'energy_export_kwh',
         measuredAt: { gte: new Date(periodStart), lte: new Date(periodEnd) },
-        qualityStatus: { in: ['validated', 'approved'] },
+        // موحَّد مع KPI GET وتقارير report-data: كانت 'corrected' مستبعدة هنا فقط فتختلف الأرقام بين الشاشات.
+        qualityStatus: { in: ['validated', 'approved', 'corrected'] },
       },
       orderBy: { measuredAt: 'asc' },
     })
@@ -541,7 +583,25 @@ export async function POST(request: NextRequest) {
     const countryCode = (project.country || 'SA').substring(0, 2).toUpperCase()
     const periodDate = new Date(periodStart)
     const emissionFactor = await getEmissionFactor(countryCode, periodDate)
-    const totalCo2AvoidedKg = totalEnergyKwh * emissionFactor.factor
+
+    // === منهجية الكربون: CDM AMS-I.D (نسخة ثابتة من قاعدة البيانات، صيغتها منقولة من Guardian) ===
+    // BE_y = EG_PJ,y × EF_grid,CM,y ؛ ER_y = BE_y − PE_y − LE_y. EF يُشتق من Tool 07 (Combined Margin)
+    // عند توفر OM/BM، وإلا يُستخدم المتوسط ويُوسَم الناتج indicative بدل ادّعاء مطابقة كاذبة.
+    const methodologyCode = resolveCarbonMethodologyCode(project, methodologyVersion)
+    const resolvedMethodology = await resolveMethodologyVersion(methodologyCode, periodDate)
+    const gridEf = effectiveGridFactor(emissionFactor, resolvedMethodology.parameters)
+    const amsId = computeAmsId({
+      scenario: 'greenfield',
+      netElectricityMwh: (totalEnergyKwh * gridEf.meterToNetFactor) / 1000,
+      meterToNetFactor: gridEf.meterToNetFactor,
+      efGridTco2PerMwh: gridEf.factor,
+      efIsCombinedMargin: gridEf.isCombinedMargin,
+      additionalityDemonstrated: false,
+      projectEmissions: Number(resolvedMethodology.parameters.projectEmissions ?? 0),
+      leakage: Number(resolvedMethodology.parameters.leakage ?? 0),
+    })
+    // الحقل المخزَّن يبقى بالكيلوغرام كما كان (ER بالطن × 1000)
+    const totalCo2AvoidedKg = amsId.details.emissionReductions * 1000
 
     // === PRIORITY 1: Use reference tables for tariffs ===
     // IMPORTANT: reference tariffs are keyed by country and can be denominated in a
@@ -589,10 +649,7 @@ export async function POST(request: NextRequest) {
     const treeEquivalent = totalCo2AvoidedKg / treeFactorData.value
     const carKmAvoided = totalCo2AvoidedKg / carFactorData.value
 
-    // === PRIORITY 1: Use reference tables for methodology ===
-    const methodCode = methodologyVersion?.startsWith('ghg_protocol') ? 'ghg_protocol_scope2' : 'iso_14064_2'
-    const methodology = await getMethodology(methodCode)
-    const methodVersion = methodology?.version || methodologyVersion || 'ghg_protocol_scope2_v1.2'
+    const methodVersion = resolvedMethodology.label // مثل cdm_ams_id@v1
 
     // Hash of inputs (including reference data versions for reproducibility)
     const crypto = await import('crypto')
@@ -603,7 +660,8 @@ export async function POST(request: NextRequest) {
         periodStart,
         periodEnd,
         methodologyVersion: methodVersion,
-        emissionFactor: { factor: emissionFactor.factor, source: emissionFactor.source, version: emissionFactor.version, fromDb: emissionFactor.fromDb },
+        methodologyContentHash: resolvedMethodology.contentHash,
+        emissionFactor: { factor: gridEf.factor, basis: gridEf.basis, om: gridEf.omFactor, bm: gridEf.bmFactor, source: emissionFactor.source, version: emissionFactor.version, fromDb: emissionFactor.fromDb },
         tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency },
         tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency },
         currencyMismatchWarning,
@@ -619,9 +677,25 @@ export async function POST(request: NextRequest) {
         periodStart: new Date(periodStart),
         periodEnd: new Date(periodEnd),
         methodologyVersion: methodVersion,
+        methodologyVersionId: resolvedMethodology.versionId,
+        methodologyHash: resolvedMethodology.contentHash,
+        claimGrade: amsId.claimGrade,
         parametersHash,
         result: JSON.stringify({
-          emissionFactor: { ...emissionFactor },
+          emissionFactor: { ...emissionFactor, effectiveFactor: gridEf.factor, basis: gridEf.basis, weights: gridEf.weights },
+          methodology: {
+            code: resolvedMethodology.code,
+            version: resolvedMethodology.versionNumber,
+            formulaId: resolvedMethodology.formulaId,
+            contentHash: resolvedMethodology.contentHash,
+            guardian: resolvedMethodology.guardian,
+            claimGrade: amsId.claimGrade,
+            warnings: amsId.warnings,
+            assumptions: amsId.assumptions,
+            baselineEmissionsTCo2: amsId.details.baselineEmissions,
+            projectEmissionsTCo2: amsId.details.projectEmissions,
+            leakageTCo2: amsId.details.leakage,
+          },
           tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency, fromDb: retailTariff?.fromDb ?? false },
           tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency, fromDb: feedInTariff?.fromDb ?? false },
           savingsCurrency: projectCurrency,
@@ -662,6 +736,16 @@ export async function POST(request: NextRequest) {
         treeEquivalent: Math.round(treeEquivalent),
         carKmAvoided: Math.round(carKmAvoided),
         emissionFactor,
+        effectiveGridFactor: gridEf,
+        methodology: {
+          code: resolvedMethodology.code,
+          label: resolvedMethodology.label,
+          contentHash: resolvedMethodology.contentHash,
+          guardian: resolvedMethodology.guardian,
+          claimGrade: amsId.claimGrade,
+          warnings: amsId.warnings,
+          assumptions: amsId.assumptions,
+        },
         tariffRetail: { rate: tariffRetail, source: tariffSource, currency: projectCurrency },
         tariffFeedIn: { rate: tariffFeedIn, currency: projectCurrency },
         selfConsumedKwh,
@@ -673,7 +757,7 @@ export async function POST(request: NextRequest) {
           tariffFromDb: retailTariff?.fromDb ?? false,
           treeFactorFromDb: treeFactorData.fromDb,
           carFactorFromDb: carFactorData.fromDb,
-          methodologyFromDb: methodology?.fromDb ?? false,
+          methodologyFromDb: true, // النسخة دائمًا من جدول MethodologyVersion
         },
         // Project avoided emissions above (totalCo2AvoidedKg) is always the full
         // 100% figure. fundingAttribution breaks that same number down by each

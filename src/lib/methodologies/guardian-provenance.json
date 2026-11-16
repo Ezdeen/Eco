@@ -1,0 +1,45 @@
+{
+  "guardianRepo": "https://github.com/hashgraph/guardian.git",
+  "guardianCommit": "6e23c0563806d43155d6b2c738b577ef35728459",
+  "syncedAt": "2026-11-15T06:38:30.781Z",
+  "items": [
+    {
+      "formulaId": "cdm_ams_id",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/CDM AMS-I.D/AMS-I.D.policy",
+      "guardianName": "AMS-I.D",
+      "guardianVersion": "",
+      "guardianUuid": "e9f7cecd-fd98-42bb-86dc-0eaa806ff1c8",
+      "calcExpressionSha256": "4e29757a46f1c4962e6be09ebb7553a6f0f2d5134e302ad9e302262d90b70248",
+      "calcBlockTags": [
+        "calculate_project_fields",
+        "calculate_report_fields"
+      ],
+      "fileSha256": "2cc14f57cdd3499b82b8828704a38856176be8c012a9ce79df64cf7ba66ea5d4"
+    },
+    {
+      "formulaId": "cdm_ar_acm0003",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/CDM AR-ACM0003/CDM AR-ACM0003.policy",
+      "guardianName": "CDM AR-ACM0003 Policy",
+      "guardianVersion": "1.0.0",
+      "guardianUuid": "14b7573c-5f52-4a8e-a722-72dd3d785478",
+      "calcExpressionSha256": "5b4d479c5bb3fd3ede19eb0f52f7a39fdff4c812f2ff32f8c7fe9c238f154524",
+      "calcBlockTags": [
+        "calculate_project_fields",
+        "calculate_report_fields"
+      ],
+      "fileSha256": "964dfafe3a53e5d968169a7db9cf85763f1a9515ea72df6164f7c379e234d99f"
+    },
+    {
+      "formulaId": "cdm_tool_07",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/Tools/Tool 07/Tool 07.tool",
+      "guardianName": "Tool 07",
+      "guardianVersion": "1.5.1",
+      "guardianUuid": null,
+      "calcExpressionSha256": "df036ca4010f7fc639534c40a45ff4bb33e551ac8df2e497c35bb18b36e5d5be",
+      "calcBlockTags": [
+        "calc_tool_07"
+      ],
+      "fileSha256": "e9b45da129f933a1413f7a7ab66410426713b9b40e7a956df847065b63bd3abd"
+    }
+  ]
+}

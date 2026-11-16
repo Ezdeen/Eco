@@ -10,6 +10,9 @@ export async function getEmissionFactor(countryCode: string, date: Date = new Da
   source: string
   version: string
   type: string
+  /** Tool 07: EF_OM / EF_BM إن توفرا (وإلا null ⇒ المعامل متوسط وليس Combined Margin) */
+  omFactor: number | null
+  bmFactor: number | null
   fromDb: boolean
 }> {
   // Try DB first - find factor valid for this date
@@ -32,6 +35,8 @@ export async function getEmissionFactor(countryCode: string, date: Date = new Da
       source: dbFactor.source,
       version: dbFactor.version,
       type: dbFactor.type,
+      omFactor: dbFactor.omFactor ?? null,
+      bmFactor: dbFactor.bmFactor ?? null,
       fromDb: true,
     }
   }
@@ -54,6 +59,8 @@ export async function getEmissionFactor(countryCode: string, date: Date = new Da
 
   return {
     ...fallback,
+    omFactor: null,
+    bmFactor: null,
     fromDb: false,
   }
 }

@@ -15,6 +15,21 @@ import { calculateFunderAttribution } from '@/lib/attribution'
 import { getEmissionFactor, getConversionFactor } from '@/lib/reference-data'
 import { getHederaNetwork, getHashscanUrl } from '@/lib/hedera'
 import { calculateWaterSavings, estimateBaselineWaterUseM3 } from '@/lib/irrigation'
+import { computeIndicativeTreeRemovals } from '@/lib/methodologies'
+import { buildKpiCatalog, estimateAfforestation } from '@/lib/report-kpi-catalog'
+import {
+  buildBankSummary,
+  ASSUMED_SELF_CONSUMPTION_SHARE,
+  DEFAULT_TARIFF_RETAIL,
+  DEFAULT_TARIFF_FEED_IN,
+} from '@/lib/report-bank-summary'
+import {
+  resolveMethodologyVersion,
+  resolveCarbonMethodologyCode,
+  effectiveGridFactor,
+  evaluateRunStaleness,
+  type EffectiveGridFactor,
+} from '@/lib/methodologies/resolve'
 import QRCode from 'qrcode'
 
 // === Date formatting — always Gregorian ===
@@ -163,11 +178,16 @@ export async function generateReportData(reportId: string) {
   // period. This is what makes the report's CO2 figure consistent with the
   // Calculations section's figure for the same project/period. ===
   const countryCode = (report.project.country || 'SA').substring(0, 2).toUpperCase()
-  const emissionFactorCache = new Map<string, Awaited<ReturnType<typeof getEmissionFactor>>>()
+  // المنهجية الكربونية للمشروع (نسخة ثابتة من DB؛ صيغتها منقولة من Guardian) — انظر src/lib/methodologies.
+  const carbonMethodologyCode = resolveCarbonMethodologyCode(report.project)
+  type CachedEf = Awaited<ReturnType<typeof getEmissionFactor>> & { eff: EffectiveGridFactor }
+  const emissionFactorCache = new Map<string, CachedEf>()
   const getCachedEmissionFactor = async (date: Date) => {
     const bucketKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}`
     if (!emissionFactorCache.has(bucketKey)) {
-      emissionFactorCache.set(bucketKey, await getEmissionFactor(countryCode, date))
+      const ef = await getEmissionFactor(countryCode, date)
+      const meth = await resolveMethodologyVersion('cdm_ams_id', date)
+      emissionFactorCache.set(bucketKey, { ...ef, eff: effectiveGridFactor(ef, meth.parameters) })
     }
     return emissionFactorCache.get(bucketKey)!
   }
@@ -175,47 +195,59 @@ export async function generateReportData(reportId: string) {
   let totalCo2Avoided = 0
   for (const r of readings) {
     const ef = await getCachedEmissionFactor(r.measuredAt)
-    totalCo2Avoided += r.value * ef.factor
+    totalCo2Avoided += r.value * ef.eff.meterToNetFactor * ef.eff.factor
   }
   const blendedEmissionFactor = totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0
   const emissionFactorsUsed = Array.from(
     new Map(
       Array.from(emissionFactorCache.values()).map((ef) => [
-        `${ef.version}|${ef.factor}`,
-        { factor: ef.factor, source: ef.source, version: ef.version, fromDb: ef.fromDb },
+        `${ef.version}|${ef.eff.factor}`,
+        { factor: ef.eff.factor, basis: ef.eff.basis, source: ef.source, version: ef.version, fromDb: ef.fromDb },
       ]),
     ).values(),
   )
 
-  const selfConsumed = totalEnergy * 0.7
-  const exported = totalEnergy * 0.3
-  const totalSavings = selfConsumed * (report.project.tariffRetail || 0.18) + exported * (report.project.tariffFeedIn || 0.10)
+  // الوفر المالي تقدير: لا يوجد قياس فعلي لتقسيم الاستهلاك الذاتي/التصدير، فالافتراض معلَن في
+  // bankSummary.assumptions ولا يُعرض كمؤشر طاقة. (انظر ASSUMED_SELF_CONSUMPTION_SHARE)
+  const tariffRetailUsed = report.project.tariffRetail || DEFAULT_TARIFF_RETAIL
+  const tariffFeedInUsed = report.project.tariffFeedIn || DEFAULT_TARIFF_FEED_IN
+  const totalSavings =
+    totalEnergy * ASSUMED_SELF_CONSUMPTION_SHARE * tariffRetailUsed +
+    totalEnergy * (1 - ASSUMED_SELF_CONSUMPTION_SHARE) * tariffFeedInUsed
   const specificYield = report.project.capacityKwp ? totalEnergy / report.project.capacityKwp : 0
   const days = (report.periodEnd.getTime() - report.periodStart.getTime()) / (1000 * 60 * 60 * 24)
-  const referenceYield = days * 5.5
-  const performanceRatio = referenceYield > 0 && report.project.capacityKwp ? (totalEnergy / report.project.capacityKwp) / referenceYield : 0
+  // عامل السعة = الطاقة الفعلية ÷ (القدرة × ساعات الفترة): مشتق من القياس فقط، بلا إنتاج مرجعي مفترض.
+  const periodDaysRounded = Math.max(1, Math.round(days))
+  const capacityFactorPct = report.project.capacityKwp
+    ? (totalEnergy / (report.project.capacityKwp * periodDaysRounded * 24)) * 100
+    : 0
 
   const treeFactorData = await getConversionFactor('tree_co2', report.periodEnd)
   const carFactorData = await getConversionFactor('car_co2_per_km', report.periodEnd)
   const treeEquivalent = totalCo2Avoided / treeFactorData.value
   const carKmAvoided = totalCo2Avoided / carFactorData.value
 
-  // === Water (estimated for solar vs. thermal generation) ===
-  const waterSaved = totalEnergy * 1.5
+  // === Water: مياه تنظيف الألواح بمعامل ثابت — لا تُعرض في التقرير (تُستخدم فقط في مقارنة خط أساس المياه إن وُجد) ===
   const waterConsumed = totalEnergy * 0.02
 
   // === Afforestation / biodiversity (only non-zero for afforestation-type projects) ===
   const isAfforestation = report.project.projectType === 'afforestation'
   const treeFactor = report.project.treeSpecies === 'السدر (Ziziphus spina-christi)' ? 22 : 21
-  const aliveTrees = isAfforestation ? Math.round((report.project.treeCount || 0) * (report.project.survivalRateTarget || 0.85)) : 0
-  const treeYears = isAfforestation && report.project.plantingDate
-    ? Math.max((Date.now() - report.project.plantingDate.getTime()) / (1000 * 60 * 60 * 24 * 365), 0)
-    : 0
-  const co2Sequestered = isAfforestation ? aliveTrees * treeFactor * treeYears : 0
-  const biomass = isAfforestation ? aliveTrees * 50 * treeYears : 0
-  const carbonSequestration = isAfforestation ? aliveTrees * treeFactor : 0
+  // تقدير واحد يُستخدم في كل التقرير؛ نهاية الحساب = نهاية الفترة (لا تاريخ اليوم) فيبقى الرقم ثابتًا عند إعادة التوليد.
+  const afforestEst = isAfforestation
+    ? estimateAfforestation({
+        treeCount: report.project.treeCount || 0,
+        survivalTarget: report.project.survivalRateTarget,
+        plantingDate: report.project.plantingDate,
+        periodStart: report.periodStart,
+        periodEnd: report.periodEnd,
+        kgCo2PerTreePerYear: treeFactor,
+      })
+    : null
+  const aliveTrees = afforestEst?.alive ?? 0
+  const treeYears = afforestEst?.yearsToEnd ?? 0
+  const co2Sequestered = afforestEst?.cumulativeKg ?? 0
   const restoredAreaHa = isAfforestation ? (report.project.plantedAreaM2 || 0) / 10000 : 0
-  const habitatIndex = restoredAreaHa > 0 ? Math.min(100, restoredAreaHa * 10) : 0
 
   // === Smart irrigation (only non-zero for smart_irrigation-type projects) ===
   // مبنية على قراءات فعلية من عداد المياه الذكي، وليست تقديرًا ثابتًا كما في حالة "الماء" أعلاه.
@@ -223,12 +255,13 @@ export async function generateReportData(reportId: string) {
   let irrigationWaterUsedM3 = 0
   let irrigationWaterSavedM3 = 0
   let irrigationWaterSavedPct = 0
-  let irrigationAvgSoilMoisturePct = 0
+  let irrigationAvgSoilMoisturePct: number | null = null
+  let irrigationBaselineM3: number | null = null
   if (isSmartIrrigation) {
     const waterReadings = allReadings.filter(
       (r) => verifiedStatuses.includes(r.qualityStatus) && (r.metricType === 'water_meter_m3' || r.metricType === 'water_flow_m3h'),
     )
-    const soilReadings = allReadings.filter((r) => r.metricType === 'soil_moisture_pct')
+    const soilReadings = allReadings.filter((r) => verifiedStatuses.includes(r.qualityStatus) && r.metricType === 'soil_moisture_pct')
     irrigationWaterUsedM3 = waterReadings.reduce((s, r) => s + r.value, 0)
     const baselineM3 = estimateBaselineWaterUseM3({
       irrigatedAreaM2: report.project.irrigatedAreaM2 || 0,
@@ -236,19 +269,21 @@ export async function generateReportData(reportId: string) {
       dailyWaterBudgetM3: report.project.dailyWaterBudgetM3,
       baselineWaterUseLM2Day: report.project.baselineWaterUseLM2Day,
     })
+    irrigationBaselineM3 = baselineM3
     const savings = calculateWaterSavings({ actualM3: irrigationWaterUsedM3, baselineM3 })
     irrigationWaterSavedM3 = savings.savedM3
     irrigationWaterSavedPct = savings.savedPct
     irrigationAvgSoilMoisturePct = soilReadings.length > 0
       ? soilReadings.reduce((s, r) => s + r.value, 0) / soilReadings.length
-      : 0
+      : null
   }
 
   // === Economy ===
   const currency = report.project.currency || 'SAR'
-  const greenInvestment = (report.project.capacityKwp || 0) * 3000
-  const costPerTCo2e = totalCo2Avoided > 0 ? greenInvestment / (totalCo2Avoided / 1000) : null
-  const costPerKwh = totalEnergy > 0 ? greenInvestment / totalEnergy : null
+  // قيمة المشروع الفعلية من بيانات الممولين المسجّلة. لا تقدير بالقدرة × سعر ثابت: بدون قيمة مسجّلة تبقى null.
+  const greenInvestment = (report.project.funders || []).reduce((m, f) => Math.max(m, f.projectTotalValue || 0), 0) || null
+  const costPerTCo2e = greenInvestment && totalCo2Avoided > 0 ? greenInvestment / (totalCo2Avoided / 1000) : null
+  const costPerKwh = greenInvestment && totalEnergy > 0 ? greenInvestment / totalEnergy : null
 
   // === Data quality ===
   const dataQualityRate = allReadings.length > 0 ? (validReadings.length / allReadings.length) * 100 : 0
@@ -305,13 +340,13 @@ export async function generateReportData(reportId: string) {
     const dayReadings = readings.filter((r) => new Date(r.measuredAt).toISOString().slice(0, 10) === date)
     const dayCo2 = dayReadings.reduce((s, r) => {
       const ef = emissionFactorCache.get(`${r.measuredAt.getUTCFullYear()}-${r.measuredAt.getUTCMonth()}`)
-      return s + r.value * (ef?.factor ?? blendedEmissionFactor)
+      return s + r.value * (ef ? ef.eff.meterToNetFactor * ef.eff.factor : blendedEmissionFactor)
     }, 0)
     dailyData.push({
       date,
       energy: Math.round(energy * 100) / 100,
       co2: Math.round(dayCo2 * 100) / 100,
-      savings: Math.round(energy * (report.project.tariffRetail || 0.18) * 100) / 100,
+      savings: Math.round(energy * tariffRetailUsed * 100) / 100,
     })
   }
 
@@ -360,11 +395,188 @@ export async function generateReportData(reportId: string) {
     }
   })
 
+  // === Methodology provenance (Guardian-backed) ===
+  // تجمع: المنهجية/النسخة السارية، مرجع Guardian، درجة الادعاء، وحالة تقادم كل عملية حساب
+  // (stale إذا عُدّلت المنهجية أو تغيّر منطق Guardian بعد إجرائها).
+  const carbonMethodology = await resolveMethodologyVersion(carbonMethodologyCode, report.periodEnd)
+  // مشاريع الري الذكي تعتمد معادلة ميزان مائي خاصة بالمنصة (ليس لها سياسة مقابلة في Guardian)،
+  // فلا تُقيَّم نسخها مقابل منهجية CDM ولا تُوسَم stale بسبب غياب بصمة Guardian.
+  const guardianBackedRuns = calcRuns.filter((c) => c.runType !== 'water_savings')
+  const staleness = await evaluateRunStaleness(
+    guardianBackedRuns.map((c) => ({ id: c.id, periodStart: c.periodStart, methodologyHash: c.methodologyHash, methodologyVersionId: c.methodologyVersionId })),
+    carbonMethodologyCode,
+  )
+  const staleById = new Map(staleness.map((x) => [x.runId, x]))
+  const cachedEfs = Array.from(emissionFactorCache.values())
+  const avoidedClaimGrade: 'methodology_compliant' | 'indicative' = 'indicative'
+  const methodologyWarnings: string[] = []
+  if (!isAfforestation) {
+    methodologyWarnings.push('لا يوجد تقييم موثق للإضافية؛ نتائج تخفيض الانبعاثات تظل تقديرية حتى استكمال التقييم.')
+  }
+  if (!isAfforestation && (cachedEfs.length === 0 || cachedEfs.some((e) => !e.eff.isCombinedMargin))) {
+    methodologyWarnings.push(
+      'الكربون المُتجنَّب محسوب بمعامل شبكة متوسط (location-based) وليس Combined Margin وفق CDM Tool 07؛ ' +
+        'الرقم مؤشر لجرد Scope 2 ولا يُقدَّم كتخفيض مطابق لـ AMS-I.D.',
+    )
+  }
+  if (isAfforestation) {
+    methodologyWarnings.push(
+      ...computeIndicativeTreeRemovals({ aliveTrees, years: treeYears, kgCo2PerTreePerYear: treeFactor, survivalIsMeasured: false }).warnings,
+    )
+  }
+  const staleRuns = staleness.filter((x) => x.stale).length
+  if (staleRuns > 0) {
+    methodologyWarnings.push(`${staleRuns} من عمليات الحساب أُجريت بنسخة منهجية سابقة أو بلا نسخة موثّقة؛ أعد تشغيل الحساب لمطابقة النسخة الحالية.`)
+  }
+  const methodology = {
+    code: carbonMethodology.code,
+    name: carbonMethodology.name,
+    version: carbonMethodology.versionNumber,
+    label: carbonMethodology.label,
+    contentHash: carbonMethodology.contentHash,
+    parameters: carbonMethodology.parameters,
+    guardian: carbonMethodology.guardian,
+    claimGrades: {
+      co2Avoided: isAfforestation ? null : avoidedClaimGrade,
+      co2Sequestered: isAfforestation ? ('indicative' as const) : null,
+    },
+    warnings: methodologyWarnings,
+    staleRuns,
+    // مؤشرات تُحسب بثوابت وليست مقيسة — يجب أن يعرضها التقرير كـ"تقديرية"
+    customMethodologies: report.project.projectType === 'smart_irrigation'
+      ? [{
+          code: 'smart_irrigation_water_balance_v1',
+          guardianBacked: false,
+          note: 'معادلة ميزان مائي خاصة بالمنصة (FAO-56/ISO 14046)؛ لا توجد سياسة مكافئة في Guardian Methodology Library. ' +
+            'الجزء الكربوني (طاقة الضخ المُوفَّرة × معامل الشبكة) يمكن ربطه بـ CDM Tool 05 + Tool 07 في مرحلة لاحقة.',
+        }]
+      : [],
+    estimatedKpis: [
+      'energy.energyExported', 'energy.selfConsumption', 'water.waterSaved', 'water.waterConsumed',
+      'economy.greenInvestment', 'dataQuality.accuracy', 'dataQuality.timeliness', 'attestation.auditCoveragePercent',
+      'summary.performanceRatio (5.5 kWh/kWp/day ثابتة)', 'summary.selfConsumed/exported (70/30 افتراضية)',
+    ],
+  }
+
+  // === ملخص الأثر البيئي (بسيط، للقارئ غير التقني) ===
+  // الطاقة المُنتَجة من قراءات العدّاد ← أثرها البيئي بصيغة منهجية مرجعها Guardian. التفاصيل التقنية في `methodology`.
+  const gfFirst = emissionFactorsUsed[0]
+  const guardianBase = 'https://github.com/hashgraph/guardian/tree/' + (carbonMethodology.guardian.commit ?? 'main')
+  const impactLines: Array<{ label: string; value: number; unit: string; estimate?: boolean }> = []
+  if (isAfforestation) {
+    impactLines.push(
+      { label: 'أشجار مزروعة', value: report.project.treeCount || 0, unit: 'شجرة' },
+      { label: 'إزالة الكربون المقدّرة (إجمالي منذ الزراعة)', value: Math.round(co2Sequestered / 10) / 100, unit: 'طن CO₂e', estimate: true },
+    )
+  } else if (report.project.projectType === 'smart_irrigation') {
+    impactLines.push(
+      { label: 'مياه الري المستخدمة', value: Math.round(irrigationWaterUsedM3 * 100) / 100, unit: 'م³' },
+      { label: 'مياه موفَّرة', value: irrigationWaterSavedM3, unit: 'م³' },
+    )
+  } else {
+    impactLines.push(
+      { label: 'الطاقة المُنتَجة', value: Math.round(totalEnergy * 100) / 100, unit: 'kWh' },
+      { label: 'الانبعاثات المتجنَّبة', value: Math.round((totalCo2Avoided / 1000) * 100) / 100, unit: 'طن CO₂e' },
+    )
+  }
+  const impactSummary = {
+    kind: isAfforestation ? 'afforestation' : report.project.projectType === 'smart_irrigation' ? 'irrigation' : 'energy',
+    lines: impactLines,
+    equivalents: isAfforestation || report.project.projectType === 'smart_irrigation'
+      ? null
+      : { trees: Math.round(treeEquivalent), carKm: Math.round(carKmAvoided) },
+    // كيف حُسب الرقم، بجملة واحدة
+    howCalculated: isAfforestation
+      ? 'تقدير مبني على عدد الأشجار ومعدل امتصاص سنوي لكل شجرة (تقريبي، لا يعتمد على قياس الكتلة الحيوية).'
+      : report.project.projectType === 'smart_irrigation'
+        ? 'ميزان مائي مبني على قراءات عدّاد المياه ومجسّات الرطوبة (معادلة خاصة بالمنصة، لا يوجد مقابل لها في Guardian).'
+        : 'الانبعاثات المتجنَّبة = الطاقة المُنتَجة × معامل انبعاثات الشبكة (صيغة CDM AMS-I.D كما في Guardian).',
+    gridFactor: isAfforestation || report.project.projectType === 'smart_irrigation' || !gfFirst
+      ? null
+      : {
+          kgCo2PerKwh: Math.round(blendedEmissionFactor * 10000) / 10000,
+          basis: gfFirst.basis === 'combined_margin' ? 'Combined Margin (CDM Tool 07)' : 'متوسط انبعاثات الشبكة',
+          source: gfFirst.source,
+          version: gfFirst.version,
+        },
+    reference: isAfforestation || report.project.projectType === 'smart_irrigation'
+      ? null
+      : {
+          name: carbonMethodology.name,
+          guardianPolicy: carbonMethodology.guardian.policy,
+          url: `${guardianBase}/${encodeURI(carbonMethodology.guardian.sourcePath)}`,
+        },
+    // الغرض: إفصاح وتمويل أخضر. ليس رصيد كربون معتمدًا (لذلك لا يُشترط تقييم إضافية).
+    purposeNote: 'أرقام للإفصاح البيئي والتمويل الأخضر محسوبة آليًا من قراءات موثّقة؛ ليست رصيد كربون معتمدًا.',
+  }
+
+  // === ملخص ضابط التمويل الأخضر (مصدر واحد للـ PDF والتنزيل والواجهة) ===
+  const validDays = new Set(validReadings.map((r) => new Date(r.measuredAt).toISOString().slice(0, 10)))
+  const hashMismatches = allReadings.filter((r) => r.hashMatchStatus === 'mismatch').length
+  const bankSummary = buildBankSummary({
+    kind: impactSummary.kind as 'energy' | 'afforestation' | 'irrigation',
+    project: {
+      name: report.project.nameAr || report.project.name,
+      code: report.project.code,
+      city: report.project.city,
+      country: report.project.country,
+      capacityKwp: report.project.capacityKwp,
+      commissionedAt: report.project.commissionedAt,
+      sponsorName: report.project.sponsorName,
+      currency,
+      hasOwnTariffs: !!(report.project.tariffRetail && report.project.tariffFeedIn),
+      tariffRetail: tariffRetailUsed,
+      tariffFeedIn: tariffFeedInUsed,
+      devicesCount: (report.project.devices || []).length,
+      treeCount: report.project.treeCount,
+      plantedAreaM2: report.project.plantedAreaM2,
+    },
+    period: { start: report.periodStart, end: report.periodEnd },
+    energy: {
+      totalEnergyKwh: totalEnergy,
+      specificYield,
+      avoidedCo2Tons: totalCo2Avoided / 1000,
+      savings: totalSavings,
+      meterToNetFactor: Array.from(emissionFactorCache.values())[0]?.eff.meterToNetFactor ?? 1,
+      gridFactorIsCombinedMargin: emissionFactorCache.size > 0 && Array.from(emissionFactorCache.values()).every((e) => e.eff.isCombinedMargin),
+    },
+    afforestation: isAfforestation ? { estimatedSequestrationTons: co2Sequestered / 1000, survivalIsDefault: afforestEst?.survivalIsDefault } : null,
+    irrigation: isSmartIrrigation
+      ? { waterUsedM3: irrigationWaterUsedM3, waterSavedM3: irrigationWaterSavedM3, waterSavedPct: irrigationWaterSavedPct }
+      : null,
+    impact: {
+      equivalents: impactSummary.equivalents,
+      howCalculated: impactSummary.howCalculated,
+      gridFactor: impactSummary.gridFactor,
+      reference: impactSummary.reference,
+      purposeNote: impactSummary.purposeNote,
+    },
+    quality: {
+      totalReadings: allReadings.length,
+      validReadings: validReadings.length,
+      suspect: suspectReadings.length,
+      rejected: rejectedReadings.length,
+      daysWithData: validDays.size,
+      hashMismatches,
+      onChainVerifiedPct: verifiedDataPercent,
+      confirmedBatches: confirmedBatches.length,
+    },
+    funders: fundingAttribution.map((f) => ({
+      funderName: f.funderName,
+      funderNameAr: f.funderNameAr,
+      fundingAmount: f.fundingAmount,
+      projectTotalValue: f.projectTotalValue,
+      attributionSharePct: f.attributionSharePct,
+      attributableCo2AvoidedTons: f.attributableCo2AvoidedTons,
+    })),
+  })
+
   // === Governance / ESG & green-lending standards matrix ===
   // مصفوفة ثابتة تربط كل قسم من التقرير بالإطار/المعيار الذي يستند إليه، لتسهيل استخدام
   // التقرير كأساس لتقرير ESG منفصل أو كمستند داعم لطلب قرض أخضر لدى بنك/جهة تمويل.
   const standardsMatrix = [
-    { section: 'الطاقة والانبعاثات (Scope 2)', frameworks: ['GHG Protocol – Scope 2 (location-based)', 'ISO 14064-1', 'GRI 302: Energy', 'GRI 305: Emissions'] },
+    { section: 'الطاقة والانبعاثات (Scope 2 — جرد مؤسسي)', frameworks: ['GHG Protocol – Scope 2 (location-based)', 'ISO 14064-1', 'GRI 302: Energy', 'GRI 305: Emissions'] },
+    { section: 'التخفيض على مستوى المشروع (Emission Reductions)', frameworks: ['CDM AMS-I.D (Guardian Methodology Library)', 'CDM Tool 07 – Combined Margin', 'ISO 14064-2'] },
     { section: 'نصيب الجهات الممولة من الأثر', frameworks: ['PCAF Global GHG Accounting & Reporting Standard, Part A (Project Finance)'] },
     { section: 'المياه والري الذكي', frameworks: ['ISO 14046 Water Footprint', 'FAO CROPWAT Guidelines', 'GRI 303: Water and Effluents'] },
     { section: 'التشجير والتنوع الحيوي', frameworks: ['GHG Protocol – Land Use, Land-Use Change (LULUCF, indicative)', 'GRI 304: Biodiversity'] },
@@ -409,6 +621,57 @@ export async function generateReportData(reportId: string) {
   const readingsLogTruncated = allReadings.length > READINGS_LOG_CAP
   const readingsFull = allReadings.map(mapReadingForLog)
 
+  // === كتالوج المؤشرات الديناميكي: يتكيّف مع نوع المشروع والبيانات المتوفرة ===
+  const kpiGroups = buildKpiCatalog({
+    kind: impactSummary.kind as 'energy' | 'afforestation' | 'irrigation',
+    currency,
+    periodDays: Math.max(1, Math.round(days)),
+    energy: impactSummary.kind === 'energy'
+      ? {
+          totalEnergyKwh: totalEnergy,
+          capacityKwp: report.project.capacityKwp,
+          avoidedCo2Tons: totalCo2Avoided / 1000,
+          methodLabel: carbonMethodology.guardian.policy,
+          gridFactor: impactSummary.gridFactor,
+          treeEquivalent,
+          carKm: carKmAvoided,
+          savings: totalSavings,
+          selfConsumptionSharePct: Math.round(ASSUMED_SELF_CONSUMPTION_SHARE * 100),
+          projectValue: greenInvestment,
+        }
+      : undefined,
+    afforestation: afforestEst
+      ? {
+          treesPlanted: report.project.treeCount || 0,
+          plantedAreaM2: report.project.plantedAreaM2 ?? null,
+          treeSpecies: report.project.treeSpecies ?? null,
+          plantingDate: report.project.plantingDate ?? null,
+          kgCo2PerTreePerYear: treeFactor,
+          estimate: afforestEst,
+        }
+      : undefined,
+    irrigation: isSmartIrrigation
+      ? {
+          waterUsedM3: irrigationWaterUsedM3,
+          waterSavedM3: irrigationWaterSavedM3,
+          waterSavedPct: irrigationWaterSavedPct,
+          baselineM3: irrigationBaselineM3,
+          avgSoilMoisturePct: irrigationAvgSoilMoisturePct,
+          irrigatedAreaM2: report.project.irrigatedAreaM2 ?? null,
+          waterTariffPerM3: report.project.waterTariffPerM3 ?? null,
+          pumpEnergyKwhPerM3: report.project.pumpEnergyKwhPerM3 ?? null,
+        }
+      : undefined,
+    quality: {
+      validPct: bankSummary.confidence.validPct,
+      coveragePct: bankSummary.confidence.coveragePct,
+      suspect: suspectReadings.length,
+      rejected: rejectedReadings.length,
+      hashMismatches,
+    },
+    attestation: { onChainVerifiedPct: verifiedDataPercent, confirmedBatches: confirmedBatches.length },
+  })
+
   return {
     report,
     project: report.project,
@@ -434,10 +697,8 @@ export async function generateReportData(reportId: string) {
       totalCo2Avoided: Math.round(totalCo2Avoided * 100) / 100,
       totalCo2AvoidedTons: Math.round((totalCo2Avoided / 1000) * 100) / 100,
       totalSavings: Math.round(totalSavings * 100) / 100,
-      selfConsumed: Math.round(selfConsumed * 100) / 100,
-      exported: Math.round(exported * 100) / 100,
       specificYield: Math.round(specificYield * 100) / 100,
-      performanceRatio: Math.round(performanceRatio * 1000) / 10,
+      capacityFactor: Math.round(capacityFactorPct * 100) / 100,
       treeEquivalent: Math.round(treeEquivalent),
       carKmAvoided: Math.round(carKmAvoided),
       emissionFactor: Math.round(blendedEmissionFactor * 10000) / 10000,
@@ -447,70 +708,7 @@ export async function generateReportData(reportId: string) {
     // Full 9-category KPI catalog — same categories/keys as the Calculations section,
     // scoped to this report's project + period, so a report's environmental figures
     // are never a narrower subset of what Calculations already shows for the same data.
-    kpiCatalog: {
-      energy: {
-        energyGenerated: totalEnergy,
-        energyExported: exported,
-        energyImported: 0,
-        selfConsumption: selfConsumed,
-        renewableFraction: totalEnergy > 0 ? 100 : 0,
-      },
-      carbon: {
-        co2Avoided: totalCo2Avoided,
-        co2Stored: 0,
-        co2Sequestered,
-        carbonIntensity: totalEnergy > 0 ? totalCo2Avoided / totalEnergy : 0,
-        blendedEmissionFactor,
-        emissionFactorsUsed,
-        fundingAttribution,
-      },
-      water: {
-        waterSaved,
-        waterConsumed,
-      },
-      waste: {
-        wasteDiverted: 0,
-        wasteRecycled: 0,
-      },
-      afforestation: {
-        treesPlanted: isAfforestation ? (report.project.treeCount || 0) : 0,
-        survivalRate: isAfforestation ? (report.project.survivalRateTarget || 0.85) : 0,
-        biomass,
-        carbonStock: co2Sequestered,
-        carbonSequestration,
-      },
-      irrigation: {
-        waterUsedM3: Math.round(irrigationWaterUsedM3 * 100) / 100,
-        waterSavedM3: irrigationWaterSavedM3,
-        waterSavedPct: irrigationWaterSavedPct,
-        avgSoilMoisturePct: Math.round(irrigationAvgSoilMoisturePct * 100) / 100,
-      },
-      biodiversity: {
-        restoredArea: restoredAreaHa,
-        protectedArea: 0,
-        habitatIndex,
-        speciesCount: isAfforestation && report.project.treeSpecies ? 1 : 0,
-      },
-      economy: {
-        costSavings: totalSavings,
-        greenInvestment,
-        costPerTCo2e,
-        costPerKwh,
-        currency,
-      },
-      dataQuality: {
-        completeness: dataQualityRate,
-        accuracy: 95.5,
-        timeliness: 92.0,
-        validationRate: dataQualityRate,
-      },
-      attestation: {
-        verifiedDataPercent,
-        traceabilityPercent: verifiedDataPercent,
-        auditCoveragePercent: 87.5,
-        attestationCount: confirmedBatches.length,
-      },
-    },
+    kpiGroups,
     dailyData,
     calculations: calcRuns.map((c) => ({
       id: c.id,
@@ -523,7 +721,14 @@ export async function generateReportData(reportId: string) {
       totalSavings: c.totalSavings,
       performanceRatio: c.performanceRatio,
       methodologyVersion: c.methodologyVersion,
+      claimGrade: c.claimGrade ?? null,
+      methodologyHash: c.methodologyHash ?? null,
+      stale: c.runType === 'water_savings' ? false : (staleById.get(c.id)?.stale ?? true),
+      staleReason: c.runType === 'water_savings' ? 'custom_not_guardian_backed' : (staleById.get(c.id)?.reason ?? 'legacy_unversioned'),
     })),
+    bankSummary,
+    impactSummary,
+    methodology,
     attestations,
     suspectReasons: suspectReadings.slice(0, 10).map((r) => ({
       measuredAt: r.measuredAt,

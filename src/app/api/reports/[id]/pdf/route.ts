@@ -5,6 +5,8 @@ import { existsSync } from 'fs'
 import path from 'path'
 import { requirePermission } from '@/lib/authorization'
 import { generateReportData, fmtReportDate, fmtReportDateTime } from '@/lib/report-data'
+import { ASSUMED_SELF_CONSUMPTION_SHARE, renderBankSummaryHtml } from '@/lib/report-bank-summary'
+import { renderKpiCatalogHtml } from '@/lib/report-kpi-catalog'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -103,21 +105,7 @@ function generateHTMLReport(data: any, reportName: string): string {
     <div class="classification">إعداد لغرض: طلب تمويل/قرض أخضر ومرجع لبناء تقرير ESG • معدّ وفق منهجية dMRV قابلة للتدقيق</div>
   </div>
 
-  <div class="section">
-    <h2>الملخص التنفيذي</h2>
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="label">إجمالي الطاقة</div><div class="value">${fmt(data.summary.totalEnergy)}</div><div class="unit">kWh</div></div>
-      <div class="kpi-card info"><div class="label">الكربون المتجنب</div><div class="value">${fmt(data.summary.totalCo2AvoidedTons)}</div><div class="unit">طن CO₂e</div></div>
-      <div class="kpi-card"><div class="label">الوفر المالي</div><div class="value">${fmt(data.summary.totalSavings)}</div><div class="unit">${data.project.currency}</div></div>
-      <div class="kpi-card"><div class="label">Performance Ratio</div><div class="value">${data.summary.performanceRatio}</div><div class="unit">%</div></div>
-    </div>
-    <p style="font-size:10.5px;color:#475569;margin-top:10px;line-height:1.7;">
-      يوثّق هذا التقرير أداء المشروع البيئي للفترة المذكورة أعلاه وفق منهجية القياس والتحقق والإبلاغ (dMRV) المعتمدة في المنصة،
-      استنادًا إلى قراءات ميدانية موثّقة رقميًا (Hash + شبكة Hedera). يشمل التقرير أيضًا ملحقًا تفصيليًا للبيانات ومنهجية
-      احتسابها (القسم الأخير) لضمان أعلى درجات الشفافية والحوكمة، ولتمكين استخدامه كمرجع من قِبل البنوك والجهات المموّلة
-      لأغراض التمويل الأخضر، أو كأساس لإعداد تقرير ESG مستقل للمنشأة.
-    </p>
-  </div>
+  ${renderBankSummaryHtml(data.bankSummary, fmtDate)}
 
   <div class="section">
     <h2>نطاق التقرير وحدوده (Scope &amp; Boundaries)</h2>
@@ -126,10 +114,10 @@ function generateHTMLReport(data: any, reportName: string): string {
         <div class="info-row"><span class="label">الحد التنظيمي</span><span class="value">مشروع واحد (${data.project.code}) ضمن منشأة/منظمة واحدة</span></div>
         <div class="info-row"><span class="label">الحد الزمني</span><span class="value">${fmtDate(data.report.periodStart)} — ${fmtDate(data.report.periodEnd)} (${data.dailyData.length} يوم بيانات)</span></div>
         <div class="info-row"><span class="label">نوع المشروع</span><span class="value">${data.project.projectType === 'afforestation' ? 'تشجير/استعادة بيئية' : data.project.projectType === 'smart_irrigation' ? 'ري ذكي واستدامة مياه' : 'طاقة شمسية (' + (data.project.projectType || 'grid_tied') + ')'}</span></div>
-        <div class="info-row"><span class="label">نطاق الانبعاثات (GHG Scope)</span><span class="value">Scope 2 — location-based (استبدال طاقة الشبكة/الضخ التقليدي)</span></div>
+        <div class="info-row"><span class="label">نطاق الانبعاثات (GHG Scope)</span><span class="value">${data.methodology?.guardian?.policy ? 'الأثر المتجنَّب على مستوى المشروع (' + data.methodology.guardian.policy + ' — Guardian)' : 'Scope 2 — location-based (استبدال طاقة الشبكة/الضخ التقليدي)'}</span></div>
       </div>
       <div>
-        <div class="info-row"><span class="label">منهجية الاحتساب المعتمدة</span><span class="value">${data.project.methodology || 'ghg_protocol_scope2'}</span></div>
+        <div class="info-row"><span class="label">منهجية الاحتساب المعتمدة</span><span class="value">${data.methodology?.label || data.project.methodology || 'ghg_protocol_scope2'}</span></div>
         <div class="info-row"><span class="label">حالة المشروع</span><span class="value">${data.project.status || '—'}</span></div>
         <div class="info-row"><span class="label">ما لا يشمله التقرير</span><span class="value">انبعاثات Scope 1/3 خارج حدود المشروع، ودورة حياة تصنيع المعدات (Embodied Carbon)</span></div>
         <div class="info-row"><span class="label">لغة ومرجعية التاريخ</span><span class="value">تواريخ ميلادية (Gregorian) بصيغة DD/MM/YYYY</span></div>
@@ -139,21 +127,8 @@ function generateHTMLReport(data: any, reportName: string): string {
 
   <div class="section">
     <h2>الحسابات البيئية الشاملة (Environmental KPI Catalog)</h2>
-    <p style="font-size:10px;color:#64748b;margin:0 0 10px;">نفس فئات ومنهجية قسم "الحسابات" في المنصة، محسوبة لهذا المشروع وهذه الفترة تحديدًا.</p>
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="label">الطاقة المُصدَّرة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.energyExported)}</div><div class="unit">kWh</div></div>
-      <div class="kpi-card"><div class="label">الاستهلاك الذاتي</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.energy.selfConsumption)}</div><div class="unit">kWh</div></div>
-      <div class="kpi-card info"><div class="label">كثافة الكربون</div><div class="value" style="font-size:16px;">${data.kpiCatalog.carbon.carbonIntensity.toFixed(3)}</div><div class="unit">kgCO₂e/kWh</div></div>
-      <div class="kpi-card"><div class="label">مياه موفّرة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.water.waterSaved)}</div><div class="unit">لتر</div></div>
-      ${data.kpiCatalog.afforestation.treesPlanted > 0 ? `
-      <div class="kpi-card"><div class="label">أشجار مزروعة</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.afforestation.treesPlanted)}</div><div class="unit">شجرة</div></div>
-      <div class="kpi-card"><div class="label">مساحة مُستعادة</div><div class="value" style="font-size:16px;">${data.kpiCatalog.biodiversity.restoredArea.toFixed(2)}</div><div class="unit">هكتار</div></div>
-      ` : ''}
-      <div class="kpi-card"><div class="label">استثمار أخضر</div><div class="value" style="font-size:16px;">${fmt(data.kpiCatalog.economy.greenInvestment)}</div><div class="unit">${data.kpiCatalog.economy.currency}</div></div>
-      <div class="kpi-card"><div class="label">تكلفة لكل طن CO₂e</div><div class="value" style="font-size:16px;">${data.kpiCatalog.economy.costPerTCo2e !== null ? fmt(data.kpiCatalog.economy.costPerTCo2e) : '—'}</div><div class="unit">${data.kpiCatalog.economy.currency}/tCO₂e</div></div>
-      <div class="kpi-card"><div class="label">اكتمال البيانات</div><div class="value" style="font-size:16px;">${data.kpiCatalog.dataQuality.completeness.toFixed(1)}</div><div class="unit">%</div></div>
-      <div class="kpi-card"><div class="label">بيانات موثقة على Hedera</div><div class="value" style="font-size:16px;">${data.kpiCatalog.attestation.verifiedDataPercent.toFixed(1)}</div><div class="unit">%</div></div>
-    </div>
+    <p style="font-size:10px;color:#64748b;margin:0 0 4px;">مؤشرات هذا المشروع وهذه الفترة فقط، حسب نوع المشروع والبيانات المتوفرة. لكل مؤشر أساسه: مقيس، أو محسوب بمنهجية، أو مُسجَّل، أو تقديري.</p>
+    ${renderKpiCatalogHtml(data.kpiGroups)}
   </div>
 
   <div class="section">
@@ -175,24 +150,6 @@ function generateHTMLReport(data: any, reportName: string): string {
       <div class="kpi-card"><div class="label">صحيحة</div><div class="value">${fmt(data.summary.validReadings)}</div></div>
       <div class="kpi-card warn"><div class="label">مشبوهة</div><div class="value">${fmt(data.summary.suspectReadings)}</div></div>
       <div class="kpi-card danger"><div class="label">مرفوضة</div><div class="value">${fmt(data.summary.rejectedReadings)}</div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>الأثر البيئي المكافئ</h2>
-    <div class="two-cols">
-      <div>
-        <div class="info-row"><span class="label">أشجار مكافئة</span><span class="value">${fmt(data.summary.treeEquivalent)} شجرة/سنة</span></div>
-        <div class="info-row"><span class="label">كم سيارة متجنّب</span><span class="value">${fmt(data.summary.carKmAvoided)} km</span></div>
-        <div class="info-row"><span class="label">استهلاك ذاتي</span><span class="value">${fmt(data.summary.selfConsumed)} kWh</span></div>
-        <div class="info-row"><span class="label">طاقة مُصدَّرة</span><span class="value">${fmt(data.summary.exported)} kWh</span></div>
-      </div>
-      <div>
-        <div class="info-row"><span class="label">Specific Yield</span><span class="value">${fmt(data.summary.specificYield)} kWh/kWp</span></div>
-        <div class="info-row"><span class="label">القدرة المنصوبة</span><span class="value">${fmt(data.summary.capacityKwp)} kWp</span></div>
-        <div class="info-row"><span class="label">معامل الانبعاث</span><span class="value">${data.summary.emissionFactor} kgCO₂e/kWh</span></div>
-        <div class="info-row"><span class="label">عدد الأيام</span><span class="value">${data.dailyData.length} يوم</span></div>
-      </div>
     </div>
   </div>
 
@@ -258,6 +215,21 @@ function generateHTMLReport(data: any, reportName: string): string {
     <h2>المراقب / الممول</h2>
     <div class="info-row"><span class="label">اسم الممول</span><span class="value">${data.project.sponsorName}</span></div>
     <div class="info-row"><span class="label">رقم الاتصال</span><span class="value">${data.project.sponsorPhone || '—'}</span></div>
+  </div>
+  ` : ''}
+
+  ${data.methodology ? `
+  <div class="section">
+    <h2>المنهجية والمرجعية (Methodology &amp; Guardian Provenance)</h2>
+    <div class="info-row"><span class="label">المنهجية</span><span class="value">${data.methodology.name} — ${data.methodology.label}</span></div>
+    <div class="info-row"><span class="label">مرجع Guardian</span><span class="value mono" style="font-size:9px;">${data.methodology.guardian.policy} — ${data.methodology.guardian.sourcePath}</span></div>
+    <div class="info-row"><span class="label">الأدوات المعتمدة</span><span class="value">${(data.methodology.guardian.tools || []).join('، ') || '—'}</span></div>
+    <div class="info-row"><span class="label">بصمة المنهجية (SHA-256)</span><span class="value mono" style="font-size:9px;">${data.methodology.contentHash}</span></div>
+    <div class="info-row"><span class="label">درجة الادعاء — الكربون المُتجنَّب</span><span class="value">${data.methodology.claimGrades.co2Avoided === 'methodology_compliant' ? 'مطابق للمنهجية' : data.methodology.claimGrades.co2Avoided === 'indicative' ? 'تقديري (Indicative)' : '—'}</span></div>
+    <div class="info-row"><span class="label">درجة الادعاء — الإزالة بالتشجير</span><span class="value">${data.methodology.claimGrades.co2Sequestered === 'indicative' ? 'تقديري (Indicative)' : '—'}</span></div>
+    ${(data.methodology.warnings || []).map((w: string) => `<p style="font-size:10px;color:#b45309;margin:4px 0;">⚠ ${w}</p>`).join('')}
+    ${(data.methodology.customMethodologies || []).map((m: any) => `<p style="font-size:10px;color:#64748b;margin:4px 0;">ℹ ${m.code}: ${m.note}</p>`).join('')}
+    <p style="font-size:9px;color:#64748b;margin:6px 0 0;">مؤشرات تقديرية بثوابت (غير مقيسة): ${(data.methodology.estimatedKpis || []).join('، ')}</p>
   </div>
   ` : ''}
 
@@ -375,15 +347,14 @@ function generateHTMLReport(data: any, reportName: string): string {
     <table>
       <thead><tr><th>المؤشر</th><th>الصيغة</th></tr></thead>
       <tbody>
-        <tr><td>الكربون المتجنب (CO₂e)</td><td class="mono">Σ (قراءة الطاقة المُعتمَدة × معامل انبعاث الشبكة الساري وقت القراءة)</td></tr>
-        <tr><td>كثافة الكربون</td><td class="mono">إجمالي CO₂e المتجنب ÷ إجمالي الطاقة المُولَّدة</td></tr>
+        <tr><td>الكربون المتجنب (CO₂e)</td><td class="mono">الطاقة المُنتَجة (kWh) × معامل انبعاث الشبكة (kgCO₂/kWh) — صيغة CDM AMS-I.D كما في Guardian</td></tr>
         <tr><td>Specific Yield</td><td class="mono">إجمالي الطاقة المُولَّدة ÷ القدرة المنصوبة (kWp)</td></tr>
-        <tr><td>Performance Ratio</td><td class="mono">Specific Yield ÷ (عدد الأيام × 5.5 ساعة ذروة شمسية مرجعية)</td></tr>
-        <tr><td>الوفر المالي</td><td class="mono">(الطاقة المُستهلَكة ذاتيًا × تعرفة البيع) + (الطاقة المُصدَّرة × تعرفة Feed-in)</td></tr>
+        <tr><td>عامل السعة</td><td class="mono">الطاقة المُولَّدة ÷ (القدرة المنصوبة kWp × عدد ساعات الفترة) × 100</td></tr>
+        <tr><td>الوفر المالي (تقديري)</td><td class="mono">الطاقة المُنتَجة × (نسبة الاستهلاك الذاتي المفترضة × تعرفة البيع + (1 − النسبة) × تعرفة Feed-in)</td></tr>
         <tr><td>نصيب الممول (PCAF)</td><td class="mono">Attribution Factor = مبلغ التمويل ÷ القيمة الإجمالية للمشروع؛ النصيب = Factor × إجمالي أثر المشروع</td></tr>
         <tr><td>أشجار/سيارات مكافئة</td><td class="mono">إجمالي CO₂e المتجنب ÷ عامل تحويل مرجعي (كغم CO₂/شجرة/سنة أو كغم CO₂/كم)</td></tr>
-        ${data.kpiCatalog.afforestation.treesPlanted > 0 ? `<tr><td>الكربون المُحتجَز (تشجير)</td><td class="mono">عدد الأشجار الحية × معامل احتجاز الكربون للنوع × عمر الشجرة بالسنوات</td></tr>` : ''}
-        ${data.kpiCatalog.irrigation && data.kpiCatalog.irrigation.waterUsedM3 > 0 ? `<tr><td>توفير المياه (ري ذكي)</td><td class="mono">(استهلاك خط الأساس التقديري − الاستهلاك الفعلي المقاس) ÷ استهلاك خط الأساس × 100%</td></tr>` : `<tr><td>مياه موفّرة (طاقة شمسية)</td><td class="mono">تقدير مرجعي = إجمالي الطاقة المُولَّدة × 1.5 لتر/kWh (مقارنة بمحطات توليد حرارية تقليدية)</td></tr>`}
+        ${data.bankSummary.kind === 'afforestation' ? `<tr><td>الكربون المُحتجَز (تشجير)</td><td class="mono">تقدير: عدد الأشجار الحية × معدل الامتصاص السنوي × السنوات حتى نهاية الفترة (غير قياس للكتلة الحيوية)</td></tr>` : ''}
+        ${data.bankSummary.kind === 'irrigation' ? `<tr><td>توفير المياه (ري ذكي)</td><td class="mono">وفق مقارنة الاستهلاك الفعلي بخط الأساس المسجل للمشروع؛ تُعرض النتيجة ومصدرها في ملخص المؤشرات</td></tr>` : ''}
         <tr><td>خط الأساس - الطاقة (Before)</td><td class="mono">kWh المُستهلَك = إجمالي الفاتورة التاريخية ÷ تعرفة الكهرباء؛ tCO₂e = kWh × معامل الانبعاث ÷ 1000</td></tr>
         <tr><td>خط الأساس - المياه (Before)</td><td class="mono">حجم المياه = الفاتورة ÷ تعرفة اللتر (أو من قدرة/ساعات تشغيل المضخة)؛ الكربون المتضمَّن = طاقة الضخ × معامل الانبعاث ÷ 1000</td></tr>
       </tbody>
@@ -430,15 +401,14 @@ function generateHTMLReport(data: any, reportName: string): string {
     <h2>بيان التوكيد والقيود (Assurance Statement &amp; Limitations)</h2>
     <div class="note-box">
       <b>مستوى التوكيد:</b> بيانات هذا التقرير مبنية على قراءات ميدانية موثّقة رقميًا (Hash) ومُثبَّتة على سجل لامركزي
-      غير قابل للتعديل (شبكة Hedera)، بنسبة اكتمال بيانات ${data.kpiCatalog.dataQuality.completeness.toFixed(1)}% ونسبة
-      بيانات موثّقة على السلسلة ${data.kpiCatalog.attestation.verifiedDataPercent.toFixed(1)}% لهذه الفترة. هذا يوفّر توكيدًا
+      غير قابل للتعديل (شبكة Hedera)، بنسبة اكتمال بيانات ${data.bankSummary.confidence.validPct.toFixed(1)}% ونسبة
+      بيانات موثّقة على السلسلة ${data.bankSummary.confidence.onChainVerifiedPct.toFixed(1)}% لهذه الفترة. هذا يوفّر توكيدًا
       قريبًا من مبادئ ISAE 3410 الخاصة بتأكيدات غازات الاحتباس الحراري، دون أن يشكّل توكيدًا رسميًا من طرف ثالث مستقل
       (third-party assurance) ما لم يُذكر خلاف ذلك صراحةً.
     </div>
     <div class="warn-box">
       <b>قيود يجب مراعاتها:</b>
-      القيم المُشار إليها في هذا التقرير بأنها "تقديرية" (مثل: توفير المياه لمشاريع الطاقة الشمسية غير المُزوَّدة بعداد مياه ذكي)
-      مبنية على معاملات تحويل مرجعية قياسية وليست قياسًا مباشرًا. حدود التقرير تقتصر على Scope 2 لموقع المشروع، ولا تشمل
+      تقسيم الاستهلاك الذاتي والتصدير المستخدم لحساب الوفر المالي تقديري (${ASSUMED_SELF_CONSUMPTION_SHARE * 100}%/${(1 - ASSUMED_SELF_CONSUMPTION_SHARE) * 100}%) ما لم تتوفر قياسات فعلية. عامل تحويل قراءة العداد إلى صافي الكهرباء افتراضي ما لم يوثّق خلاف ذلك. حدود التقرير تقتصر على أثر الكهرباء ضمن نطاق المشروع، ولا تشمل
       انبعاثات دورة التصنيع للمعدات (Embodied Carbon) أو سلسلة الإمداد. القراءات المصنّفة "مشبوهة" أو "مرفوضة" (راجع قسم
       جودة البيانات) استُبعدت بالكامل من كل الحسابات أعلاه ولم تُدرَج في أي مجموع.
     </div>
@@ -489,17 +459,6 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
 
-    // If no readings, return friendly HTML explaining empty data
-    if (!data.dailyData || data.dailyData.length === 0 || (data.summary && data.summary.totalReadings === 0)) {
-      const msgHtml = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${reportName}</title></head><body><div style="font-family:Arial,Helvetica,sans-serif;padding:30px;text-align:center;"><h2>لا توجد بيانات للتقرير في الفترة المحددة</h2><p>لا توجد قراءات للطاقة ضمن الفترة ${fmtReportDate(data.report.periodStart)} إلى ${fmtReportDate(data.report.periodEnd)}.</p></div></body></html>`
-      return new NextResponse(msgHtml, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${reportName}.html"`,
-        },
-      })
-    }
-
     const html = generateHTMLReport(data, reportName)
 
     console.info('Generate PDF:', { reportId: data.report.id, project: data.project.code, readings: data.dailyData.length })
@@ -518,13 +477,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     if (!existsSync(scriptPath)) {
       console.error('PDF script not found at:', scriptPath)
-      // Fallback: return HTML
-      return new NextResponse(html, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${reportName}.html"`,
-        },
-      })
+      return NextResponse.json(
+        { error: 'تعذّر إنشاء PDF: سكربت تحويل التقرير إلى PDF غير موجود.' },
+        { status: 500 },
+      )
     }
 
     // Run Playwright conversion with timeout
