@@ -66,7 +66,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     const cfg = config?.config ? JSON.parse(config.config) : {}
     const network = cfg.network || 'testnet'
 
-    const mirrorUrl = `${mirrorNodeBaseUrl(network)}/api/v1/transactions/${reading.hederaTransactionId}`
+    // SDK يعيد المعرّف بصيغة 0.0.x@seconds.nanos بينما Mirror Node يتوقع 0.0.x-seconds-nanos
+    const mirrorTxId = reading.hederaTransactionId.replace('@', '-').replace(/\.(\d+)$/, '-$1')
+    const mirrorUrl = `${mirrorNodeBaseUrl(network)}/api/v1/transactions/${mirrorTxId}`
 
     let hederaOriginalMessage: string | null = null
     let hederaConsensusTimestamp: string | null = null
@@ -83,8 +85,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 
         // For TopicMessageSubmitTransaction, the message content is fetched from the
         // topic messages endpoint, not the transaction endpoint directly.
-        if (reading.project.hederaTopicId && hederaConsensusTimestamp) {
-          const topicMsgUrl = `${mirrorNodeBaseUrl(network)}/api/v1/topics/${reading.project.hederaTopicId}/messages/${hederaConsensusTimestamp}`
+        // الرسالة تُجلب بالطابع الزمني للإجماع (لا يحتاج topicId، فلا يتأثر باختلاف topic الذي استخدمه n8n)
+        if (hederaConsensusTimestamp) {
+          const topicMsgUrl = `${mirrorNodeBaseUrl(network)}/api/v1/topics/messages/${hederaConsensusTimestamp}`
           const msgRes = await fetch(topicMsgUrl)
           if (msgRes.ok) {
             const msgData = await msgRes.json()

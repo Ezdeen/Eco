@@ -1,0 +1,133 @@
+{
+  "guardianRepo": "https://github.com/hashgraph/guardian.git",
+  "guardianCommit": "6e23c0563806d43155d6b2c738b577ef35728459",
+  "syncedAt": "2026-11-17T07:15:55.592Z",
+  "sourceUrlBase": "https://github.com/hashgraph/guardian/blob/6e23c0563806d43155d6b2c738b577ef35728459",
+  "policies": {
+    "cdm_ams_id": {
+      "formulaId": "cdm_ams_id",
+      "policyName": "AMS-I.D",
+      "policyUuid": "e9f7cecd-fd98-42bb-86dc-0eaa806ff1c8",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/CDM AMS-I.D/AMS-I.D.policy",
+      "outputs": [
+        {
+          "schema": "Emission Reductions",
+          "field": "H114",
+          "description": "Emission reductions in year y (t CO2)",
+          "label": "Emission reductions in year y",
+          "unit": "t CO2"
+        },
+        {
+          "schema": "Emission Reductions",
+          "field": "H115",
+          "description": "Baseline emissions in year y (t CO2)",
+          "label": "Baseline emissions in year y",
+          "unit": "t CO2"
+        },
+        {
+          "schema": "Emission Reductions",
+          "field": "H116",
+          "description": "Project emissions in year y (t CO2)",
+          "label": "Project emissions in year y",
+          "unit": "t CO2"
+        },
+        {
+          "schema": "Emission Reductions",
+          "field": "H117",
+          "description": "Leakage emissions in year y (t CO2)",
+          "label": "Leakage emissions in year y",
+          "unit": "t CO2"
+        },
+        {
+          "schema": "Baseline Emissions",
+          "field": "H36",
+          "description": "Quantity of net electricity generation that is produced and fed into the grid as a result of the implementation of the CDM project activity in year y (MWh)",
+          "label": "Quantity of net electricity generation that is produced and fed into the grid as a result of the implementation of the CDM project activity in year y",
+          "unit": "MWh"
+        },
+        {
+          "schema": "Baseline Emissions",
+          "field": "H37",
+          "description": "Combined margin CO2 emission factor for grid connected power generation in year y calculated using the latest version of the “Tool to calculate the emission factor for an electricity system” (t CO2/MWh)",
+          "label": "Combined margin CO2 emission factor for grid connected power generation in year y calculated using the latest version of the “Tool to calculate the emission factor for an electricity system”",
+          "unit": "t CO2/MWh"
+        }
+      ],
+      "definitionsSha256": "fe3a4a922195ebf772da429ce1c0ad5c71fb5d8260bf5aefcf8eafb8178e8d4b"
+    },
+    "cdm_ar_acm0003": {
+      "formulaId": "cdm_ar_acm0003",
+      "policyName": "CDM AR-ACM0003 Policy",
+      "policyUuid": "14b7573c-5f52-4a8e-a722-72dd3d785478",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/CDM AR-ACM0003/CDM AR-ACM0003.policy",
+      "outputs": [
+        {
+          "schema": "Net anthropogenic GHG removals by sinks",
+          "field": "field0",
+          "description": "Net anthropogenic GHG removals by sinks, in year t2; t CO2-e",
+          "label": "Net anthropogenic GHG removals by sinks, in year t2",
+          "unit": "t CO2-e"
+        },
+        {
+          "schema": "Baseline Scenario Net GHG Removals",
+          "field": "field0",
+          "description": "Baseline net GHG removals by sinks in year t; t CO2-e",
+          "label": "Baseline net GHG removals by sinks in year t",
+          "unit": "t CO2-e"
+        },
+        {
+          "schema": "Project Scenario Net GHG Removals",
+          "field": "field0",
+          "description": "Actual net GHG removals by sinks, in year t2; t CO2-e",
+          "label": "Actual net GHG removals by sinks, in year t2",
+          "unit": "t CO2-e"
+        },
+        {
+          "schema": "Project Scenario Net GHG Removals",
+          "field": "field1",
+          "description": "Change in the carbon stocks in project, occurring in the selected carbon pools, in year t2; t CO2-e",
+          "label": "Change in the carbon stocks in project, occurring in the selected carbon pools, in year t2",
+          "unit": "t CO2-e"
+        }
+      ],
+      "definitionsSha256": "58182c68b714f7fa678fd682182917a681966fee7941c045d8a8ad4bcde8b74d"
+    },
+    "cdm_ams_if": {
+      "formulaId": "cdm_ams_if",
+      "policyName": "CDM AMS-I.F Policy",
+      "policyUuid": "93c4c7f3-9ac9-47b3-af8f-75303543e3ea",
+      "sourcePath": "Methodology Library/Clean Development Mechanism (CDM)/CDM AMS-I.F/CDM AMS-I.F Policy.policy",
+      "outputs": [
+        {
+          "schema": "Monitoring Report",
+          "field": "field15",
+          "description": "Emission reductions in year y (t CO2e/yr)",
+          "label": "Emission reductions in year y",
+          "unit": "t CO2e/yr"
+        },
+        {
+          "schema": "Monitoring Report",
+          "field": "field16",
+          "description": "Baseline emissions in year y (t CO2e/yr)",
+          "label": "Baseline emissions in year y",
+          "unit": "t CO2e/yr"
+        },
+        {
+          "schema": "Monitoring Report",
+          "field": "field17",
+          "description": "Project emissions in year y (t CO2/yr)",
+          "label": "Project emissions in year y",
+          "unit": "t CO2/yr"
+        },
+        {
+          "schema": "Monitoring Report",
+          "field": "field18",
+          "description": "Leakage emissions in year y (t CO2/y)",
+          "label": "Leakage emissions in year y",
+          "unit": "t CO2/y"
+        }
+      ],
+      "definitionsSha256": "36c10ad15b3f5e665dafb33b9182fe97c33f29ddff680dd53d5e2d4042d9219a"
+    }
+  }
+}

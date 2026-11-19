@@ -431,6 +431,8 @@ model EnergyReading {
   hashMatchStatus      String?  // match, mismatch, pending — نتيجة المطابقة الفورية وقت الاستقبال
   hederaTransactionId  String?  // رقم المعاملة على شبكة Hedera (وثّقه n8n مباشرة)
   hederaConsensusAt    String?  // الطابع الزمني للإجماع من Hedera (كما أرسله n8n)
+  hederaAccountId      String?  // حساب Hedera الذي دفع/وقّع المعاملة (Payer) — لشفافية من وثّق
+  hederaTopicId        String?  // الـ Topic الذي سُجّل فيه الهاش
   // Audit fields for suspect/rejected readings
   suspectReason       String?  // سبب الاشتباه أو الرفض
   suspectRuleCode     String?  // رمز القاعدة التي أطلقت التنبيه
@@ -462,6 +464,9 @@ model CalculationRun {
   periodStart     DateTime
   periodEnd       DateTime
   methodologyVersion String?
+  methodologyVersionId String?  // نسخة المنهجية الثابتة التي حُسبت بها هذه العملية
+  methodologyHash      String?  // نسخة من MethodologyVersion.contentHash وقت الحساب (للتدقيق دون join)
+  claimGrade           String?  // methodology_compliant | indicative (انظر src/lib/methodologies/types.ts)
   parametersHash  String?
   result          String?  // JSON string of results
   totalEnergyKwh  Float?
@@ -478,6 +483,9 @@ model CalculationRun {
   completedAt     DateTime?
 
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  methodologyVersionRef MethodologyVersion? @relation(fields: [methodologyVersionId], references: [id])
+
+  @@index([methodologyVersionId])
 }
 
 // ============== التوثيق على Hedera ==============
@@ -645,7 +653,11 @@ model GridEmissionFactor {
   factor          Float    // kgCO2e per kWh
   source          String   // Saudi Electricity Company, IEA, etc.
   version         String   // v1.2-2024
-  type            String   @default("location-based") // location-based, market-based
+  type            String   @default("location-based") // location-based, market-based, combined-margin
+  // Tool 07 (CDM): عند توفر OM وBM معًا يُحسب Combined Margin ويُعتبر المعامل مطابقًا لـ AMS-I.D.
+  // بدونهما يبقى `factor` متوسطًا (location-based) ويُوسَم أي حساب يعتمد عليه بـ claimGrade = indicative.
+  omFactor        Float?   // EF_OM,y  (tCO2/MWh ≡ kgCO2/kWh)
+  bmFactor        Float?   // EF_BM,y  (tCO2/MWh ≡ kgCO2/kWh)
   validFrom       DateTime
   validTo         DateTime?
   approvalStatus  String   @default("approved") // draft, reviewed, approved
@@ -697,7 +709,39 @@ model Methodology {
   validFrom       DateTime
   validTo         DateTime?
   approvalStatus  String   @default("approved")
+  formulaId       String?  // مفتاح الصيغة في src/lib/methodologies/registry.ts (مثل cdm_ams_id)
   createdAt       DateTime @default(now())
+
+  versions        MethodologyVersion[]
+}
+
+// نسخة ثابتة (immutable) من منهجية: أي تعديل على المعاملات أو الصيغة ينتج صفًا جديدًا ولا يُعدَّل
+// الصف القديم، فتبقى كل CalculationRun مربوطة بالنسخة التي حُسبت بها بالضبط.
+model MethodologyVersion {
+  id                 String   @id @default(cuid())
+  methodologyId      String
+  version            Int      // 1، 2، 3 ... لكل منهجية
+  status             String   @default("approved") // draft, approved, deprecated
+  formulaId          String
+  formulaRevision    Int
+  parameters         String   // JSON — يتجاوز defaultParameters في السجل
+  // مرجعية Guardian (hashgraph/guardian → Methodology Library) وقت إنشاء النسخة
+  guardianSourcePath String?
+  guardianPolicyUuid String?
+  guardianSourceHash String?  // SHA-256 لمنطق الحساب في Guardian (calcExpressionSha256)
+  guardianCommit     String?
+  contentHash        String   // SHA-256(formulaId, formulaRevision, parameters, guardianSourceHash)
+  changeNote         String?
+  validFrom          DateTime @default(now())
+  validTo            DateTime?
+  createdBy          String?
+  createdAt          DateTime @default(now())
+
+  methodology        Methodology @relation(fields: [methodologyId], references: [id], onDelete: Cascade)
+  calculationRuns    CalculationRun[]
+
+  @@unique([methodologyId, version])
+  @@index([contentHash])
 }
 
 // ============== Ingestion Pipeline ==============

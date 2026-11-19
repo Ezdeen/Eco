@@ -18,7 +18,11 @@ const inverterPayloadSchema = z.object({
   hederaConsensusAt: z.string().optional(), // consensus timestamp returned by Hedera, if available yet
 })
 
-// POST /api/ingestion/inverter
+// أقصى إنتاج (kWh) بين قراءتين يُعدّ طبيعياً مع بقاء العداد التراكمي ثابتاً.
+// اضبطه ≈ ضعف دقة عداد الإجمالي في الإنفرتر (SG15RT: 1 kWh → 2).
+const CUMULATIVE_FLAT_TOLERANCE_KWH = Number(process.env.CUMULATIVE_FLAT_TOLERANCE_KWH ?? 2)
+
+// POST /api/integrations/inverter
 // Auth: Authorization: Bearer esg_xxxxx  (API key with "ingestion:write" scope)
 export async function POST(request: NextRequest) {
   try {
@@ -150,9 +154,15 @@ export async function POST(request: NextRequest) {
           ruleCode: 'CUMULATIVE_DECREASED',
           severity: 'critical',
         }
-      } else if (productionTotal === previousReading.cumulativeValue) {
+      } else if (
+        productionTotal === previousReading.cumulativeValue &&
+        productionNow > CUMULATIVE_FLAT_TOLERANCE_KWH
+      ) {
+        // ثبات العداد التراكمي طبيعي عندما يكون الإنتاج بين القراءتين أقل من دقة العداد
+        // (مثلاً SG15RT يعرض الإجمالي بدقة 1 kWh) أو عند الليل/التوقف (productionNow = 0).
+        // لا نُشير للاشتباه إلا إذا أُبلغ عن إنتاج أكبر من دقة العداد ومع ذلك لم يتحرك الإجمالي.
         cumulativeAnomaly = {
-          reason: `القيمة التراكمية (${productionTotal}) مطابقة تماماً للقراءة السابقة بتاريخ ${previousReading.measuredAt.toISOString()} — لا زيادة تُسجَّل، يُحتمل خلل بمصدر البيانات أو توقف الإنفيرتر`,
+          reason: `القيمة التراكمية (${productionTotal}) مطابقة للقراءة السابقة بتاريخ ${previousReading.measuredAt.toISOString()} رغم إنتاج مُبلَّغ (${productionNow} kWh) أكبر من دقة العداد (${CUMULATIVE_FLAT_TOLERANCE_KWH} kWh) — يُحتمل خلل بمصدر البيانات`,
           ruleCode: 'CUMULATIVE_UNCHANGED',
           severity: 'medium',
         }

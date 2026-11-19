@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,148 +17,8 @@ import {
   FileCheck, ExternalLink, Eye, BookOpen, Network, AlertCircle, CheckCircle2, Sprout,
 } from 'lucide-react'
 import { toast } from 'sonner'
-
-const KPI_CATEGORIES = [
-  {
-    key: 'energy',
-    title: 'الطاقة',
-    titleEn: 'Energy',
-    icon: Zap,
-    color: 'amber',
-    kpis: [
-      { key: 'energyGenerated', label: 'Energy Generated', labelAr: 'الطاقة المُولّدة', unit: 'kWh' },
-      { key: 'energyExported', label: 'Energy Exported', labelAr: 'الطاقة المُصدَّرة', unit: 'kWh' },
-      { key: 'energyImported', label: 'Energy Imported', labelAr: 'الطاقة المستوردة', unit: 'kWh' },
-      { key: 'selfConsumption', label: 'Self Consumption', labelAr: 'الاستهلاك الذاتي', unit: 'kWh' },
-      { key: 'renewableFraction', label: 'Renewable Fraction', labelAr: 'نسبة الطاقة المتجددة', unit: '%' },
-    ],
-  },
-  {
-    key: 'carbon',
-    title: 'الكربون',
-    titleEn: 'Carbon',
-    icon: Leaf,
-    color: 'emerald',
-    kpis: [
-      { key: 'co2Avoided', label: 'CO₂e Avoided', labelAr: 'CO₂e متجنب', unit: 'kg' },
-      { key: 'co2Stored', label: 'CO₂e Stored', labelAr: 'CO₂e مخزّن', unit: 'kg' },
-      { key: 'co2Sequestered', label: 'CO₂e Sequestered', labelAr: 'CO₂e ممتص', unit: 'kg' },
-      { key: 'carbonIntensity', label: 'Carbon Intensity', labelAr: 'كثافة الكربون', unit: 'kgCO₂e/kWh' },
-    ],
-  },
-  {
-    key: 'water',
-    title: 'المياه',
-    titleEn: 'Water',
-    icon: Droplet,
-    color: 'blue',
-    kpis: [
-      { key: 'waterSaved', label: 'Water Saved', labelAr: 'مياه موفّرة', unit: 'لتر' },
-      { key: 'waterConsumed', label: 'Water Consumed', labelAr: 'مياه مستهلكة', unit: 'لتر' },
-    ],
-  },
-  {
-    key: 'waste',
-    title: 'النفايات',
-    titleEn: 'Waste',
-    icon: Recycle,
-    color: 'violet',
-    kpis: [
-      { key: 'wasteDiverted', label: 'Waste Diverted', labelAr: 'نفايات مُحوّلة', unit: 'kg' },
-      { key: 'wasteRecycled', label: 'Waste Recycled', labelAr: 'نفايات مُعاد تدويرها', unit: 'kg' },
-    ],
-  },
-  {
-    key: 'afforestation',
-    title: 'التشجير',
-    titleEn: 'Afforestation',
-    icon: TreePine,
-    color: 'green',
-    kpis: [
-      { key: 'treesPlanted', label: 'Trees Planted', labelAr: 'أشجار مزروعة', unit: 'شجرة' },
-      { key: 'survivalRate', label: 'Survival Rate', labelAr: 'معدل البقاء', unit: '%' },
-      { key: 'biomass', label: 'Biomass', labelAr: 'الكتلة الحيوية', unit: 'kg' },
-      { key: 'carbonStock', label: 'Carbon Stock', labelAr: 'الكربون المخزن', unit: 'kgCO₂e' },
-      { key: 'carbonSequestration', label: 'Carbon Sequestration', labelAr: 'امتصاص الكربون', unit: 'kgCO₂e/سنة' },
-    ],
-  },
-  {
-    key: 'biodiversity',
-    title: 'التنوع الحيوي',
-    titleEn: 'Biodiversity',
-    icon: Bird,
-    color: 'teal',
-    kpis: [
-      { key: 'restoredArea', label: 'Restored Area', labelAr: 'مساحة مُستعادة', unit: 'ha' },
-      { key: 'protectedArea', label: 'Protected Area', labelAr: 'مساحة محمية', unit: 'ha' },
-      { key: 'habitatIndex', label: 'Habitat Index', labelAr: 'مؤشر الموئل', unit: '/100' },
-      { key: 'speciesCount', label: 'Species Count', labelAr: 'عدد الأنواع', unit: 'نوع' },
-    ],
-  },
-  {
-    key: 'irrigation',
-    title: 'الري الذكي',
-    titleEn: 'Smart Irrigation',
-    icon: Sprout,
-    color: 'sky',
-    kpis: [
-      { key: 'waterUsedM3', label: 'Water Used', labelAr: 'مياه مستخدمة (فعلي)', unit: 'm³' },
-      { key: 'waterSavedM3', label: 'Water Saved', labelAr: 'مياه موفّرة', unit: 'm³' },
-      { key: 'waterSavedPct', label: 'Water Savings', labelAr: 'نسبة التوفير', unit: '%' },
-      { key: 'avgSoilMoisturePct', label: 'Avg. Soil Moisture', labelAr: 'متوسط رطوبة التربة', unit: '%' },
-      { key: 'efficiencyScore', label: 'Efficiency Score', labelAr: 'مؤشر كفاءة الري', unit: '/100' },
-    ],
-  },
-  {
-    key: 'economy',
-    title: 'الاقتصاد',
-    titleEn: 'Economy',
-    icon: DollarSign,
-    color: 'amber',
-    kpis: [
-      { key: 'costSavings', label: 'Cost Savings', labelAr: 'وفر تكاليف', unit: 'SAR' },
-      { key: 'greenInvestment', label: 'Green Investment', labelAr: 'استثمار أخضر', unit: 'SAR' },
-      { key: 'costPerTCo2e', label: 'Cost per tCO₂e', labelAr: 'تكلفة لكل طن CO₂e', unit: 'SAR/tCO₂e' },
-      { key: 'costPerKwh', label: 'Cost per kWh', labelAr: 'تكلفة لكل kWh', unit: 'SAR/kWh' },
-    ],
-  },
-  {
-    key: 'dataQuality',
-    title: 'جودة البيانات',
-    titleEn: 'Data Quality',
-    icon: ShieldCheck,
-    color: 'blue',
-    kpis: [
-      { key: 'completeness', label: 'Completeness', labelAr: 'الاكتمال', unit: '%' },
-      { key: 'accuracy', label: 'Accuracy', labelAr: 'الدقة', unit: '%' },
-      { key: 'timeliness', label: 'Timeliness', labelAr: 'الحداثة', unit: '%' },
-      { key: 'validationRate', label: 'Validation Rate', labelAr: 'نسبة التحقق', unit: '%' },
-    ],
-  },
-  {
-    key: 'attestation',
-    title: 'التوثيق',
-    titleEn: 'Attestation',
-    icon: Database,
-    color: 'violet',
-    kpis: [
-      { key: 'verifiedDataPercent', label: 'Verified Data %', labelAr: 'بيانات موثقة', unit: '%' },
-      { key: 'traceabilityPercent', label: 'Traceability %', labelAr: 'قابلية التتبع', unit: '%' },
-      { key: 'auditCoveragePercent', label: 'Audit Coverage %', labelAr: 'تغطية التدقيق', unit: '%' },
-      { key: 'attestationCount', label: 'Attestation Count', labelAr: 'عدد التوثيقات', unit: 'دفعة' },
-    ],
-  },
-]
-
-const COLOR_MAP: Record<string, { bg: string; text: string; border: string; gradient: string }> = {
-  amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200', gradient: 'from-amber-500 to-orange-600' },
-  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200', gradient: 'from-emerald-500 to-teal-600' },
-  blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200', gradient: 'from-blue-500 to-cyan-600' },
-  violet: { bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-200', gradient: 'from-violet-500 to-purple-600' },
-  green: { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-200', gradient: 'from-green-500 to-emerald-600' },
-  teal: { bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200', gradient: 'from-teal-500 to-cyan-600' },
-  sky: { bg: 'bg-sky-50 dark:bg-sky-950/30', text: 'text-sky-700 dark:text-sky-400', border: 'border-sky-200', gradient: 'from-sky-500 to-blue-600' },
-}
+import { GuardianKpiCatalogView } from '@/components/sections/guardian-kpi-catalog'
+import type { GuardianKpiCatalog } from '@/lib/kpi-catalog/types'
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
 // Exact formatter for KPI Catalog / Traceable KPIs: shows the real value as computed from
@@ -175,12 +35,17 @@ export function CalculationsSection() {
   const [projects, setProjects] = useState<any[]>([])
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [recentRuns, setRecentRuns] = useState<any[]>([])
-  const [kpiCatalog, setKpiCatalog] = useState<any>(null)
+  const [guardianKpiCatalog, setGuardianKpiCatalog] = useState<GuardianKpiCatalog | null>(null)
+  const [kpiCatalogProjectId, setKpiCatalogProjectId] = useState('')
+  const [kpiCatalogLoading, setKpiCatalogLoading] = useState(false)
+  const [kpiCatalogError, setKpiCatalogError] = useState(false)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<any>(null)
   // ESG frameworks
   const [esgData, setEsgData] = useState<any>(null)
   const [traceDialog, setTraceDialog] = useState<any>(null)
+  const calculationsRequestId = useRef(0)
+  const selectedProjectInfo = projects.find((project) => project.id === selectedProject)
 
   useEffect(() => {
     fetch('/api/projects')
@@ -189,22 +54,32 @@ export function CalculationsSection() {
       .catch(() => {})
   }, [])
 
-  // Re-fetch KPI Catalog + Traceable KPIs whenever the selected project changes,
-  // and on initial mount (selectedProject starts as '' → shows the org-wide totals).
+  // Re-fetch KPI Catalog + Traceable KPIs whenever the selected project changes.
   useEffect(() => {
     fetchCalculations(selectedProject)
     fetchEsgFrameworks(selectedProject)
   }, [selectedProject])
 
   const fetchCalculations = async (projectId?: string) => {
+    const requestId = ++calculationsRequestId.current
+    setKpiCatalogLoading(Boolean(projectId))
+    setKpiCatalogError(false)
     try {
       const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
       const res = await fetch(`/api/calculations${qs}`)
-      if (!res.ok) return
+      if (!res.ok) throw new Error('Failed to load calculation KPIs')
       const data = await res.json()
+      if (requestId !== calculationsRequestId.current) return
       setRecentRuns(data.calculationRuns || [])
-      setKpiCatalog(data.kpiCatalog || null)
-    } catch {}
+      setGuardianKpiCatalog(data.guardianKpiCatalog || null)
+      setKpiCatalogProjectId(projectId || '')
+    } catch {
+      if (requestId !== calculationsRequestId.current) return
+      setKpiCatalogError(true)
+      toast.error('تعذر تحميل مؤشرات المشروع')
+    } finally {
+      if (requestId === calculationsRequestId.current) setKpiCatalogLoading(false)
+    }
   }
 
   const fetchEsgFrameworks = async (projectId?: string) => {
@@ -265,12 +140,12 @@ export function CalculationsSection() {
             <div>
               <h2 className="font-cairo text-2xl font-bold mb-1">Environmental KPI Catalog</h2>
               <p className="text-sm opacity-90">
-                جميع المؤشرات البيئية بشكل موحد - 9 فئات تشمل الطاقة والكربون والمياه والنفايات والتشجير والتنوع الحيوي والاقتصاد وجودة البيانات والتوثيق
+                مؤشرات مرتبطة بنوع المشروع المحدد، مع إظهار مرجع Guardian وحدود تطبيق المنهجية
               </p>
               <Badge variant="outline" className="mt-2 border-white/40 text-white bg-white/10">
-                {selectedProject
-                  ? `نطاق العرض: ${projects.find((p) => p.id === selectedProject)?.nameAr || projects.find((p) => p.id === selectedProject)?.name || 'المشروع المحدد'}`
-                  : 'نطاق العرض: جميع المشاريع'}
+                {selectedProjectInfo
+                  ? `المشروع: ${selectedProjectInfo.nameAr || selectedProjectInfo.name}`
+                  : 'اختر مشروعًا لعرض مؤشرات نوعه فقط'}
               </Badge>
             </div>
             <Database className="h-12 w-12 opacity-80" />
@@ -403,96 +278,29 @@ export function CalculationsSection() {
 
         {/* KPI Catalog Tab */}
         <TabsContent value="kpi" className="mt-4">
-          {kpiCatalog && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Activity className="h-5 w-5 text-primary" />
-                <h3 className="font-cairo text-lg font-bold">Environmental KPI Catalog</h3>
-                <Badge variant="outline" className="text-xs">9 فئات</Badge>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {KPI_CATEGORIES.map((cat) => {
-                  const Icon = cat.icon
-                  const colors = COLOR_MAP[cat.color] || COLOR_MAP.blue
-                  const categoryData = kpiCatalog[cat.key] || {}
-                  return (
-                    <Card key={cat.key} className={`overflow-hidden ${colors.border}`}>
-                      <CardHeader className={`pb-2 bg-gradient-to-br ${colors.gradient} text-white`}>
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {cat.title}
-                          <span className="text-xs opacity-80 mr-auto">{cat.titleEn}</span>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-3 space-y-2">
-                        {cat.kpis.map((kpi) => {
-                          const rawValue = categoryData[kpi.key]
-                          // Economy KPIs can be null when projects use different currencies
-                          // (see kpiCatalog.economy in the API) — show the per-currency
-                          // breakdown instead of a misleading 0.
-                          if (cat.key === 'economy' && rawValue === null && categoryData.costSavingsByCurrency) {
-                            const byCurrencyMap = kpi.key === 'greenInvestment'
-                              ? categoryData.greenInvestmentByCurrency
-                              : categoryData.costSavingsByCurrency
-                            const entries = Object.entries(byCurrencyMap || {})
-                            return (
-                              <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-                                <div className="min-w-0">
-                                  <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
-                                  <p className="text-[10px] text-muted-foreground truncate">{kpi.label} (عملات متعددة)</p>
-                                </div>
-                                <div className="text-left shrink-0 space-y-0.5">
-                                  {entries.length > 0 ? entries.map(([currency, amount]) => (
-                                    <p key={currency} className={`text-xs font-bold tabular-nums ${colors.text}`}>
-                                      {fmtExact(amount as number)} {currency}
-                                    </p>
-                                  )) : (
-                                    <p className="text-[10px] text-muted-foreground">—</p>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          }
-                          return (
-                            <div key={kpi.key} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-                              <div className="min-w-0">
-                                <p className="text-xs font-medium truncate">{kpi.labelAr}</p>
-                                <p className="text-[10px] text-muted-foreground truncate">{kpi.label}</p>
-                              </div>
-                              <div className="text-left shrink-0">
-                                <p className={`text-sm font-bold tabular-nums ${colors.text}`}>
-                                  {fmtExact(rawValue || 0)}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {cat.key === 'economy' && categoryData.currency
-                                    ? kpi.unit.replace('SAR', categoryData.currency)
-                                    : kpi.unit}
-                                </p>
-                              </div>
-                            </div>
-                          )
-                        })}
-                        {cat.key === 'carbon' && categoryData.emissionFactorsUsed?.length > 0 && (
-                          <div className="pt-1.5 mt-1 border-t border-border/60">
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                              عامل الانبعاث المُستخدم:{' '}
-                              {categoryData.emissionFactorsUsed.map((ef: any, i: number) => (
-                                <span key={ef.countryCode}>
-                                  {i > 0 && '، '}
-                                  {ef.countryCode} = {ef.factor} kgCO₂e/kWh
-                                  {ef.fromDb ? '' : ' (افتراضي)'}
-                                </span>
-                              ))}
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          <div>
+            {!selectedProject && (
+              <Card>
+                <CardContent className="p-5 text-sm text-muted-foreground">
+                  اختر مشروعًا من القائمة لعرض المؤشرات المرتبطة بنوعه دون خلط بيانات المشاريع المختلفة.
+                </CardContent>
+              </Card>
+            )}
+            {selectedProject && kpiCatalogProjectId !== selectedProject && (
+              <Card>
+                <CardContent className="p-5 text-sm text-muted-foreground">
+                  {kpiCatalogLoading
+                    ? 'جاري تحميل مؤشرات المشروع...'
+                    : kpiCatalogError
+                      ? 'تعذر تحميل المؤشرات. حاول تغيير المشروع أو تحديث الصفحة.'
+                      : 'جاري تجهيز مؤشرات المشروع...'}
+                </CardContent>
+              </Card>
+            )}
+            {selectedProject && kpiCatalogProjectId === selectedProject && guardianKpiCatalog && (
+              <GuardianKpiCatalogView catalog={guardianKpiCatalog} />
+            )}
+          </div>
         </TabsContent>
 
         {/* ESG Frameworks Tab */}
